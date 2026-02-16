@@ -553,25 +553,25 @@ static void cpy_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 }
 
 static void stz_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	mem_write(mem, arg, 0);
+	mem_write(mem, arg, cpu->z);
 	cpu->cycles += 4;
 	cpu->pc += 3;
 }
 
 static void stz_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	mem_write(mem, arg + cpu->x, 0);
+	mem_write(mem, arg + cpu->x, cpu->z);
 	cpu->cycles += 5;
 	cpu->pc += 3;
 }
 
 static void stz_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	mem_write(mem, arg & 0xFF, 0);
+	mem_write(mem, arg & 0xFF, cpu->z);
 	cpu->cycles += 3;
 	cpu->pc += 2;
 }
 
 static void stz_zp_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	mem_write(mem, (arg + cpu->x) & 0xFF, 0);
+	mem_write(mem, (arg + cpu->x) & 0xFF, cpu->z);
 	cpu->cycles += 4;
 	cpu->pc += 2;
 }
@@ -799,8 +799,8 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"STA", MODE_ZP_Y, sta_zp_y, 4},
 	{"STA", MODE_INDIRECT_X, sta_ind_x, 6},
 	{"STA", MODE_INDIRECT_Y, sta_ind_y, 6},
-	{"STZ", MODE_ABSOLUTE, stz_z_abs, 4},
-	{"STZ", MODE_ZP, stz_z_zp, 3},
+	{"STZ", MODE_ABSOLUTE, stz_abs, 4},
+	{"STZ", MODE_ZP, stz_zp, 3},
 	{"STX", MODE_ABSOLUTE, stx_abs, 4},
 	{"STX", MODE_ZP, stx_zp, 3},
 	{"STX", MODE_ZP_Y, stx_zp_y, 4},
