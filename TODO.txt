@@ -10,9 +10,13 @@ This document outlines suggested next steps, feature enhancements, and technical
 *   [ ] Decimal Mode Accuracy: Ensure ADC/SBC correctly handle the D flag across all CPU variants (6502 vs 65C02 differences).
 *   [ ] Cycle Accuracy: Refine cycle counts for page crossings, branch success/failure, and 65CE02/45GS02 specific timing.
 *   [ ] Processor-Specific Reset State: Different CPU variants have slightly different register states after RESET.
+*   [X] Fix Branch Logic: Resolved double-increment bug in Bxx instructions for 6502 (opcodes_6502.c).
+*   [ ] Fix Branch Logic: Apply similar fixes to 65C02, 65CE02, 45GS02 opcode files.
 
 2. Memory System Enhancements
 ----------------------------
+*   [X] Simulator Refactoring: Converted to ROM-based execution model to support loops and backward jumps.
+*   [X] Label Resolution: Implemented correct label resolution for relative branches (BNE, BEQ, etc.).
 *   [ ] Memory Mapping (MMU): Support for banking and the MEGA65 MAP instructions.
 *   [ ] I/O Region Simulation: Implement basic hardware registers (e.g., VIC-II, SID, or MEGA65 specific registers) to allow running more complex programs.
 *   [ ] Read/Write Callbacks: Allow attaching functional hooks to specific memory addresses (useful for simulating hardware I/O).
@@ -33,9 +37,10 @@ This document outlines suggested next steps, feature enhancements, and technical
 *   [ ] Integration with External Tools: Support loading standard binary formats (e.g., .prg, .bin) and symbol files from common assemblers (ca65, acme).
 *   [ ] CMake Support: Add a CMakeLists.txt for better cross-platform build support.
 
-5. User Interface (CLI/Web)
+5. User Interface (CLI/Web/MCP)
 --------------------------
-*   [ ] Interactive CLI Mode: A "monitor" style interface where users can type commands (step, continue, examine, modify) without restarting.
+*   [X] Interactive CLI Mode: A "monitor" style interface where users can type commands (step, continue, examine, modify) without restarting. (Required for MCP).
+*   [X] MCP Server Implementation: Wrap the simulator in a Model Context Protocol server to expose execution control to LLMs.
 *   [ ] Web-based UI: Use the existing plugin-gemini structure or similar to create a visual representation of the CPU state and memory.
 *   [ ] Configuration Files: Support for .ini or .json files to specify CPU type, memory maps, and pre-loaded binaries.
 

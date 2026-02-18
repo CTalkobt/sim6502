@@ -573,65 +573,73 @@ void bra(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 void bcc(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	if (!get_flag(cpu, FLAG_C))
 		bra(cpu, mem, arg);
-	else
+	else {
 		cpu->cycles += 2;
-	cpu->pc += 2;
+		cpu->pc += 2;
+	}
 }
 
 void bcs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	if (get_flag(cpu, FLAG_C))
 		bra(cpu, mem, arg);
-	else
+	else {
 		cpu->cycles += 2;
-	cpu->pc += 2;
+		cpu->pc += 2;
+	}
 }
 
 void beq(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	if (get_flag(cpu, FLAG_Z))
 		bra(cpu, mem, arg);
-	else
+	else {
 		cpu->cycles += 2;
-	cpu->pc += 2;
+		cpu->pc += 2;
+	}
 }
 
 void bne(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	if (!get_flag(cpu, FLAG_Z))
 		bra(cpu, mem, arg);
-	else
+	else {
 		cpu->cycles += 2;
-	cpu->pc += 2;
+		cpu->pc += 2;
+	}
 }
 
 void bmi(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	if (get_flag(cpu, FLAG_N))
 		bra(cpu, mem, arg);
-	else
+	else {
 		cpu->cycles += 2;
-	cpu->pc += 2;
+		cpu->pc += 2;
+	}
 }
 
 void bpl(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	if (!get_flag(cpu, FLAG_N))
 		bra(cpu, mem, arg);
-	else
+	else {
 		cpu->cycles += 2;
-	cpu->pc += 2;
+		cpu->pc += 2;
+	}
 }
 
 void bvs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	if (get_flag(cpu, FLAG_V))
 		bra(cpu, mem, arg);
-	else
+	else {
 		cpu->cycles += 2;
-	cpu->pc += 2;
+		cpu->pc += 2;
+	}
 }
 
 void bvc(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	if (!get_flag(cpu, FLAG_V))
 		bra(cpu, mem, arg);
-	else
+	else {
 		cpu->cycles += 2;
-	cpu->pc += 2;
+		cpu->pc += 2;
+	}
 }
 
 void clc(cpu_t *cpu, memory_t *mem, unsigned short arg) {

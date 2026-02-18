@@ -29,6 +29,44 @@ A complete, feature-rich simulator for 6502 and compatible processors (65C02, 65
 - ✅ **Symbol Display**: View all loaded symbols with descriptions
 - ✅ **Multiple Symbol Types**: Labels, Variables, Functions, I/O Ports, Memory Regions
 
+## Model Context Protocol (MCP) Server ⭐ NEW
+
+The simulator includes a built-in MCP server that allows Large Language Models (LLMs) to interact directly with the 6502 simulation.
+
+### Features
+- **Code Loading**: Dynamically load and compile assembly code.
+- **Step Execution**: Execute instructions one by one or in batches.
+- **State Inspection**: Read registers and memory ranges.
+- **State Modification**: Write directly to memory.
+- **CPU Control**: Reset the simulation state.
+
+### Installation & Usage
+
+1. **Build the Simulator**:
+   ```bash
+   make
+   ```
+
+2. **Setup the MCP Plugin**:
+   ```bash
+   cd plugin-gemini
+   npm install
+   ```
+
+3. **Run the Server**:
+   ```bash
+   node server.js
+   ```
+
+### MCP Tools
+The server exposes the following tools:
+- `load_program(code)`: Compile and load ASM into the simulator.
+- `step_instruction(count)`: Execute `count` instructions.
+- `read_registers()`: Returns A, X, Y, SP, PC, and Flags.
+- `read_memory(address, length)`: Hex dump of memory range.
+- `write_memory(address, value)`: Write byte to memory.
+- `reset_cpu()`: Reset to initial state.
+
 ## Installation
 
 ### Build from Source
