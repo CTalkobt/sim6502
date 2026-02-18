@@ -10,6 +10,7 @@ This document outlines suggested next steps, feature enhancements, and technical
 *   [ ] Decimal Mode Accuracy: Ensure ADC/SBC correctly handle the D flag across all CPU variants (6502 vs 65C02 differences).
 *   [ ] Cycle Accuracy: Refine cycle counts for page crossings, branch success/failure, and 65CE02/45GS02 specific timing.
 *   [ ] Processor-Specific Reset State: Different CPU variants have slightly different register states after RESET.
+*   [ ] Complete Opcode Byte Values: Provide the correct machine code byte value for all opcodes in all processor tables (currently only partially implemented).
 *   [X] Fix Branch Logic: Resolved double-increment bug in Bxx instructions for 6502 (opcodes_6502.c).
 *   [ ] Fix Branch Logic: Apply similar fixes to 65C02, 65CE02, 45GS02 opcode files.
 
