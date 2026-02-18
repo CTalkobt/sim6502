@@ -51,34 +51,56 @@ static const char *mode_name(unsigned char mode) {
 }
 
 static void print_help(const char *progname) {
-	printf("6502 Simulator - Complete Debugging & System Tools\n\n");
+	printf("6502 Simulator - Professional 6502 Development & Debugging Platform\n");
+	printf("==================================================================\n\n");
 	printf("Usage: %s [options] <file.asm>\n\n", progname);
-	printf("Debugging Options:\n");
-	printf("  -a, --address <ADDR>     Start execution at address or label\n");
-	printf("  -b, --break <ADDR>       Set breakpoint at address (hex)\n");
-	printf("  -t, --trace [FILE]       Enable trace (optional: to file)\n");
-	printf("Processor Options:\n");
-	printf("  -p, --processor <CPU>    Select processor (6502, 65c02, etc.)\n");
-	printf("  -l, --list               List available processors\n");
-	printf("  -o, --opcodes <CPU>      List all opcodes for processor\n");
-	printf("  -i, --info <OPCODE>      Show detailed information about an opcode\n");
-	printf("Memory Options:\n");
-	printf("  -m, --mem <RANGE>        View memory (format: 0x1000:0x1100)\n");
-	printf("  -s, --stats              Show memory statistics\n");
-	printf("Symbol Table Options:\n");
-	printf("  --symbols <FILE>         Load custom symbol table\n");
-	printf("  --preset <n>             Load preset symbols (c64, c128, mega65, x16)\n");
-	printf("  --show-symbols           Display loaded symbols\n");
-	printf("Interrupt Options:\n");
-	printf("  --irq <CYCLE>            Trigger IRQ at cycle count\n");
-	printf("  -n, --nmi <CYCLE>        Trigger NMI at cycle count\n");
-	printf("Other:\n");
-	printf("  -h, --help               Show this help\n\n");
-	printf("Examples:\n");
-	printf("  %s program.asm\n", progname);
-	printf("  %s -b 0x1000 -t trace.log program.asm\n", progname);
-	printf("  %s --preset c64 program.asm\n", progname);
-	printf("  %s --symbols custom.sym program.asm\n\n", progname);
+	
+	printf("DESCRIPTION:\n");
+	printf("  A feature-rich simulator for 6502 and compatible processors with\n");
+	printf("  professional debugging tools, symbol table support, and interrupts.\n\n");
+
+	printf("PROCESSOR OPTIONS:\n");
+	printf("  -p, --processor <CPU>    Select processor architecture:\n");
+	printf("                           6502 (default), 6502-undoc, 65c02, 65ce02, 45gs02\n");
+	printf("  -l, --list               List all supported processors and their instruction counts\n");
+	printf("  -o, --opcodes <CPU>      List all available opcodes for the specified processor\n");
+	printf("  -i, --info <OPCODE>      Show detailed information and cycles for an opcode\n\n");
+
+	printf("DEBUGGING OPTIONS:\n");
+	printf("  -a, --address <ADDR>     Set start execution address (hex or label name)\n");
+	printf("  -b, --break <ADDR>       Set a breakpoint at hex address (max 16)\n");
+	printf("  -t, --trace [FILE]       Enable execution trace (logs to stdout or FILE)\n\n");
+
+	printf("MEMORY OPTIONS:\n");
+	printf("  -m, --mem <RANGE>        View memory dump after execution (e.g., 0x1000:0x1100)\n");
+	printf("  -s, --stats              Show detailed memory and execution statistics\n\n");
+
+	printf("SYMBOL TABLE OPTIONS:\n");
+	printf("  --symbols <FILE>         Load a custom symbol table from FILE\n");
+	printf("  --preset <ARCH>          Load a preset architecture symbol table:\n");
+	printf("                           c64, c128, mega65, x16\n");
+	printf("  --show-symbols           Display the current symbol table contents\n\n");
+
+	printf("INTERRUPT OPTIONS:\n");
+	printf("  --irq <CYCLE>            Trigger an IRQ interrupt at specified cycle count\n");
+	printf("  -n, --nmi <CYCLE>        Trigger an NMI interrupt at specified cycle count\n\n");
+
+	printf("GENERAL OPTIONS:\n");
+	printf("  -h, --help               Show this help message\n\n");
+
+	printf("CAPABILITIES & FEATURES:\n");
+	printf("  * Cycle-accurate timing for all instructions\n");
+	printf("  * Support for labels and symbols in assembly and options\n");
+	printf("  * Memory write tracking and stack analysis\n");
+	printf("  * Simulation of IRQ, NMI, and BRK interrupts\n");
+	printf("  * Predefined I/O maps for classic Commodore systems\n\n");
+
+	printf("EXAMPLES:\n");
+	printf("  %s program.asm                        Basic execution\n", progname);
+	printf("  %s -b 0x1000 -t trace.log program.asm Trace with breakpoint\n", progname);
+	printf("  %s -p 45gs02 --preset mega65 prog.asm MEGA65 simulation\n", progname);
+	printf("  %s -a start_label program.asm         Start at specific label\n", progname);
+	printf("  %s -m 0x0400:0x07FF program.asm       View C64 screen memory\n\n", progname);
 }
 
 static void list_processors(void) {
