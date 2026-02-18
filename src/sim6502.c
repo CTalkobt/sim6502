@@ -54,6 +54,7 @@ static void print_help(const char *progname) {
 	printf("6502 Simulator - Complete Debugging & System Tools\n\n");
 	printf("Usage: %s [options] <file.asm>\n\n", progname);
 	printf("Debugging Options:\n");
+	printf("  -a, --address <ADDR>     Start execution at address or label\n");
 	printf("  -b, --break <ADDR>       Set breakpoint at address (hex)\n");
 	printf("  -t, --trace [FILE]       Enable trace (optional: to file)\n");
 	printf("Processor Options:\n");
@@ -69,7 +70,7 @@ static void print_help(const char *progname) {
 	printf("  --preset <n>             Load preset symbols (c64, c128, mega65, x16)\n");
 	printf("  --show-symbols           Display loaded symbols\n");
 	printf("Interrupt Options:\n");
-	printf("  -i, --irq <CYCLE>        Trigger IRQ at cycle count\n");
+	printf("  --irq <CYCLE>            Trigger IRQ at cycle count\n");
 	printf("  -n, --nmi <CYCLE>        Trigger NMI at cycle count\n");
 	printf("Other:\n");
 	printf("  -h, --help               Show this help\n\n");
@@ -181,6 +182,38 @@ static void print_opcode_info(const char *mnemonic) {
 	printf("\n");
 }
 
+static void scan_labels(const char *filename, symbol_table_t *symbols) {
+	FILE *f = fopen(filename, "r");
+	if (!f) return;
+	
+	char line[128];
+	int pc_addr = 0;
+	while (fgets(line, sizeof(line), f)) {
+		char *ptr = line;
+		while (*ptr && isspace(*ptr)) ptr++;
+		
+		if (!*ptr || *ptr == ';' || *ptr == '.') continue;
+		
+		char *colon = strchr(ptr, ':');
+		if (colon) {
+			char label_name[64];
+			int len = colon - ptr;
+			if (len >= 64) len = 63;
+			strncpy(label_name, ptr, len);
+			label_name[len] = 0;
+			symbol_add(symbols, label_name, pc_addr, SYM_LABEL, "From source");
+			
+			ptr = colon + 1;
+			while (*ptr && isspace(*ptr)) ptr++;
+		}
+		
+		if (*ptr && *ptr != ';') {
+			pc_addr++;
+		}
+	}
+	fclose(f);
+}
+
 static void parse_pseudo_op(const char *line, cpu_type_t *cpu_type) {
 	if (strncmp(line, ".processor", 10) == 0) {
 		line += 10;
@@ -207,6 +240,18 @@ static void parse_line(const char *line, instruction_t *instr) {
 	int i = 0;
 	
 	while (*line && isspace(*line)) line++;
+	if (!*line || *line == ';' || *line == '.') {
+		instr->op[0] = 0;
+		return;
+	}
+	
+	/* Skip label if present */
+	const char *colon = strchr(line, ':');
+	if (colon) {
+		line = colon + 1;
+		while (*line && isspace(*line)) line++;
+	}
+
 	if (!*line || *line == ';' || *line == '.') {
 		instr->op[0] = 0;
 		return;
@@ -300,6 +345,10 @@ int main(int argc, char *argv[]) {
 	const char *symbol_file = NULL;
 	int show_symbols = 0;
 	
+	unsigned short start_addr = 0;
+	const char *start_label = NULL;
+	int start_addr_provided = 0;
+	
 	breakpoint_init(&breakpoints);
 	trace_init(&trace_info);
 	memory_viewer_init(&mem_viewer);
@@ -335,6 +384,19 @@ int main(int argc, char *argv[]) {
 				unsigned short addr = (unsigned short)strtol(argv[i+1], NULL, 16);
 				breakpoint_add(&breakpoints, addr);
 				printf("Breakpoint set at 0x%04X\n", addr);
+				i++;
+			}
+		} else if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--address") == 0) {
+			if (i + 1 < argc) {
+				if (argv[i+1][0] == '$') {
+					start_addr = (unsigned short)strtol(argv[i+1] + 1, NULL, 16);
+					start_addr_provided = 1;
+				} else if (isdigit(argv[i+1][0])) {
+					start_addr = (unsigned short)strtol(argv[i+1], NULL, 16);
+					start_addr_provided = 1;
+				} else {
+					start_label = argv[i+1];
+				}
 				i++;
 			}
 		} else if (strcmp(argv[i], "-t") == 0 || strcmp(argv[i], "--trace") == 0) {
@@ -441,6 +503,17 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	
+	/* Scan for labels in the assembly file */
+	scan_labels(filename, &symbols);
+	
+	if (start_label) {
+		if (!symbol_lookup_name(&symbols, start_label, &start_addr)) {
+			fprintf(stderr, "Error: Label '%s' not found\n", start_label);
+			return 1;
+		}
+		start_addr_provided = 1;
+	}
+	
 	FILE *f = fopen(filename, "r");
 	if (!f) {
 		perror("fopen");
@@ -449,6 +522,11 @@ int main(int argc, char *argv[]) {
 	
 	cpu_t cpu;
 	cpu_init(&cpu);
+	
+	if (start_addr_provided) {
+		cpu.pc = start_addr;
+	}
+	
 	memory_t mem = {{0}, 0};
 	
 	char line[128];
