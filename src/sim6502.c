@@ -17,7 +17,7 @@
  * Global ROM array holds the program to allow random access (loops).
  */
 typedef struct {
-	char op[4];
+	char op[8];
 	unsigned char mode;
 	unsigned short arg;
 } instruction_t;
@@ -49,6 +49,7 @@ static const char *mode_name(unsigned char mode) {
 	case MODE_ZP_X: return "ZPX";
 	case MODE_ZP_Y: return "ZPY";
 	case MODE_RELATIVE: return "REL";
+	case MODE_RELATIVE_LONG: return "RELL";
 	case MODE_ZP_INDIRECT: return "ZPI";
 	case MODE_ABS_INDIRECT_Y: return "AIY";
 	default: return "???";
@@ -64,6 +65,7 @@ static int get_instruction_length(unsigned char mode) {
 	case MODE_ZP_X: return 2;
 	case MODE_ZP_Y: return 2;
 	case MODE_RELATIVE: return 2;
+	case MODE_RELATIVE_LONG: return 3;
 	case MODE_INDIRECT_X: return 2;
 	case MODE_INDIRECT_Y: return 2;
 	case MODE_ABSOLUTE: return 3;
@@ -86,6 +88,15 @@ static int is_branch_opcode(const char *op) {
 	if (strcmp(op, "BVC") == 0) return 1;
 	if (strcmp(op, "BVS") == 0) return 1;
 	if (strcmp(op, "BRA") == 0) return 1;
+	if (strcmp(op, "BSR") == 0) return 1;
+	if (strcmp(op, "BRL") == 0) return 1;
+	return 0;
+}
+
+static int is_long_branch_opcode(const char *op) {
+	if (strcmp(op, "BSR") == 0) return 1;
+	if (strcmp(op, "BRL") == 0) return 1;
+	/* Conditional long branches on 45GS02 are often handled via a separate mechanism or opcode */
 	return 0;
 }
 
@@ -190,6 +201,7 @@ static void print_opcode_info(opcode_handler_t *handlers, int num_handlers, cons
 			/* Special cases for length */
 			if (strcmp(handlers[i].mnemonic, "BRK") == 0) len = 2;
 			if (handlers[i].mode == MODE_RELATIVE) len = 2;
+			if (handlers[i].mode == MODE_RELATIVE_LONG) len = 3;
 			if (strncmp(handlers[i].mnemonic, "BBR", 3) == 0 || strncmp(handlers[i].mnemonic, "BBS", 3) == 0) len = 3;
 			
 			unsigned int opcode = handlers[i].opcode;
@@ -240,7 +252,7 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 		return;
 	}
 	
-	while (*line && !isspace(*line) && i < 3)
+	while (*line && !isspace(*line) && i < (int)sizeof(instr->op) - 1)
 		instr->op[i++] = toupper(*line++);
 	instr->op[i] = 0;
 	
@@ -284,13 +296,18 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 			int j = 0;
 			while ((*line && (isalnum(*line) || *line == '_')) && j < 63) label[j++] = *line++;
 			label[j] = 0;
-			if (is_branch) instr->mode = MODE_RELATIVE;
-			else instr->mode = MODE_ABSOLUTE;
+			if (is_branch) {
+				if (is_long_branch_opcode(instr->op))
+					instr->mode = MODE_RELATIVE_LONG;
+				else
+					instr->mode = MODE_RELATIVE;
+			} else instr->mode = MODE_ABSOLUTE;
 
 			if (symbols) {
 				unsigned short addr;
 				if (symbol_lookup_name(symbols, label, &addr)) {
 					if (instr->mode == MODE_RELATIVE) instr->arg = (unsigned short)(addr - (pc + 2));
+					else if (instr->mode == MODE_RELATIVE_LONG) instr->arg = (unsigned short)(addr - (pc + 3));
 					else instr->arg = addr;
 				} else instr->arg = 0;
 			}
@@ -516,10 +533,6 @@ int main(int argc, char *argv[]) {
 
 	opcode_handler_t *handlers = opcodes_6502;
 	int num_handlers = OPCODES_6502_COUNT;
-	if (cpu_type == CPU_65C02) { handlers = opcodes_65c02; num_handlers = OPCODES_65C02_COUNT; }
-	else if (cpu_type == CPU_65CE02) { handlers = opcodes_65ce02; num_handlers = OPCODES_65CE02_COUNT; }
-	else if (cpu_type == CPU_45GS02) { handlers = opcodes_45gs02; num_handlers = OPCODES_45GS02_COUNT; }
-	else if (cpu_type == CPU_6502_UNDOCUMENTED) { handlers = opcodes_6502_undoc; num_handlers = OPCODES_6502_UNDOC_COUNT; }
 
 	if (info_mnemonic) { print_opcode_info(handlers, num_handlers, info_mnemonic); return 0; }
 	if (!filename) { fprintf(stderr, "Usage: %s [options] <file.asm>\n", argv[0]); return 1; }
@@ -555,9 +568,20 @@ int main(int argc, char *argv[]) {
 	while (fgets(line, sizeof(line), f)) {
 		if (line[0] == '.' || line[0] == ';') continue;
 		instruction_t instr; parse_line(line, &instr, &symbols, pc);
-		if (instr.op[0]) { rom[pc] = instr; pc += (strcmp(instr.op, "BRK") == 0) ? 2 : get_instruction_length(instr.mode); }
+		if (instr.op[0]) {
+			rom[pc] = instr;
+			pc += (strcmp(instr.op, "BRK") == 0) ? 2 : get_instruction_length(instr.mode);
+		}
 	}
 	fclose(f);
+
+	if (cpu_type == CPU_65C02) { handlers = opcodes_65c02; num_handlers = OPCODES_65C02_COUNT; }
+	else if (cpu_type == CPU_65CE02) { handlers = opcodes_65ce02; num_handlers = OPCODES_65CE02_COUNT; }
+	else if (cpu_type == CPU_45GS02) {
+		handlers = opcodes_45gs02;
+		num_handlers = OPCODES_45GS02_COUNT;
+	}
+	else if (cpu_type == CPU_6502_UNDOCUMENTED) { handlers = opcodes_6502_undoc; num_handlers = OPCODES_6502_UNDOC_COUNT; }
 
 	cpu_t cpu; cpu_init(&cpu); if (start_addr_provided) cpu.pc = start_addr;
 	memory_t mem; memset(&mem, 0, sizeof(mem));

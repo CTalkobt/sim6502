@@ -302,6 +302,98 @@ static void bra_relfar(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->cycles += 4;
 }
 
+static void bsr_relfar(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	/* Push return address (last byte of BSR instruction) */
+	unsigned short ret = cpu->pc + 2;
+	mem_write(mem, 0x100 + cpu->s, (ret >> 8) & 0xFF);
+	cpu->s--;
+	mem_write(mem, 0x100 + cpu->s, ret & 0xFF);
+	cpu->s--;
+	/* 16-bit relative branch */
+	cpu->pc += (short)arg + 3;
+	cpu->cycles += 4;
+}
+
+static void bcc_relfar(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	if (!get_flag(cpu, FLAG_C)) {
+		cpu->pc += (short)arg + 3;
+		cpu->cycles += 4;
+	} else {
+		cpu->pc += 3;
+		cpu->cycles += 3;
+	}
+}
+
+static void bcs_relfar(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	if (get_flag(cpu, FLAG_C)) {
+		cpu->pc += (short)arg + 3;
+		cpu->cycles += 4;
+	} else {
+		cpu->pc += 3;
+		cpu->cycles += 3;
+	}
+}
+
+static void beq_relfar(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	if (get_flag(cpu, FLAG_Z)) {
+		cpu->pc += (short)arg + 3;
+		cpu->cycles += 4;
+	} else {
+		cpu->pc += 3;
+		cpu->cycles += 3;
+	}
+}
+
+static void bne_relfar(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	if (!get_flag(cpu, FLAG_Z)) {
+		cpu->pc += (short)arg + 3;
+		cpu->cycles += 4;
+	} else {
+		cpu->pc += 3;
+		cpu->cycles += 3;
+	}
+}
+
+static void bmi_relfar(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	if (get_flag(cpu, FLAG_N)) {
+		cpu->pc += (short)arg + 3;
+		cpu->cycles += 4;
+	} else {
+		cpu->pc += 3;
+		cpu->cycles += 3;
+	}
+}
+
+static void bpl_relfar(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	if (!get_flag(cpu, FLAG_N)) {
+		cpu->pc += (short)arg + 3;
+		cpu->cycles += 4;
+	} else {
+		cpu->pc += 3;
+		cpu->cycles += 3;
+	}
+}
+
+static void bvc_relfar(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	if (!get_flag(cpu, FLAG_V)) {
+		cpu->pc += (short)arg + 3;
+		cpu->cycles += 4;
+	} else {
+		cpu->pc += 3;
+		cpu->cycles += 3;
+	}
+}
+
+static void bvs_relfar(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	if (get_flag(cpu, FLAG_V)) {
+		cpu->pc += (short)arg + 3;
+		cpu->cycles += 4;
+	} else {
+		cpu->pc += 3;
+		cpu->cycles += 3;
+	}
+}
+
 static void asl_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned char val = mem_read(mem, arg & 0xFF);
 	set_flag(cpu, FLAG_C, val & 0x80);
@@ -759,7 +851,7 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"TAB", MODE_IMPLIED, tab, 2, 0, 0, 0, 0x5B},
 	{"TBA", MODE_IMPLIED, tba, 2, 0, 0, 0, 0x7B},
 	{"RTN", MODE_IMMEDIATE, rtn, 6, 0, 0, 0, 0x62},
-	{"BSR", MODE_RELATIVE, bra_relfar, 4, 0, 0, 0, 0x63},
+	{"BSR", MODE_RELATIVE_LONG, bsr_relfar, 4, 0, 0, 0, 0x63},
 	{"ASR", MODE_IMPLIED, asr_acc, 2, 0, 0, 0, 0x43},
 	{"ASR", MODE_ZP, asr_zp, 5, 0, 0, 0, 0x44},
 	{"ASR", MODE_ZP_X, asr_zp_x, 6, 0, 0, 0, 0x54},
@@ -908,8 +1000,8 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"STZ", MODE_ZP, stz_zp, 3, 0, 0, 0, 0x64},
 	{"STZ", MODE_ZP_X, stz_zp_x, 4, 0, 0, 0, 0x74},
 	{"BRA", MODE_RELATIVE, bra_rel, 2, 0, 0, 0, 0x80},
-	{"BRA", MODE_RELATIVE, bra_relfar, 3, 0, 0, 0, 0x80},
-	{"BRL", MODE_RELATIVE, bra_relfar, 3},
+	{"BRA", MODE_RELATIVE_LONG, bra_relfar, 3, 0, 0, 0, 0x83},
+	{"BRL", MODE_RELATIVE_LONG, bra_relfar, 3, 0, 0, 0, 0x83},
 	{"JMP", MODE_ABSOLUTE, jmp_abs, 3, 0, 0, 0, 0x4C},
 	{"JMP", MODE_INDIRECT_X, jmp_ind_x, 6, 0, 0, 0, 0x7C},
 	{"JSR", MODE_ABSOLUTE, jsr_abs, 6, 0, 0, 0, 0x20},
