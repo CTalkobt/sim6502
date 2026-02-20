@@ -1177,6 +1177,7 @@ extern void eor_abs(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void ora_imm(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void ora_abs(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void bit_abs(cpu_t *cpu, memory_t *mem, unsigned short arg);
+extern void bit_zp(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void bit_imm(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void bit_zp_x(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void bit_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg);
@@ -1402,6 +1403,7 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"ORA", MODE_ABSOLUTE, ora_abs, 4, 0, 0, 0, 0x0D},
 	{"ORA", MODE_ZP, ora_zp, 3, 0, 0, 0, 0x05},
 	{"ORA", MODE_ZP_X, ora_zp_x, 4, 0, 0, 0, 0x15},
+	{"BIT", MODE_ZP,       bit_zp,  3, 0, 0, 0, 0x24},
 	{"BIT", MODE_ABSOLUTE, bit_abs, 4, 0, 0, 0, 0x2C},
 	{"BIT", MODE_IMMEDIATE, bit_imm, 2, 0, 0, 0, 0x89},
 	{"BIT", MODE_ZP_X, bit_zp_x, 4, 0, 0, 0, 0x34},

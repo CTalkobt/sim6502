@@ -294,9 +294,9 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 		while (*line && !isspace(*line) && *line != ',') line++;
 		while (*line && (isspace(*line) || *line == ',')) line++;
 		
-		if (toupper(*line) == 'X') instr->mode = MODE_ABSOLUTE_X;
-		else if (toupper(*line) == 'Y') instr->mode = MODE_ABSOLUTE_Y;
-		else instr->mode = MODE_ABSOLUTE;
+		if (toupper(*line) == 'X') instr->mode = (digits <= 2) ? MODE_ZP_X : MODE_ABSOLUTE_X;
+		else if (toupper(*line) == 'Y') instr->mode = (digits <= 2) ? MODE_ZP_Y : MODE_ABSOLUTE_Y;
+		else instr->mode = (digits <= 2) ? MODE_ZP : MODE_ABSOLUTE;
 	} else if (*line == '(') {
 		line++;
 		if (*line == '$') {

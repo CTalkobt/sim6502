@@ -1,4 +1,4 @@
-; EXPECT: A=0A X=00 Y=00 Z=00 B=00 S=FF PC=002A
+; EXPECT: A=0A X=00 Y=00 Z=00 B=00 S=FF PC=0020
 .processor 45gs02
 
 ; Store 0x00000005 at ZP $10

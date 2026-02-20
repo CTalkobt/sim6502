@@ -544,6 +544,15 @@ void bit_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->pc += 3;
 }
 
+void bit_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char val = mem_read(mem, arg & 0xFF);
+	set_flag(cpu, FLAG_Z, (cpu->a & val) == 0);
+	set_flag(cpu, FLAG_N, val & 0x80);
+	set_flag(cpu, FLAG_V, val & 0x40);
+	cpu->cycles += 3;
+	cpu->pc += 2;
+}
+
 void jmp_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->cycles += 3;
 	cpu->pc = arg;
@@ -854,6 +863,7 @@ opcode_handler_t opcodes_6502[] = {
 	{"EOR", MODE_ABSOLUTE, eor_abs, 4, 0, 0, 0, 0x4D},
 	{"ORA", MODE_IMMEDIATE, ora_imm, 2, 0, 0, 0, 0x09},
 	{"ORA", MODE_ABSOLUTE, ora_abs, 4, 0, 0, 0, 0x0D},
+	{"BIT", MODE_ZP,       bit_zp,  3, 0, 0, 0, 0x24},
 	{"BIT", MODE_ABSOLUTE, bit_abs, 4, 0, 0, 0, 0x2C},
 	{"JMP", MODE_ABSOLUTE, jmp_abs, 3, 0, 0, 0, 0x4C},
 	{"JSR", MODE_ABSOLUTE, jsr_abs, 6, 0, 0, 0, 0x20},
