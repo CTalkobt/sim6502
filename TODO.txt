@@ -6,7 +6,7 @@ This document outlines suggested next steps, feature enhancements, and technical
 1. CPU & Architecture Support
 ----------------------------
 *   [ ] Full 45GS02 Instruction Set: Complete missing opcodes for the MEGA65 (45GS02) processor.
-    *   Missing Branches (16-bit Relative): BPL, BMI, BVC, BVS, BCC, BCS, BNE, BEQ (0x13, 0x33, 0x53, 0x73, 0x93, 0xB3, 0xD3, 0xF3).
+    *   [X] Missing Branches (16-bit Relative): BPL, BMI, BVC, BVS, BCC, BCS, BNE, BEQ, BSR (0x13, 0x33, 0x53, 0x73, 0x93, 0xB3, 0xD3, 0xF3, 0x63) - Includes 'L' prefix support (e.g., LBVS, LBSR).
     *   Missing Indirect Z-indexed: ORA, AND, EOR, ADC, STA, LDA, CMP, SBC (zp),Z (0x12, 0x32, 0x52, 0x72, 0x92, 0xB2, 0xD2, 0xF2).
     *   Missing Stack Relative Indirect Y: STA (sp,s),Y (0x82), LDA (sp,s),Y (0xE2).
     *   Missing JSR Indirect: JSR (abs) (0x22), JSR (abs,X) (0x23).
