@@ -5,8 +5,17 @@ This document outlines suggested next steps, feature enhancements, and technical
 
 1. CPU & Architecture Support
 ----------------------------
-*   [ ] Full 45GS02 Instruction Set: Complete any missing opcodes for the MEGA65 (45GS02) processor.
-*   [ ] 32-bit Address Support: Implement the 45GS02's ability to access up to 1MB/4GB via MAP and EOM instructions.
+*   [ ] Full 45GS02 Instruction Set: Complete missing opcodes for the MEGA65 (45GS02) processor.
+    *   Missing Branches (16-bit Relative): BPL, BMI, BVC, BVS, BCC, BCS, BNE, BEQ (0x13, 0x33, 0x53, 0x73, 0x93, 0xB3, 0xD3, 0xF3).
+    *   Missing Indirect Z-indexed: ORA, AND, EOR, ADC, STA, LDA, CMP, SBC (zp),Z (0x12, 0x32, 0x52, 0x72, 0x92, 0xB2, 0xD2, 0xF2).
+    *   Missing Stack Relative Indirect Y: STA (sp,s),Y (0x82), LDA (sp,s),Y (0xE2).
+    *   Missing JSR Indirect: JSR (abs) (0x22), JSR (abs,X) (0x23).
+    *   Verify/Complete: MAP (0x5C stub), EOM (0xEA stub), NEG (0x42), RTN (0x62).
+*   [ ] 45GS02 Architectural Features:
+    *   16-bit Stack Pointer: Update `cpu_t` to support 16-bit `S` register and implementation of CLE/SEE (E flag).
+    *   E Flag (Extended Stack): Implement bit 5 of the status register to toggle 16-bit stack.
+    *   32-bit Address Support: Implement the 45GS02's ability to access up to 1MB/4GB via MAP and EOM instructions.
+    *   EOM Prefix Logic: Implement EOM (0xEA) as a prefix that enables 32-bit pointers for the subsequent `(zp),Z` instruction.
 *   [ ] Decimal Mode Accuracy: Ensure ADC/SBC correctly handle the D flag across all CPU variants (6502 vs 65C02 differences).
 *   [ ] Cycle Accuracy: Refine cycle counts for page crossings, branch success/failure, and 65CE02/45GS02 specific timing.
 *   [ ] Processor-Specific Reset State: Different CPU variants have slightly different register states after RESET.
