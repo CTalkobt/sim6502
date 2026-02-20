@@ -24,6 +24,7 @@ typedef struct {
 	unsigned short pc;
 	unsigned char p;
 	unsigned long cycles;  /* Clock cycles executed */
+	unsigned char eom_prefix; /* 45GS02: 1=EOM seen, 2=active flat sentinel */
 } cpu_t;
 
 #define FLAG_C 0x01
@@ -32,6 +33,7 @@ typedef struct {
 #define FLAG_D 0x08
 #define FLAG_B 0x10
 #define FLAG_U 0x20  /* Unused/always-1 bit (6502/65c02/65ce02) */
+#define FLAG_E 0x20  /* Emulation flag — same bit, 65CE02/45GS02 context */
 #define FLAG_V 0x40
 #define FLAG_N 0x80
 
@@ -65,6 +67,7 @@ static inline void cpu_init(cpu_t *cpu) {
 	cpu->pc = 0;
 	cpu->p = 0;
 	cpu->cycles = 0;
+	cpu->eom_prefix = 0;
 }
 
 static inline void set_flag(cpu_t *cpu, unsigned char flag, int set) {

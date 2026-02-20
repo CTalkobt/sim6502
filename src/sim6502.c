@@ -21,6 +21,7 @@ typedef struct {
 	char op[8];
 	unsigned char mode;
 	unsigned short arg;
+	unsigned char flat;	/* 1 = [zp],Z bracket syntax: insert synthetic EOM before this instruction */
 } instruction_t;
 
 static instruction_t rom[65536]; /* 64KB Instruction ROM */
@@ -276,7 +277,8 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 	while (*line && isspace(*line)) line++;
 	instr->mode = MODE_IMPLIED;
 	instr->arg = 0;
-	
+	instr->flat = 0;
+
 	int is_branch = is_branch_opcode(instr->op);
 
 	if (*line == '#') {
@@ -341,6 +343,24 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 				}
 			}
 		}
+	} else if (*line == '[') {
+		/* [zp],Z — flat/far indirect: reads a 32-bit pointer from ZP (needs EOM prefix) */
+		line++;
+		if (*line == '$') {
+			line++;
+			instr->arg = (unsigned short)strtol(line, NULL, 16);
+			while (*line && *line != ']') line++;
+			if (*line == ']') line++;
+			while (*line && isspace(*line)) line++;
+			if (*line == ',') {
+				line++;
+				while (*line && isspace(*line)) line++;
+				if (toupper(*line) == 'Z') {
+					instr->mode = MODE_ZP_INDIRECT_Z;
+					instr->flat = 1;
+				}
+			}
+		}
 	} else if (instr->op[0]) {
 		if (isalpha(*line) || *line == '_') {
 			char label[64];
@@ -369,15 +389,19 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 	}
 }
 
-static void execute(cpu_t *cpu, memory_t *mem, instruction_t *instr, 
+static void execute(cpu_t *cpu, memory_t *mem, instruction_t *instr,
 		const opcode_handler_t *handlers, int num_handlers) {
 	if (!instr->op[0]) return;
+	/* Promote a fresh EOM signal (1) to the active flat sentinel (2) that
+	 * _zp_ind_z handlers check.  Any stale sentinel (2) is cleared to 0. */
+	cpu->eom_prefix = (cpu->eom_prefix == 1) ? 2 : 0;
 	for (int i = 0; i < num_handlers; i++) {
 		if (strcmp(instr->op, handlers[i].mnemonic) == 0 && handlers[i].mode == instr->mode) {
 			handlers[i].fn(cpu, mem, instr->arg);
 			return;
 		}
 	}
+	cpu->eom_prefix = 0;
 }
 
 static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom, 
@@ -626,7 +650,11 @@ int main(int argc, char *argv[]) {
 			symbol_add(&symbols, label_name, pc, SYM_LABEL, "Source");
 		}
 		instruction_t instr; parse_line(line, &instr, NULL, pc);
-		if (instr.op[0]) pc += (strcmp(instr.op, "BRK") == 0) ? 2 : get_instruction_length(instr.mode);
+		if (instr.op[0]) {
+			int len = (strcmp(instr.op, "BRK") == 0) ? 2 : get_instruction_length(instr.mode);
+			if (instr.flat) len++;	/* account for synthetic EOM prefix byte */
+			pc += len;
+		}
 	}
 
 	if (start_label && !start_addr_provided) {
@@ -640,6 +668,13 @@ int main(int argc, char *argv[]) {
 		if (line[0] == '.' || line[0] == ';') continue;
 		instruction_t instr; parse_line(line, &instr, &symbols, pc);
 		if (instr.op[0]) {
+			if (instr.flat) {
+				instruction_t eom_instr;
+				memset(&eom_instr, 0, sizeof(eom_instr));
+				strcpy(eom_instr.op, "EOM");
+				eom_instr.mode = MODE_IMPLIED;
+				rom[pc++] = eom_instr;
+			}
 			rom[pc] = instr;
 			pc += (strcmp(instr.op, "BRK") == 0) ? 2 : get_instruction_length(instr.mode);
 		}

@@ -131,12 +131,13 @@ static void tza(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 }
 
 static void cle(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	/* E flag is not explicitly in cpu_t, but we can clear it if it was there */
+	set_flag(cpu, FLAG_E, 0);
 	cpu->cycles += 2;
 	cpu->pc += 1;
 }
 
 static void see(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	set_flag(cpu, FLAG_E, 1);
 	cpu->cycles += 2;
 	cpu->pc += 1;
 }
@@ -305,78 +306,172 @@ static void ldz_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 }
 
 static void lda_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
-	cpu->a = mem_read(mem, addr + cpu->z);
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, arg & 0xFF)
+			| ((unsigned int)mem_read(mem, (arg + 1) & 0xFF) << 8)
+			| ((unsigned int)mem_read(mem, (arg + 2) & 0xFF) << 16)
+			| ((unsigned int)mem_read(mem, (arg + 3) & 0xFF) << 24);
+		addr += cpu->z;
+		cpu->a = far_mem_read(mem, addr);
+		cpu->cycles += 7;
+	} else {
+		unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+		cpu->a = mem_read(mem, (unsigned short)(addr + cpu->z));
+		cpu->cycles += 5;
+	}
 	update_nz(cpu, cpu->a);
-	cpu->cycles += 5;
 	cpu->pc += 2;
 }
 
 static void sta_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
-	mem_write(mem, addr + cpu->z, cpu->a);
-	cpu->cycles += 5;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, arg & 0xFF)
+			| ((unsigned int)mem_read(mem, (arg + 1) & 0xFF) << 8)
+			| ((unsigned int)mem_read(mem, (arg + 2) & 0xFF) << 16)
+			| ((unsigned int)mem_read(mem, (arg + 3) & 0xFF) << 24);
+		addr += cpu->z;
+		far_mem_write(mem, addr, cpu->a);
+		cpu->cycles += 7;
+	} else {
+		unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+		mem_write(mem, (unsigned short)(addr + cpu->z), cpu->a);
+		cpu->cycles += 5;
+	}
 	cpu->pc += 2;
 }
 
 static void adc_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
-	unsigned char val = mem_read(mem, addr + cpu->z);
+	unsigned char val;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, arg & 0xFF)
+			| ((unsigned int)mem_read(mem, (arg + 1) & 0xFF) << 8)
+			| ((unsigned int)mem_read(mem, (arg + 2) & 0xFF) << 16)
+			| ((unsigned int)mem_read(mem, (arg + 3) & 0xFF) << 24);
+		addr += cpu->z;
+		val = far_mem_read(mem, addr);
+		cpu->cycles += 7;
+	} else {
+		unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+		val = mem_read(mem, (unsigned short)(addr + cpu->z));
+		cpu->cycles += 5;
+	}
 	int result = cpu->a + val + get_flag(cpu, FLAG_C);
 	set_flag(cpu, FLAG_C, result > 0xFF);
 	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (val ^ result) & 0x80) != 0);
 	cpu->a = result & 0xFF;
 	update_nz(cpu, cpu->a);
-	cpu->cycles += 5;
 	cpu->pc += 2;
 }
 
 static void sbc_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
-	unsigned char val = mem_read(mem, addr + cpu->z);
+	unsigned char val;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, arg & 0xFF)
+			| ((unsigned int)mem_read(mem, (arg + 1) & 0xFF) << 8)
+			| ((unsigned int)mem_read(mem, (arg + 2) & 0xFF) << 16)
+			| ((unsigned int)mem_read(mem, (arg + 3) & 0xFF) << 24);
+		addr += cpu->z;
+		val = far_mem_read(mem, addr);
+		cpu->cycles += 7;
+	} else {
+		unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+		val = mem_read(mem, (unsigned short)(addr + cpu->z));
+		cpu->cycles += 5;
+	}
 	int result = cpu->a - val - (1 - get_flag(cpu, FLAG_C));
 	set_flag(cpu, FLAG_C, result >= 0);
 	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (~val ^ result) & 0x80) != 0);
 	cpu->a = result & 0xFF;
 	update_nz(cpu, cpu->a);
-	cpu->cycles += 5;
 	cpu->pc += 2;
 }
 
 static void cmp_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
-	unsigned char val = mem_read(mem, addr + cpu->z);
+	unsigned char val;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, arg & 0xFF)
+			| ((unsigned int)mem_read(mem, (arg + 1) & 0xFF) << 8)
+			| ((unsigned int)mem_read(mem, (arg + 2) & 0xFF) << 16)
+			| ((unsigned int)mem_read(mem, (arg + 3) & 0xFF) << 24);
+		addr += cpu->z;
+		val = far_mem_read(mem, addr);
+		cpu->cycles += 7;
+	} else {
+		unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+		val = mem_read(mem, (unsigned short)(addr + cpu->z));
+		cpu->cycles += 5;
+	}
 	int result = cpu->a - val;
 	set_flag(cpu, FLAG_C, cpu->a >= val);
 	update_nz(cpu, result & 0xFF);
-	cpu->cycles += 5;
 	cpu->pc += 2;
 }
 
 static void ora_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
-	unsigned char val = mem_read(mem, addr + cpu->z);
+	unsigned char val;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, arg & 0xFF)
+			| ((unsigned int)mem_read(mem, (arg + 1) & 0xFF) << 8)
+			| ((unsigned int)mem_read(mem, (arg + 2) & 0xFF) << 16)
+			| ((unsigned int)mem_read(mem, (arg + 3) & 0xFF) << 24);
+		addr += cpu->z;
+		val = far_mem_read(mem, addr);
+		cpu->cycles += 7;
+	} else {
+		unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+		val = mem_read(mem, (unsigned short)(addr + cpu->z));
+		cpu->cycles += 5;
+	}
 	cpu->a |= val;
 	update_nz(cpu, cpu->a);
-	cpu->cycles += 5;
 	cpu->pc += 2;
 }
 
 static void and_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
-	unsigned char val = mem_read(mem, addr + cpu->z);
+	unsigned char val;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, arg & 0xFF)
+			| ((unsigned int)mem_read(mem, (arg + 1) & 0xFF) << 8)
+			| ((unsigned int)mem_read(mem, (arg + 2) & 0xFF) << 16)
+			| ((unsigned int)mem_read(mem, (arg + 3) & 0xFF) << 24);
+		addr += cpu->z;
+		val = far_mem_read(mem, addr);
+		cpu->cycles += 7;
+	} else {
+		unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+		val = mem_read(mem, (unsigned short)(addr + cpu->z));
+		cpu->cycles += 5;
+	}
 	cpu->a &= val;
 	update_nz(cpu, cpu->a);
-	cpu->cycles += 5;
 	cpu->pc += 2;
 }
 
 static void eor_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
-	unsigned char val = mem_read(mem, addr + cpu->z);
+	unsigned char val;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, arg & 0xFF)
+			| ((unsigned int)mem_read(mem, (arg + 1) & 0xFF) << 8)
+			| ((unsigned int)mem_read(mem, (arg + 2) & 0xFF) << 16)
+			| ((unsigned int)mem_read(mem, (arg + 3) & 0xFF) << 24);
+		addr += cpu->z;
+		val = far_mem_read(mem, addr);
+		cpu->cycles += 7;
+	} else {
+		unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+		val = mem_read(mem, (unsigned short)(addr + cpu->z));
+		cpu->cycles += 5;
+	}
 	cpu->a ^= val;
 	update_nz(cpu, cpu->a);
-	cpu->cycles += 5;
 	cpu->pc += 2;
 }
 
