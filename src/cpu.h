@@ -31,6 +31,7 @@ typedef struct {
 #define FLAG_I 0x04
 #define FLAG_D 0x08
 #define FLAG_B 0x10
+#define FLAG_U 0x20  /* Unused/always-1 bit (6502/65c02/65ce02) */
 #define FLAG_V 0x40
 #define FLAG_N 0x80
 

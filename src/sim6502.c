@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <unistd.h>
 #include "cpu.h"
 #include "memory.h"
 #include "opcodes.h"
@@ -566,10 +567,22 @@ int main(int argc, char *argv[]) {
 		else if (strcmp(argv[i], "--preset") == 0) {
 			if (i + 1 < argc) {
 				const char *p = argv[++i];
-				if (strcmp(p, "c64") == 0) symbol_file = "symbols/c64.sym";
-				else if (strcmp(p, "c128") == 0) symbol_file = "symbols/c128.sym";
-				else if (strcmp(p, "mega65") == 0) symbol_file = "symbols/mega65.sym";
-				else if (strcmp(p, "x16") == 0) symbol_file = "symbols/x16.sym";
+				const char *rel = NULL;
+				if (strcmp(p, "c64") == 0) rel = "symbols/c64.sym";
+				else if (strcmp(p, "c128") == 0) rel = "symbols/c128.sym";
+				else if (strcmp(p, "mega65") == 0) rel = "symbols/mega65.sym";
+				else if (strcmp(p, "x16") == 0) rel = "symbols/x16.sym";
+				if (rel) {
+					static char preset_buf[512];
+					char exe[512]; exe[0] = 0;
+					ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+					if (n > 0) {
+						exe[n] = 0;
+						char *slash = strrchr(exe, '/');
+						if (slash) { *slash = 0; snprintf(preset_buf, sizeof(preset_buf), "%s/%s", exe, rel); rel = preset_buf; }
+					}
+					symbol_file = rel;
+				}
 			}
 		} else if (strcmp(argv[i], "--show-symbols") == 0) show_symbols = 1;
 		else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--processor") == 0) {
@@ -586,6 +599,11 @@ int main(int argc, char *argv[]) {
 
 	opcode_handler_t *handlers = opcodes_6502;
 	int num_handlers = OPCODES_6502_COUNT;
+
+	if (cpu_type == CPU_65C02) { handlers = opcodes_65c02; num_handlers = OPCODES_65C02_COUNT; }
+	else if (cpu_type == CPU_65CE02) { handlers = opcodes_65ce02; num_handlers = OPCODES_65CE02_COUNT; }
+	else if (cpu_type == CPU_45GS02) { handlers = opcodes_45gs02; num_handlers = OPCODES_45GS02_COUNT; }
+	else if (cpu_type == CPU_6502_UNDOCUMENTED) { handlers = opcodes_6502_undoc; num_handlers = OPCODES_6502_UNDOC_COUNT; }
 
 	if (info_mnemonic) { print_opcode_info(handlers, num_handlers, info_mnemonic); return 0; }
 	if (!filename) { fprintf(stderr, "Usage: %s [options] <file.asm>\n", argv[0]); return 1; }
@@ -646,7 +664,7 @@ int main(int argc, char *argv[]) {
 	printf("\nStarting execution at 0x%04X...\n", cpu.pc);
 	while (cpu.cycles < 100000) {
 		instruction_t instr = rom[cpu.pc];
-		if (!instr.op[0] || strcmp(instr.op, "BRK") == 0 || breakpoint_hit(&breakpoints, cpu.pc)) break;
+		if (!instr.op[0] || strcmp(instr.op, "BRK") == 0 || strcmp(instr.op, "STP") == 0 || breakpoint_hit(&breakpoints, cpu.pc)) break;
 		if (trace_info.enabled) trace_instruction_full(&trace_info, &cpu, instr.op, mode_name(instr.mode), cpu.cycles);
 		execute(&cpu, &mem, &instr, handlers, num_handlers);
 	}

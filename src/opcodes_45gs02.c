@@ -805,6 +805,15 @@ static void stp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->pc += 1;
 }
 
+/* PHP on 45GS02: bit 5 is not the unused/always-1 bit (it has a different
+ * meaning in this architecture), so we do not force it to 1. */
+static void php_45gs02(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	mem_write(mem, 0x100 + cpu->s, cpu->p | FLAG_B);
+	cpu->s--;
+	cpu->cycles += 3;
+	cpu->pc += 1;
+}
+
 /* --- Quad (32-bit) Register Helpers ---
  * Q = {Z:Y:X:A} where A is bits 7:0 (LSB) and Z is bits 31:24 (MSB).
  */
@@ -1505,7 +1514,7 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"PLX", MODE_IMPLIED, plx, 4, 0, 0, 0, 0xFA},
 	{"PHY", MODE_IMPLIED, phy, 3, 0, 0, 0, 0x5A},
 	{"PLY", MODE_IMPLIED, ply, 4, 0, 0, 0, 0x7A},
-	{"PHP", MODE_IMPLIED, php, 3, 0, 0, 0, 0x08},
+	{"PHP", MODE_IMPLIED, php_45gs02, 3, 0, 0, 0, 0x08},
 	{"PLP", MODE_IMPLIED, plp, 4, 0, 0, 0, 0x28},
 	{"BRK", MODE_IMPLIED, brk, 7, 0, 0, 0, 0x00},
 	{"RTI", MODE_IMPLIED, rti, 6, 0, 0, 0, 0x40},

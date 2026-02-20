@@ -754,7 +754,7 @@ void pla(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 }
 
 void php(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	mem_write(mem, 0x100 + cpu->s, cpu->p | FLAG_B);
+	mem_write(mem, 0x100 + cpu->s, cpu->p | FLAG_B | FLAG_U);
 	cpu->s--;
 	cpu->cycles += 3;
 	cpu->pc += 1;
