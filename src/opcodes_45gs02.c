@@ -283,6 +283,82 @@ static void ldz_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->pc += 3;
 }
 
+static void lda_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	cpu->a = mem_read(mem, addr + cpu->z);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
+static void sta_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	mem_write(mem, addr + cpu->z, cpu->a);
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
+static void adc_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	unsigned char val = mem_read(mem, addr + cpu->z);
+	int result = cpu->a + val + get_flag(cpu, FLAG_C);
+	set_flag(cpu, FLAG_C, result > 0xFF);
+	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (val ^ result) & 0x80) != 0);
+	cpu->a = result & 0xFF;
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
+static void sbc_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	unsigned char val = mem_read(mem, addr + cpu->z);
+	int result = cpu->a - val - (1 - get_flag(cpu, FLAG_C));
+	set_flag(cpu, FLAG_C, result >= 0);
+	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (~val ^ result) & 0x80) != 0);
+	cpu->a = result & 0xFF;
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
+static void cmp_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	unsigned char val = mem_read(mem, addr + cpu->z);
+	int result = cpu->a - val;
+	set_flag(cpu, FLAG_C, cpu->a >= val);
+	update_nz(cpu, result & 0xFF);
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
+static void ora_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	unsigned char val = mem_read(mem, addr + cpu->z);
+	cpu->a |= val;
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
+static void and_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	unsigned char val = mem_read(mem, addr + cpu->z);
+	cpu->a &= val;
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
+static void eor_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	unsigned char val = mem_read(mem, addr + cpu->z);
+	cpu->a ^= val;
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
 static void rtn(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	/* RTN: Return from Nested Subroutine */
 	/* Similar to RTS but might have different behavior on 45GS02 */
@@ -900,13 +976,19 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"SBC", MODE_ABSOLUTE, sbc_abs, 4},
 	{"SBC", MODE_ZP, sbc_zp, 3},
 	{"SBC", MODE_ZP_X, sbc_zp_x, 4, 0, 0, 0, 0xF5},
-	{"SBC", MODE_ZP_INDIRECT, sbc_zp_indirect, 5, 0, 0, 0, 0xF2},
+	{"LDA", MODE_ZP_INDIRECT_Z, lda_zp_ind_z, 5, 0, 0, 0, 0xB2},
+	{"STA", MODE_ZP_INDIRECT_Z, sta_zp_ind_z, 5, 0, 0, 0, 0x92},
+	{"ADC", MODE_ZP_INDIRECT_Z, adc_zp_ind_z, 5, 0, 0, 0, 0x72},
+	{"SBC", MODE_ZP_INDIRECT_Z, sbc_zp_ind_z, 5, 0, 0, 0, 0xF2},
+	{"CMP", MODE_ZP_INDIRECT_Z, cmp_zp_ind_z, 5, 0, 0, 0, 0xD2},
+	{"ORA", MODE_ZP_INDIRECT_Z, ora_zp_ind_z, 5, 0, 0, 0, 0x12},
+	{"AND", MODE_ZP_INDIRECT_Z, and_zp_ind_z, 5, 0, 0, 0, 0x32},
+	{"EOR", MODE_ZP_INDIRECT_Z, eor_zp_ind_z, 5, 0, 0, 0, 0x52},
 	{"SBC", MODE_ABS_INDIRECT_Y, sbc_abs_indirect_y, 6},
 	{"CMP", MODE_IMMEDIATE, cmp_imm, 2},
 	{"CMP", MODE_ABSOLUTE, cmp_abs, 4},
 	{"CMP", MODE_ZP, cmp_zp, 3, 0, 0, 0, 0xD5},
 	{"CMP", MODE_ZP_X, cmp_zp_x, 4},
-	{"CMP", MODE_ZP_INDIRECT, cmp_zp_indirect, 5, 0, 0, 0, 0xD2},
 	{"CPZ", MODE_IMMEDIATE, cpz_imm, 2},
 	{"CPZ", MODE_ABSOLUTE, cpz_abs, 4, 0, 0, 0, 0xDC},
 	{"CPZ", MODE_ZP, cpz_zp, 3, 0, 0, 0, 0xD4},

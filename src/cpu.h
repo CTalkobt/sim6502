@@ -49,6 +49,7 @@ typedef struct {
 #define MODE_ZP_INDIRECT 12
 #define MODE_ABS_INDIRECT_Y 13
 #define MODE_RELATIVE_LONG 14
+#define MODE_ZP_INDIRECT_Z 15
 
 static inline void cpu_init(cpu_t *cpu) {
 	cpu->a = 0;
