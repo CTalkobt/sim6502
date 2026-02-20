@@ -15,4 +15,7 @@ src/%.o: src/%.c
 clean:
 	rm -f $(OBJS) $(TARGET)
 
-.PHONY: all clean
+test: $(TARGET)
+	./tools/run_tests.py
+
+.PHONY: all clean test

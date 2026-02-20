@@ -1,0 +1,9 @@
+; EXPECT: A=02 X=00 Y=00 PC=000A
+LDA #$01
+SEC
+BCS label
+LDA #$05
+label:
+CLC
+ADC #$01
+BRK
