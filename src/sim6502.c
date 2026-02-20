@@ -53,6 +53,8 @@ static const char *mode_name(unsigned char mode) {
 	case MODE_ZP_INDIRECT: return "ZPI";
 	case MODE_ABS_INDIRECT_Y: return "AIY";
 	case MODE_ZP_INDIRECT_Z: return "ZIZ";
+	case MODE_SP_INDIRECT_Y: return "SIY";
+	case MODE_ABS_INDIRECT_X: return "AIX";
 	default: return "???";
 	}
 }
@@ -76,6 +78,8 @@ static int get_instruction_length(unsigned char mode) {
 	case MODE_ZP_INDIRECT: return 2;
 	case MODE_ABS_INDIRECT_Y: return 3;
 	case MODE_ZP_INDIRECT_Z: return 2;
+	case MODE_SP_INDIRECT_Y: return 2;
+	case MODE_ABS_INDIRECT_X: return 3;
 	default: return 1;
 	}
 }
@@ -295,9 +299,24 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 				line++;
 				while (*line && isspace(*line)) line++;
 				if (toupper(*line) == 'X') {
-					instr->mode = MODE_INDIRECT_X;
+					if (instr->arg > 0xFF) instr->mode = MODE_ABS_INDIRECT_X;
+					else instr->mode = MODE_INDIRECT_X;
 					while (*line && *line != ')') line++;
 					if (*line == ')') line++;
+				} else if (toupper(*line) == 'S') {
+					/* SP-relative indirect Y: ($nn,SP),Y */
+					if (toupper(line[1]) == 'P') line += 2;
+					else line++;
+					while (*line && isspace(*line)) line++;
+					if (*line == ')') {
+						line++;
+						while (*line && isspace(*line)) line++;
+						if (*line == ',') {
+							line++;
+							while (*line && isspace(*line)) line++;
+							if (toupper(*line) == 'Y') instr->mode = MODE_SP_INDIRECT_Y;
+						}
+					}
 				}
 			} else if (*line == ')') {
 				line++;
@@ -308,7 +327,8 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 					if (toupper(*line) == 'Y') instr->mode = MODE_INDIRECT_Y;
 					else if (toupper(*line) == 'Z') instr->mode = MODE_ZP_INDIRECT_Z;
 				} else {
-					instr->mode = MODE_ZP_INDIRECT;
+					if (instr->arg > 0xFF) instr->mode = MODE_INDIRECT;
+					else instr->mode = MODE_ZP_INDIRECT;
 				}
 			}
 		}

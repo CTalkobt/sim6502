@@ -359,6 +359,45 @@ static void eor_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->pc += 2;
 }
 
+static void lda_sp_ind_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short ptr_addr = (0x100 + cpu->s + (arg & 0xFF)) & 0xFFFF;
+	unsigned short addr = mem_read(mem, ptr_addr) | (mem_read(mem, (ptr_addr + 1) & 0xFFFF) << 8);
+	cpu->a = mem_read(mem, addr + cpu->y);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 6;
+	cpu->pc += 2;
+}
+
+static void sta_sp_ind_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short ptr_addr = (0x100 + cpu->s + (arg & 0xFF)) & 0xFFFF;
+	unsigned short addr = mem_read(mem, ptr_addr) | (mem_read(mem, (ptr_addr + 1) & 0xFFFF) << 8);
+	mem_write(mem, addr + cpu->y, cpu->a);
+	cpu->cycles += 6;
+	cpu->pc += 2;
+}
+
+static void jsr_ind(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short ret = cpu->pc + 2;
+	mem_write(mem, 0x100 + cpu->s, (ret >> 8) & 0xFF);
+	cpu->s--;
+	mem_write(mem, 0x100 + cpu->s, ret & 0xFF);
+	cpu->s--;
+	unsigned short addr = mem_read(mem, arg) | (mem_read(mem, arg + 1) << 8);
+	cpu->pc = addr;
+	cpu->cycles += 5;
+}
+
+static void jsr_ind_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short ret = cpu->pc + 2;
+	mem_write(mem, 0x100 + cpu->s, (ret >> 8) & 0xFF);
+	cpu->s--;
+	mem_write(mem, 0x100 + cpu->s, ret & 0xFF);
+	cpu->s--;
+	unsigned short addr = mem_read(mem, arg + cpu->x) | (mem_read(mem, arg + cpu->x + 1) << 8);
+	cpu->pc = addr;
+	cpu->cycles += 5;
+}
+
 static void rtn(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	/* RTN: Return from Nested Subroutine */
 	/* Similar to RTS but might have different behavior on 45GS02 */
@@ -977,7 +1016,9 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"SBC", MODE_ZP, sbc_zp, 3},
 	{"SBC", MODE_ZP_X, sbc_zp_x, 4, 0, 0, 0, 0xF5},
 	{"LDA", MODE_ZP_INDIRECT_Z, lda_zp_ind_z, 5, 0, 0, 0, 0xB2},
+	{"LDA", MODE_SP_INDIRECT_Y, lda_sp_ind_y, 6, 0, 0, 0, 0xE2},
 	{"STA", MODE_ZP_INDIRECT_Z, sta_zp_ind_z, 5, 0, 0, 0, 0x92},
+	{"STA", MODE_SP_INDIRECT_Y, sta_sp_ind_y, 6, 0, 0, 0, 0x82},
 	{"ADC", MODE_ZP_INDIRECT_Z, adc_zp_ind_z, 5, 0, 0, 0, 0x72},
 	{"SBC", MODE_ZP_INDIRECT_Z, sbc_zp_ind_z, 5, 0, 0, 0, 0xF2},
 	{"CMP", MODE_ZP_INDIRECT_Z, cmp_zp_ind_z, 5, 0, 0, 0, 0xD2},
@@ -1089,6 +1130,8 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"JMP", MODE_ABSOLUTE, jmp_abs, 3, 0, 0, 0, 0x4C},
 	{"JMP", MODE_INDIRECT_X, jmp_ind_x, 6, 0, 0, 0, 0x7C},
 	{"JSR", MODE_ABSOLUTE, jsr_abs, 6, 0, 0, 0, 0x20},
+	{"JSR", MODE_INDIRECT, jsr_ind, 5, 0, 0, 0, 0x22},
+	{"JSR", MODE_ABS_INDIRECT_X, jsr_ind_x, 5, 0, 0, 0, 0x23},
 	{"RTS", MODE_IMPLIED, rts, 6, 0, 0, 0, 0x60},
 	{"BCC", MODE_RELATIVE, bcc, 2, 0, 0, 0, 0x90},
 	{"BCC", MODE_RELATIVE_LONG, bcc_relfar, 3, 0, 0, 0, 0x93},
