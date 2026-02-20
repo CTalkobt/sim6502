@@ -420,15 +420,13 @@ static void jsr_ind_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 }
 
 static void rtn(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	/* RTN: Return from Nested Subroutine */
-	/* Similar to RTS but might have different behavior on 45GS02 */
-	/* For now, implement as RTS with different cycles */
 	cpu->s++;
 	unsigned short lo = mem_read(mem, 0x100 + cpu->s);
 	cpu->s++;
 	unsigned short hi = mem_read(mem, 0x100 + cpu->s);
+	cpu->s += arg & 0xFF; /* discard stack-frame parameters */
 	cpu->pc = (hi << 8) | lo;
-	cpu->pc++; /* Return address is stored as addr-1 */
+	cpu->pc++; /* return address is stored as addr-1, same as RTS */
 	cpu->cycles += 6;
 }
 
