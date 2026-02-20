@@ -14,7 +14,7 @@ This zip file contains everything you need to install and use the 6502 Simulator
 │   ├── package.json             Plugin metadata
 │   ├── config.json.template     Configuration template
 │   ├── README.md                Plugin documentation
-│   ├── LICENSE                  Open source license
+│   ├── LICENSE                  Proprietary license
 │   ├── install.sh               Linux/macOS installer script
 │   └── install.bat              Windows installer script
 │
@@ -234,8 +234,7 @@ If you encounter issues:
 
 ## License
 
-This plugin is provided under an open source license.
-See LICENSE file for details.
+This plugin is proprietary. See LICENSE file for details.
 
 ## Version Information
 

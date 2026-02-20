@@ -304,8 +304,7 @@ For issues:
 
 ## License
 
-This plugin is provided under an open source license.
-See LICENSE file for details.
+This plugin is proprietary. See LICENSE file for details.
 
 ---
 

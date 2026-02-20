@@ -481,7 +481,7 @@ Contributions welcome! Areas of interest:
 
 ## License
 
-Open source - See LICENSE file
+Proprietary - See LICENSE file (for now). At some future point the license will go back to open source.
 
 ## Credits
 
