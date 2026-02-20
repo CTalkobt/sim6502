@@ -219,19 +219,29 @@ static void row(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->pc += 3;
 }
 
-static void dew(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+static void dew_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned short val = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
 	val--;
 	mem_write(mem, arg & 0xFF, val & 0xFF);
 	mem_write(mem, (arg + 1) & 0xFF, (val >> 8) & 0xFF);
-	update_nz(cpu, val == 0 ? 0 : 1); /* Actually Z is set if 16-bit is 0 */
 	set_flag(cpu, FLAG_Z, val == 0);
 	set_flag(cpu, FLAG_N, val & 0x8000);
 	cpu->cycles += 6;
 	cpu->pc += 2;
 }
 
-static void inw(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+static void dew_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short val = mem_read(mem, arg) | (mem_read(mem, arg + 1) << 8);
+	val--;
+	mem_write(mem, arg, val & 0xFF);
+	mem_write(mem, arg + 1, (val >> 8) & 0xFF);
+	set_flag(cpu, FLAG_Z, val == 0);
+	set_flag(cpu, FLAG_N, val & 0x8000);
+	cpu->cycles += 6;
+	cpu->pc += 3;
+}
+
+static void inw_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned short val = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
 	val++;
 	mem_write(mem, arg & 0xFF, val & 0xFF);
@@ -240,6 +250,17 @@ static void inw(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	set_flag(cpu, FLAG_N, val & 0x8000);
 	cpu->cycles += 6;
 	cpu->pc += 2;
+}
+
+static void inw_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short val = mem_read(mem, arg) | (mem_read(mem, arg + 1) << 8);
+	val++;
+	mem_write(mem, arg, val & 0xFF);
+	mem_write(mem, arg + 1, (val >> 8) & 0xFF);
+	set_flag(cpu, FLAG_Z, val == 0);
+	set_flag(cpu, FLAG_N, val & 0x8000);
+	cpu->cycles += 6;
+	cpu->pc += 3;
 }
 
 static void phw_imm(cpu_t *cpu, memory_t *mem, unsigned short arg) {
@@ -949,9 +970,11 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"LDA", MODE_ZP_Y, lda_zp_y, 4},
 	{"ASW", MODE_ABSOLUTE, asw, 6},
 	{"ROW", MODE_ABSOLUTE, row, 6},
-	{"DEW", MODE_ZP, dew, 6},
-	{"INW", MODE_ZP, inw, 6},
-	{"PHW", MODE_IMMEDIATE, phw_imm, 4, 0, 0, 0, 0xF4},
+	{"DEW", MODE_ZP, dew_zp, 6},
+	{"DEW", MODE_ABSOLUTE, dew_abs, 6},
+	{"INW", MODE_ZP, inw_zp, 6},
+	{"INW", MODE_ABSOLUTE, inw_abs, 6},
+	{"PHW", MODE_IMMEDIATE_WORD, phw_imm, 4, 0, 0, 0, 0xF4},
 	{"PHW", MODE_ABSOLUTE, phw_abs, 5, 0, 0, 0, 0xFC},
 	{"PHZ", MODE_IMPLIED, phz, 3, 0, 0, 0, 0xDB},
 	{"PLZ", MODE_IMPLIED, plz, 4, 0, 0, 0, 0xFB},

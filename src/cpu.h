@@ -52,6 +52,7 @@ typedef struct {
 #define MODE_ZP_INDIRECT_Z 15
 #define MODE_SP_INDIRECT_Y 16
 #define MODE_ABS_INDIRECT_X 17
+#define MODE_IMMEDIATE_WORD 18
 
 static inline void cpu_init(cpu_t *cpu) {
 	cpu->a = 0;

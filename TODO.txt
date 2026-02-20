@@ -10,6 +10,7 @@ This document outlines suggested next steps, feature enhancements, and technical
     *   [X] Missing Indirect Z-indexed: ORA, AND, EOR, ADC, STA, LDA, CMP, SBC (zp),Z (0x12, 0x32, 0x52, 0x72, 0x92, 0xB2, 0xD2, 0xF2).
     *   [X] Missing Stack Relative Indirect Y: STA (sp,s),Y (0x82), LDA (sp,s),Y (0xE2).
     *   [X] Missing JSR Indirect: JSR (abs) (0x22), JSR (abs,X) (0x23).
+    *   [X] Missing Word (16-bit) Instructions: ASW, ROW, INW, DEW, PHW.
     *   Missing Quad (32-bit) Instructions: Implement compound instructions using double NEG ($42 $42) prefix: LDQ, STQ, ADCQ, SBCQ, CPQ, EORQ, ANDQ, BITQ, ORQ, ASLQ, ASRQ, LSRQ, ROLQ, RORQ, INQ, DEQ.
     *   Verify/Complete: MAP (0x5C stub), EOM (0xEA stub), NEG (0x42), RTN (0x62).
 *   [ ] 45GS02 Architectural Features:

@@ -55,6 +55,7 @@ static const char *mode_name(unsigned char mode) {
 	case MODE_ZP_INDIRECT_Z: return "ZIZ";
 	case MODE_SP_INDIRECT_Y: return "SIY";
 	case MODE_ABS_INDIRECT_X: return "AIX";
+	case MODE_IMMEDIATE_WORD: return "IMW";
 	default: return "???";
 	}
 }
@@ -80,6 +81,7 @@ static int get_instruction_length(unsigned char mode) {
 	case MODE_ZP_INDIRECT_Z: return 2;
 	case MODE_SP_INDIRECT_Y: return 2;
 	case MODE_ABS_INDIRECT_X: return 3;
+	case MODE_IMMEDIATE_WORD: return 3;
 	default: return 1;
 	}
 }
@@ -277,15 +279,21 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 	int is_branch = is_branch_opcode(instr->op);
 
 	if (*line == '#') {
-		instr->mode = MODE_IMMEDIATE;
+		if (strcmp(instr->op, "PHW") == 0) instr->mode = MODE_IMMEDIATE_WORD;
+		else instr->mode = MODE_IMMEDIATE;
 		line++;
 		if (*line == '$') line++;
 		instr->arg = (unsigned short)strtol(line, NULL, 16);
 	} else if (*line == '$') {
+		const char *start = line + 1;
+		instr->arg = (unsigned short)strtol(start, NULL, 16);
+		int digits = 0;
+		while (isxdigit(start[digits])) digits++;
+		
 		line++;
-		instr->arg = (unsigned short)strtol(line, NULL, 16);
 		while (*line && !isspace(*line) && *line != ',') line++;
 		while (*line && (isspace(*line) || *line == ',')) line++;
+		
 		if (toupper(*line) == 'X') instr->mode = MODE_ABSOLUTE_X;
 		else if (toupper(*line) == 'Y') instr->mode = MODE_ABSOLUTE_Y;
 		else instr->mode = MODE_ABSOLUTE;
@@ -641,9 +649,9 @@ int main(int argc, char *argv[]) {
 	}
 	printf("\nExecution Finished.\n");
 	if (cpu_type == CPU_45GS02)
-		printf("Registers: A=%02X X=%02X Y=%02X Z=%02X B=%02X PC=%04X\n", cpu.a, cpu.x, cpu.y, cpu.z, cpu.b, cpu.pc);
+		printf("Registers: A=%02X X=%02X Y=%02X Z=%02X B=%02X S=%02X PC=%04X\n", cpu.a, cpu.x, cpu.y, cpu.z, cpu.b, cpu.s, cpu.pc);
 	else
-		printf("Registers: A=%02X X=%02X Y=%02X PC=%04X\n", cpu.a, cpu.x, cpu.y, cpu.pc);
+		printf("Registers: A=%02X X=%02X Y=%02X S=%02X PC=%04X\n", cpu.a, cpu.x, cpu.y, cpu.s, cpu.pc);
 
 	if (show_memory) memory_dump(&mem, mem_start, mem_end);
 	if (show_symbols) symbol_display(&symbols);
