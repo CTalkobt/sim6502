@@ -158,7 +158,22 @@ static void asr_acc(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 }
 
 static void map(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	/* MAP is complex, for now just increment PC and cycles */
+	/* Decode MAP registers (45GS02/MEGA65 / C65 4510 specification):
+	 *   A[7:0]  = lo_offset bits[15:8]  (lower-32KB offset, bits 8..15)
+	 *   X[7:4]  = lo_select (one enable bit per 8KB block in $0000-$7FFF; bit0=$0000-$1FFF)
+	 *   X[3:0]  = lo_offset bits[19:16]
+	 *   Y[7:0]  = hi_offset bits[15:8]
+	 *   Z[7:4]  = hi_select (one enable bit per 8KB block in $8000-$FFFF; bit0=$8000-$9FFF)
+	 *   Z[3:0]  = hi_offset bits[19:16]
+	 * Physical address = (virtual + offset) & 0xFFFFF (20-bit wrap per C65 spec). */
+	unsigned int lo_off = ((unsigned int)(cpu->x & 0x0F) << 16) | ((unsigned int)cpu->a << 8);
+	unsigned int hi_off = ((unsigned int)(cpu->z & 0x0F) << 16) | ((unsigned int)cpu->y << 8);
+	unsigned char lo_sel = (cpu->x >> 4) & 0x0F;
+	unsigned char hi_sel = (cpu->z >> 4) & 0x0F;
+	for (int i = 0; i < 4; i++)
+		mem->map_offset[i]     = (lo_sel & (1u << i)) ? lo_off : 0;
+	for (int i = 0; i < 4; i++)
+		mem->map_offset[4 + i] = (hi_sel & (1u << i)) ? hi_off : 0;
 	cpu->cycles += 2;
 	cpu->pc += 1;
 }

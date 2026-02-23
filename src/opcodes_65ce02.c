@@ -117,6 +117,9 @@ void ply(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 }
 
 void eom(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	/* End Of Mapping: clear the MAP register (reset all 8 blocks to identity). */
+	for (int i = 0; i < 8; i++)
+		mem->map_offset[i] = 0;
 	cpu->eom_prefix = 1;	/* signal: next (zp),Z instruction uses 32-bit flat pointer */
 	cpu->cycles += 2;
 	cpu->pc += 1;
