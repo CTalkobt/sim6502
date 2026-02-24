@@ -1008,6 +1008,107 @@ static void stq_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->pc += 3;
 }
 
+/* LDQ [$zp]  — flat 32-bit pointer at ZP, no Z offset, load Q (4 bytes) from far address. */
+static void ldq_zp_ind(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char zp = (unsigned char)(arg & 0xFF);
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, zp)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 1)) << 8)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 2)) << 16)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 3)) << 24);
+		unsigned int val = (unsigned int)far_mem_read(mem, addr)
+			| ((unsigned int)far_mem_read(mem, addr + 1) << 8)
+			| ((unsigned int)far_mem_read(mem, addr + 2) << 16)
+			| ((unsigned int)far_mem_read(mem, addr + 3) << 24);
+		set_q(cpu, val);
+		update_nz_q(cpu, val);
+		cpu->cycles += 9;
+	} else {
+		unsigned short ptr = mem_read(mem, zp) | (mem_read(mem, (unsigned char)(zp + 1)) << 8);
+		unsigned int val = mem_read32_abs(mem, ptr);
+		set_q(cpu, val);
+		update_nz_q(cpu, val);
+		cpu->cycles += 7;
+	}
+	cpu->pc += 2;
+}
+
+/* STQ [$zp]  — flat 32-bit pointer at ZP, no Z offset, store Q (4 bytes) to far address. */
+static void stq_zp_ind(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char zp = (unsigned char)(arg & 0xFF);
+	unsigned int val = get_q(cpu);
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, zp)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 1)) << 8)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 2)) << 16)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 3)) << 24);
+		far_mem_write(mem, addr,     val & 0xFF);
+		far_mem_write(mem, addr + 1, (val >> 8)  & 0xFF);
+		far_mem_write(mem, addr + 2, (val >> 16) & 0xFF);
+		far_mem_write(mem, addr + 3, (val >> 24) & 0xFF);
+		cpu->cycles += 9;
+	} else {
+		unsigned short ptr = mem_read(mem, zp) | (mem_read(mem, (unsigned char)(zp + 1)) << 8);
+		mem_write32_abs(mem, ptr, val);
+		cpu->cycles += 7;
+	}
+	cpu->pc += 2;
+}
+
+/* LDQ [$zp],Z  — flat 32-bit pointer at ZP, add Z, load Q (4 bytes) from far address. */
+static void ldq_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char zp = (unsigned char)(arg & 0xFF);
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, zp)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 1)) << 8)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 2)) << 16)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 3)) << 24);
+		addr += cpu->z;
+		unsigned int val = (unsigned int)far_mem_read(mem, addr)
+			| ((unsigned int)far_mem_read(mem, addr + 1) << 8)
+			| ((unsigned int)far_mem_read(mem, addr + 2) << 16)
+			| ((unsigned int)far_mem_read(mem, addr + 3) << 24);
+		set_q(cpu, val);
+		update_nz_q(cpu, val);
+		cpu->cycles += 9;
+	} else {
+		unsigned short ptr = mem_read(mem, zp) | (mem_read(mem, (unsigned char)(zp + 1)) << 8);
+		unsigned int val = mem_read32_abs(mem, (unsigned short)(ptr + cpu->z));
+		set_q(cpu, val);
+		update_nz_q(cpu, val);
+		cpu->cycles += 7;
+	}
+	cpu->pc += 2;
+}
+
+/* STQ [$zp],Z  — flat 32-bit pointer at ZP, add Z, store Q (4 bytes) to far address.
+ * Also handles the [zp] (no ,Z) form assembled as the same mode with Z=0. */
+static void stq_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char zp = (unsigned char)(arg & 0xFF);
+	unsigned int val = get_q(cpu);
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, zp)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 1)) << 8)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 2)) << 16)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 3)) << 24);
+		addr += cpu->z;
+		far_mem_write(mem, addr,     val & 0xFF);
+		far_mem_write(mem, addr + 1, (val >> 8)  & 0xFF);
+		far_mem_write(mem, addr + 2, (val >> 16) & 0xFF);
+		far_mem_write(mem, addr + 3, (val >> 24) & 0xFF);
+		cpu->cycles += 9;
+	} else {
+		unsigned short ptr = mem_read(mem, zp) | (mem_read(mem, (unsigned char)(zp + 1)) << 8);
+		mem_write32_abs(mem, (unsigned short)(ptr + cpu->z), val);
+		cpu->cycles += 7;
+	}
+	cpu->pc += 2;
+}
+
 static void adcq_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned int q = get_q(cpu);
 	unsigned int val = mem_read32_zp(mem, (unsigned char)(arg & 0xFF));
@@ -1633,10 +1734,14 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"EOM", MODE_IMPLIED, eom, 2},
 	{"NOP", MODE_IMPLIED, nop, 2},
 	/* Quad (32-bit) instructions - NEG NEG ($42 $42) prefix */
-	{"LDQ",  MODE_ZP,       ldq_zp,   5},
-	{"LDQ",  MODE_ABSOLUTE, ldq_abs,  5},
-	{"STQ",  MODE_ZP,       stq_zp,   5},
-	{"STQ",  MODE_ABSOLUTE, stq_abs,  5},
+	{"LDQ",  MODE_ZP,            ldq_zp,        5},
+	{"LDQ",  MODE_ABSOLUTE,      ldq_abs,       5},
+	{"LDQ",  MODE_ZP_INDIRECT,   ldq_zp_ind,    9},
+	{"LDQ",  MODE_ZP_INDIRECT_Z, ldq_zp_ind_z,  9},
+	{"STQ",  MODE_ZP,            stq_zp,        5},
+	{"STQ",  MODE_ABSOLUTE,      stq_abs,       5},
+	{"STQ",  MODE_ZP_INDIRECT,   stq_zp_ind,    9},
+	{"STQ",  MODE_ZP_INDIRECT_Z, stq_zp_ind_z,  9},
 	{"ADCQ", MODE_ZP,       adcq_zp,  5},
 	{"ADCQ", MODE_ABSOLUTE, adcq_abs, 5},
 	{"SBCQ", MODE_ZP,       sbcq_zp,  5},

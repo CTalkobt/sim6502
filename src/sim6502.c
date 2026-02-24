@@ -344,7 +344,7 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 			}
 		}
 	} else if (*line == '[') {
-		/* [zp],Z — flat/far indirect: reads a 32-bit pointer from ZP (needs EOM prefix) */
+		/* [zp] or [zp],Z — flat/far indirect via 32-bit ZP pointer (needs EOM prefix) */
 		line++;
 		if (*line == '$') {
 			line++;
@@ -359,6 +359,10 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 					instr->mode = MODE_ZP_INDIRECT_Z;
 					instr->flat = 1;
 				}
+			} else {
+				/* [zp] without ,Z — flat indirect, no Z offset */
+				instr->mode = MODE_ZP_INDIRECT;
+				instr->flat = 1;
 			}
 		}
 	} else if (instr->op[0]) {
@@ -389,6 +393,57 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 	}
 }
 
+/* handle_trap: if cpu->pc matches a TRAP symbol, print a register dump and
+ * simulate RTS (pop return address, advance PC).
+ * Returns:  0 = no trap at this address
+ *           1 = trap fired, continue execution
+ *          -1 = trap fired but return address is $0000 (uninitialized stack /
+ *               reached via JMP not JSR) — caller should stop execution */
+static int handle_trap(const symbol_table_t *st, cpu_t *cpu, memory_t *mem,
+		const opcode_handler_t *handlers) {
+	for (int i = 0; i < st->count; i++) {
+		if (st->symbols[i].type != SYM_TRAP) continue;
+		if (st->symbols[i].address != cpu->pc) continue;
+
+		int is_ext = (handlers == opcodes_45gs02 || handlers == opcodes_65ce02);
+		printf("[TRAP] %-20s $%04X  A=%02X X=%02X Y=%02X",
+			st->symbols[i].name, cpu->pc,
+			cpu->a, cpu->x, cpu->y);
+		if (is_ext)
+			printf(" Z=%02X B=%02X", cpu->z, cpu->b);
+		printf(" S=%02X P=%02X", cpu->s, cpu->p);
+		if (st->symbols[i].comment[0])
+			printf("  ; %s", st->symbols[i].comment);
+		printf("\n");
+
+		/* Nominal cycle cost — prevents infinite-trap spin when a trap is
+		 * inside a loop (without this, cycles never advance past the limit). */
+		cpu->cycles += 6;
+
+		/* Simulate RTS: pop the return address pushed by the caller's JSR */
+		cpu->s++;
+		unsigned short lo = mem_read(mem, 0x100 + cpu->s);
+		cpu->s++;
+		unsigned short hi = mem_read(mem, 0x100 + cpu->s);
+		unsigned short ret = (unsigned short)(((unsigned short)hi << 8) | lo);
+		ret++;	/* RTS convention: stored as addr-1 */
+
+		/* Guard: if the return address is $0000 the stack was uninitialized
+		 * (trap reached via JMP/fallthrough, not JSR) or the NMI/IRQ/BRK
+		 * vector is zeroed out.  Branch to $0000 would silently re-execute
+		 * the whole program, so stop here instead. */
+		if (ret == 0) {
+			printf("[TRAP] return address is $0000 — halting (stack was empty or vector uninitialised)\n");
+			cpu->pc = ret;
+			return -1;
+		}
+
+		cpu->pc = ret;
+		return 1;
+	}
+	return 0;
+}
+
 static void execute(cpu_t *cpu, memory_t *mem, instruction_t *instr,
 		const opcode_handler_t *handlers, int num_handlers) {
 	if (!instr->op[0]) return;
@@ -404,9 +459,10 @@ static void execute(cpu_t *cpu, memory_t *mem, instruction_t *instr,
 	cpu->eom_prefix = 0;
 }
 
-static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom, 
-                                 opcode_handler_t **p_handlers, int *p_num_handlers, 
-                                 unsigned short start_addr, breakpoint_list_t *breakpoints) {
+static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
+                                 opcode_handler_t **p_handlers, int *p_num_handlers,
+                                 unsigned short start_addr, breakpoint_list_t *breakpoints,
+                                 symbol_table_t *symbols) {
     char line[256];
     char cmd[32];
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -477,8 +533,10 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
                 printf("Usage: flag <N|V|B|D|I|Z|C> <0|1>\n");
             }
         } else if (strcmp(cmd, "run") == 0) {
-            int running = 1;
-            while (running) {
+            while (1) {
+                int tr = handle_trap(symbols, cpu, mem, *p_handlers);
+                if (tr < 0) break;
+                if (tr > 0) continue;
                 instruction_t instr = rom[cpu->pc];
                 if (!instr.op[0] || strcmp(instr.op, "BRK") == 0 || strcmp(instr.op, "STP") == 0) break;
                 if (breakpoint_hit(breakpoints, cpu->pc)) break;
@@ -522,7 +580,10 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
         } else if (strcmp(cmd, "step") == 0) {
             int steps = 1;
             if (sscanf(line + 4, "%d", &steps) != 1) steps = 1;
-            for (int i=0; i<steps; i++) {
+            for (int i = 0; i < steps; i++) {
+                int tr = handle_trap(symbols, cpu, mem, *p_handlers);
+                if (tr < 0) break;
+                if (tr > 0) continue;
                 instruction_t instr = rom[cpu->pc];
                 if (!instr.op[0] || strcmp(instr.op, "BRK") == 0) break;
                 execute(cpu, mem, &instr, *p_handlers, *p_num_handlers);
@@ -694,10 +755,13 @@ int main(int argc, char *argv[]) {
 	if (enable_trace && trace_file) trace_enable_file(&trace_info, trace_file);
 	else if (enable_trace) trace_enable_stdout(&trace_info);
 
-	if (interactive_mode) { run_interactive_mode(&cpu, &mem, rom, &handlers, &num_handlers, start_addr_provided ? start_addr : 0, &breakpoints); return 0; }
+	if (interactive_mode) { run_interactive_mode(&cpu, &mem, rom, &handlers, &num_handlers, start_addr_provided ? start_addr : 0, &breakpoints, &symbols); return 0; }
 
 	printf("\nStarting execution at 0x%04X...\n", cpu.pc);
 	while (cpu.cycles < 100000) {
+		int tr = handle_trap(&symbols, &cpu, &mem, handlers);
+		if (tr < 0) break;	/* bad return address — halt */
+		if (tr > 0) continue;
 		instruction_t instr = rom[cpu.pc];
 		if (!instr.op[0] || strcmp(instr.op, "BRK") == 0 || strcmp(instr.op, "STP") == 0 || breakpoint_hit(&breakpoints, cpu.pc)) break;
 		if (trace_info.enabled) trace_instruction_full(&trace_info, &cpu, instr.op, mode_name(instr.mode), cpu.cycles);
