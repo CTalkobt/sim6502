@@ -14,13 +14,6 @@ static void ldz_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->pc += 3;
 }
 
-static void ldz_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	cpu->z = mem_read(mem, arg & 0xFF);
-	update_nz(cpu, cpu->z);
-	cpu->cycles += 3;
-	cpu->pc += 2;
-}
-
 static void inz(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->z++;
 	update_nz(cpu, cpu->z);
@@ -59,47 +52,6 @@ static void cpz_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	set_flag(cpu, FLAG_C, cpu->z >= val);
 	update_nz(cpu, result & 0xFF);
 	cpu->cycles += 3;
-	cpu->pc += 2;
-}
-
-static void tzx(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	cpu->x = cpu->z;
-	update_nz(cpu, cpu->x);
-	cpu->cycles += 2;
-	cpu->pc += 1;
-}
-
-static void tzy(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	cpu->y = cpu->z;
-	update_nz(cpu, cpu->y);
-	cpu->cycles += 2;
-	cpu->pc += 1;
-}
-
-static void txz(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	cpu->z = cpu->x;
-	update_nz(cpu, cpu->z);
-	cpu->cycles += 2;
-	cpu->pc += 1;
-}
-
-static void tyz(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	cpu->z = cpu->y;
-	update_nz(cpu, cpu->z);
-	cpu->cycles += 2;
-	cpu->pc += 1;
-}
-
-static void sta_zp_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	mem_write(mem, (arg + cpu->y) & 0xFF, cpu->a);
-	cpu->cycles += 4;
-	cpu->pc += 2;
-}
-
-static void lda_zp_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	cpu->a = mem_read(mem, (arg + cpu->y) & 0xFF);
-	update_nz(cpu, cpu->a);
-	cpu->cycles += 4;
 	cpu->pc += 2;
 }
 
@@ -246,17 +198,6 @@ static void dew_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->pc += 2;
 }
 
-static void dew_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	unsigned short val = mem_read(mem, arg) | (mem_read(mem, arg + 1) << 8);
-	val--;
-	mem_write(mem, arg, val & 0xFF);
-	mem_write(mem, arg + 1, (val >> 8) & 0xFF);
-	set_flag(cpu, FLAG_Z, val == 0);
-	set_flag(cpu, FLAG_N, val & 0x8000);
-	cpu->cycles += 6;
-	cpu->pc += 3;
-}
-
 static void inw_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned short val = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
 	val++;
@@ -266,17 +207,6 @@ static void inw_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	set_flag(cpu, FLAG_N, val & 0x8000);
 	cpu->cycles += 6;
 	cpu->pc += 2;
-}
-
-static void inw_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	unsigned short val = mem_read(mem, arg) | (mem_read(mem, arg + 1) << 8);
-	val++;
-	mem_write(mem, arg, val & 0xFF);
-	mem_write(mem, arg + 1, (val >> 8) & 0xFF);
-	set_flag(cpu, FLAG_Z, val == 0);
-	set_flag(cpu, FLAG_N, val & 0x8000);
-	cpu->cycles += 6;
-	cpu->pc += 3;
 }
 
 static void phw_imm(cpu_t *cpu, memory_t *mem, unsigned short arg) {
@@ -905,16 +835,6 @@ static void bra_rel(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->cycles += 3;
 }
 
-static void wai(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	cpu->cycles += 3;
-	cpu->pc += 1;
-}
-
-static void stp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	cpu->cycles += 3;
-	cpu->pc += 1;
-}
-
 /* PHP on 45GS02: bit 5 is not the unused/always-1 bit (it has a different
  * meaning in this architecture), so we do not force it to 1. */
 static void php_45gs02(cpu_t *cpu, memory_t *mem, unsigned short arg) {
@@ -1006,55 +926,6 @@ static void stq_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	mem_write32_abs(mem, arg, get_q(cpu));
 	cpu->cycles += 5;
 	cpu->pc += 3;
-}
-
-/* LDQ [$zp]  — flat 32-bit pointer at ZP, no Z offset, load Q (4 bytes) from far address. */
-static void ldq_zp_ind(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	unsigned char zp = (unsigned char)(arg & 0xFF);
-	if (cpu->eom_prefix) {
-		cpu->eom_prefix = 0;
-		unsigned int addr = (unsigned int)mem_read(mem, zp)
-			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 1)) << 8)
-			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 2)) << 16)
-			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 3)) << 24);
-		unsigned int val = (unsigned int)far_mem_read(mem, addr)
-			| ((unsigned int)far_mem_read(mem, addr + 1) << 8)
-			| ((unsigned int)far_mem_read(mem, addr + 2) << 16)
-			| ((unsigned int)far_mem_read(mem, addr + 3) << 24);
-		set_q(cpu, val);
-		update_nz_q(cpu, val);
-		cpu->cycles += 9;
-	} else {
-		unsigned short ptr = mem_read(mem, zp) | (mem_read(mem, (unsigned char)(zp + 1)) << 8);
-		unsigned int val = mem_read32_abs(mem, ptr);
-		set_q(cpu, val);
-		update_nz_q(cpu, val);
-		cpu->cycles += 7;
-	}
-	cpu->pc += 2;
-}
-
-/* STQ [$zp]  — flat 32-bit pointer at ZP, no Z offset, store Q (4 bytes) to far address. */
-static void stq_zp_ind(cpu_t *cpu, memory_t *mem, unsigned short arg) {
-	unsigned char zp = (unsigned char)(arg & 0xFF);
-	unsigned int val = get_q(cpu);
-	if (cpu->eom_prefix) {
-		cpu->eom_prefix = 0;
-		unsigned int addr = (unsigned int)mem_read(mem, zp)
-			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 1)) << 8)
-			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 2)) << 16)
-			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 3)) << 24);
-		far_mem_write(mem, addr,     val & 0xFF);
-		far_mem_write(mem, addr + 1, (val >> 8)  & 0xFF);
-		far_mem_write(mem, addr + 2, (val >> 16) & 0xFF);
-		far_mem_write(mem, addr + 3, (val >> 24) & 0xFF);
-		cpu->cycles += 9;
-	} else {
-		unsigned short ptr = mem_read(mem, zp) | (mem_read(mem, (unsigned char)(zp + 1)) << 8);
-		mem_write32_abs(mem, ptr, val);
-		cpu->cycles += 7;
-	}
-	cpu->pc += 2;
 }
 
 /* LDQ [$zp],Z  — flat 32-bit pointer at ZP, add Z, load Q (4 bytes) from far address. */
@@ -1368,7 +1239,6 @@ extern void adc_ind_y(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void sbc_imm(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void sbc_abs(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void sbc_zp_indirect(cpu_t *cpu, memory_t *mem, unsigned short arg);
-extern void sbc_abs_indirect_y(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void cmp_imm(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void cmp_abs(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void cmp_zp_indirect(cpu_t *cpu, memory_t *mem, unsigned short arg);
@@ -1488,13 +1358,10 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"LDA", MODE_ABSOLUTE_Y, lda_abs_y, 4, 0, 0, 0, 0xB9},
 	{"LDA", MODE_ZP, lda_zp, 3},
 	{"LDA", MODE_ZP_X, lda_zp_x, 4, 0, 0, 0, 0xB5},
-	{"LDA", MODE_ZP_Y, lda_zp_y, 4},
 	{"ASW", MODE_ABSOLUTE, asw, 6},
 	{"ROW", MODE_ABSOLUTE, row, 6},
 	{"DEW", MODE_ZP, dew_zp, 6},
-	{"DEW", MODE_ABSOLUTE, dew_abs, 6},
 	{"INW", MODE_ZP, inw_zp, 6},
-	{"INW", MODE_ABSOLUTE, inw_abs, 6},
 	{"PHW", MODE_IMMEDIATE_WORD, phw_imm, 4, 0, 0, 0, 0xF4},
 	{"PHW", MODE_ABSOLUTE, phw_abs, 5, 0, 0, 0, 0xFC},
 	{"PHZ", MODE_IMPLIED, phz, 3, 0, 0, 0, 0xDB},
@@ -1520,7 +1387,6 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"LDA", MODE_INDIRECT_Y, lda_ind_y, 5, 0, 0, 0, 0xB1},
 	{"LDZ", MODE_IMMEDIATE, ldz_imm, 2},
 	{"LDZ", MODE_ABSOLUTE, ldz_abs, 4},
-	{"LDZ", MODE_ZP, ldz_zp, 3},
 	{"LDX", MODE_IMMEDIATE, ldx_imm, 2},
 	{"LDX", MODE_ABSOLUTE, ldx_abs, 4},
 	{"LDX", MODE_ABSOLUTE_Y, ldx_abs_y, 4, 0, 0, 0, 0xBE},
@@ -1536,7 +1402,6 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"STA", MODE_ABSOLUTE_Y, sta_abs_y, 5, 0, 0, 0, 0x99},
 	{"STA", MODE_ZP, sta_zp, 3, 0, 0, 0, 0x85},
 	{"STA", MODE_ZP_X, sta_zp_x, 4, 0, 0, 0, 0x95},
-	{"STA", MODE_ZP_Y, sta_zp_y, 4},
 	{"STA", MODE_INDIRECT_X, sta_ind_x, 6, 0, 0, 0, 0x81},
 	{"STA", MODE_INDIRECT_Y, sta_ind_y, 6, 0, 0, 0, 0x91},
 	{"STZ", MODE_ABSOLUTE, stz_abs, 4, 0, 0, 0, 0x9C},
@@ -1569,7 +1434,6 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"ORA", MODE_ZP_INDIRECT_Z, ora_zp_ind_z, 5, 0, 0, 0, 0x12},
 	{"AND", MODE_ZP_INDIRECT_Z, and_zp_ind_z, 5, 0, 0, 0, 0x32},
 	{"EOR", MODE_ZP_INDIRECT_Z, eor_zp_ind_z, 5, 0, 0, 0, 0x52},
-	{"SBC", MODE_ABS_INDIRECT_Y, sbc_abs_indirect_y, 6},
 	{"CMP", MODE_IMMEDIATE, cmp_imm, 2},
 	{"CMP", MODE_ABSOLUTE, cmp_abs, 4},
 	{"CMP", MODE_ZP, cmp_zp, 3, 0, 0, 0, 0xD5},
@@ -1715,10 +1579,6 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"TYA", MODE_IMPLIED, tya, 2, 0, 0, 0, 0x98},
 	{"TSX", MODE_IMPLIED, tsx, 2, 0, 0, 0, 0xBA},
 	{"TXS", MODE_IMPLIED, txs, 2, 0, 0, 0, 0x9A},
-	{"TZX", MODE_IMPLIED, tzx, 2},
-	{"TXZ", MODE_IMPLIED, txz, 2},
-	{"TZY", MODE_IMPLIED, tzy, 2},
-	{"TYZ", MODE_IMPLIED, tyz, 2},
 	{"PHA", MODE_IMPLIED, pha, 3, 0, 0, 0, 0x48},
 	{"PLA", MODE_IMPLIED, pla, 4, 0, 0, 0, 0x68},
 	{"PHX", MODE_IMPLIED, phx, 3, 0, 0, 0, 0xDA},
@@ -1729,18 +1589,14 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"PLP", MODE_IMPLIED, plp, 4, 0, 0, 0, 0x28},
 	{"BRK", MODE_IMPLIED, brk, 7, 0, 0, 0, 0x00},
 	{"RTI", MODE_IMPLIED, rti, 6, 0, 0, 0, 0x40},
-	{"WAI", MODE_IMPLIED, wai, 3},
-	{"STP", MODE_IMPLIED, stp, 3},
 	{"EOM", MODE_IMPLIED, eom, 2},
 	{"NOP", MODE_IMPLIED, nop, 2},
 	/* Quad (32-bit) instructions - NEG NEG ($42 $42) prefix */
 	{"LDQ",  MODE_ZP,            ldq_zp,        5},
 	{"LDQ",  MODE_ABSOLUTE,      ldq_abs,       5},
-	{"LDQ",  MODE_ZP_INDIRECT,   ldq_zp_ind,    9},
 	{"LDQ",  MODE_ZP_INDIRECT_Z, ldq_zp_ind_z,  9},
 	{"STQ",  MODE_ZP,            stq_zp,        5},
 	{"STQ",  MODE_ABSOLUTE,      stq_abs,       5},
-	{"STQ",  MODE_ZP_INDIRECT,   stq_zp_ind,    9},
 	{"STQ",  MODE_ZP_INDIRECT_Z, stq_zp_ind_z,  9},
 	{"ADCQ", MODE_ZP,       adcq_zp,  5},
 	{"ADCQ", MODE_ABSOLUTE, adcq_abs, 5},

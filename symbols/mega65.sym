@@ -1,82 +1,204 @@
-; Mega65 Symbol Table (45GS02 Processor)
-; Extended 6502 with Hypervisor and Modern Features
+; MEGA65 Symbol Table (45GS02 Processor)
+; Includes C64-compatible KERNAL vectors, C65/C128 extensions,
+; MEGA65-specific KERNAL additions, and MEGA65 hardware registers.
+; Format: ADDRESS NAME TYPE DESCRIPTION
 
-; Hypervisor Interface
-d600 hypervisor_port IO Hypervisor Port
-d601 hypervisor_data IO Hypervisor Data
-d602 hypervisor_call IO Hypervisor Call
+; ---------------------------------------------------------------
+; C65 / MEGA65 Extended KERNAL Jump Table ($FF47–$FF7D)
+; These supplement the shared C64 vectors below.
+; ---------------------------------------------------------------
+ff47 SPIN_SPOUT TRAP Transfer spindle IN/OUT settings
+ff4a CLOSE_ALL  TRAP Close all files on a given device (X=device)
+ff4d EXMON      TRAP Enter machine language monitor
+ff50 PRIMM      TRAP Print immediate inline string
+ff53 PHOENIX    TRAP Bootstrap / restart extended KERNAL
+ff56 LKUPLA     TRAP Look up logical file number -> X (Y=SA)
+ff59 LKUPSA     TRAP Look up secondary address -> Y (X=LA)
+ff5c SWAPPER    TRAP Swap 40/80 column display
+ff5f DLCHR      TRAP Download character set
+ff62 PFKEY      TRAP Program function key (X=key, YA=string ptr)
+ff65 SETBNK     TRAP Set bank for LOAD/VERIFY (A=load bank, X=name bank)
+ff68 GETCFG     TRAP Get MMU config for address (A=bank) -> A
+ff6b JSRFAR     TRAP JSR to address in any bank
+ff6e INDFET     TRAP Fetch byte from any bank -> A (XY=addr, A=bank)
+ff71 INDSTA     TRAP Store A to address in any bank (XY=addr, Z/A=bank)
+ff74 FETCH      TRAP Fetch byte from bank (XY=addr, A=bank) -> A
+ff77 STASH      TRAP Store A to address in bank (XY=addr, Z/A=bank)
+ff7a CMPARE     TRAP Compare A with byte in bank (XY=addr, Z=bank)
+ff7d PRIMM2     TRAP Print immediate string (alternate entry)
 
-; HyperRAM Controller
-d640 hyperram_control IO HyperRAM Control
-d641 hyperram_status IO HyperRAM Status
-d642 hyperram_addr_lo IO HyperRAM Address Lo
-d643 hyperram_addr_mid IO HyperRAM Address Mid
-d644 hyperram_addr_hi IO HyperRAM Address Hi
-d645 hyperram_data IO HyperRAM Data Port
+; ---------------------------------------------------------------
+; C64-compatible KERNAL Jump Table ($FF81–$FFF3)
+; Shared with C64/C128; same addresses and calling conventions.
+; ---------------------------------------------------------------
+ff81 CINT   TRAP Init screen editor and VIC-IV
+ff84 IOINIT TRAP Init I/O devices
+ff87 RAMTAS TRAP Test and initialise RAM; set vectors
+ff8a RESTOR TRAP Restore default I/O vectors
+ff8d VECTOR TRAP Read/set I/O vectors (XY=table ptr)
+ff90 SETMSG TRAP Set kernal message flag (A=mask)
+ff93 SECOND TRAP Send secondary addr after LISTEN (A=addr)
+ff96 TKSA   TRAP Send secondary addr after TALK (A=addr)
+ff99 MEMTOP TRAP Read/set top of memory (XY=addr, C=dir)
+ff9c MEMBOT TRAP Read/set bottom of memory (XY=addr, C=dir)
+ff9f SCNKEY TRAP Scan keyboard; put result in buffer
+ffa2 SETTMO TRAP Set IEEE-488 bus timeout (A=flag)
+ffa5 ACPTR  TRAP Read byte from serial bus -> A
+ffa8 CIOUT  TRAP Output byte A to serial bus
+ffab UNTLK  TRAP Send UNTALK to serial bus
+ffae UNLSN  TRAP Send UNLISTEN to serial bus
+ffb1 LISTEN TRAP Send LISTEN to device A on serial bus
+ffb4 TALK   TRAP Send TALK to device A on serial bus
+ffb7 READST TRAP Read I/O status word -> A
+ffba SETLFS TRAP Set logical/first/second addr (A=LA, X=FA, Y=SA)
+ffbd SETNAM TRAP Set filename (A=len, XY=ptr)
+ffc0 OPEN   TRAP Open logical file (uses SETLFS/SETNAM params)
+ffc3 CLOSE  TRAP Close logical file (A=logical file number)
+ffc6 CHKIN  TRAP Open channel for input (X=logical file)
+ffc9 CHKOUT TRAP Open channel for output (X=logical file)
+ffcc CLRCHN TRAP Clear I/O channels; restore default
+ffcf CHRIN  TRAP Input char from current channel -> A
+ffd2 CHROUT TRAP Output char A to current channel
+ffd5 LOAD   TRAP Load from device (A=0=load,1=verify; XY=addr)
+ffd8 SAVE   TRAP Save to device (A=ZP start ptr; XY=end addr)
+ffdb SETTIM TRAP Set real-time clock (AXY = 24-bit count)
+ffde RDTIM  TRAP Read real-time clock -> AXY (24-bit)
+ffe1 STOP   TRAP Check STOP key; Z=1 if pressed -> clears input
+ffe4 GETIN  TRAP Get char from keyboard queue -> A
+ffe7 CLALL  TRAP Close all open files; clear channels
+ffea UDTIM  TRAP Increment real-time clock by one frame
+ffed SCRORG TRAP Get screen dimensions -> X=cols, Y=rows
+fff0 PLOT   TRAP Read/set cursor position (C=0 set; XY=row,col)
+fff3 IOBASE TRAP Return base address of I/O block -> XY
 
-; Extended VIC (Video Controller)
-d000 vic_base IO VIC Base Address
-d009 vic_sprite_x_3 IO VIC Sprite 3 X
-d00a vic_sprite_y_3 IO VIC Sprite 3 Y
-d02e vic_extended IO VIC Extended Config
+; Interrupt Vectors
+fffa nmi_vector   REGION NMI Vector ($FFFA-$FFFB)
+fffc reset_vector REGION Reset Vector ($FFFC-$FFFD)
+fffe irq_vector   REGION IRQ/BRK Vector ($FFFE-$FFFF)
 
-; Mega65 SDRAM Controller
-ffd3610 sdram_base IO SDRAM Base
-ffd3611 sdram_config IO SDRAM Config
-ffd3612 sdram_status IO SDRAM Status
+; ---------------------------------------------------------------
+; MEGA65 Hypervisor Trap (Hypervisor Service Calls)
+; Executing STA $D640+n while in user mode traps to hypervisor.
+; Documented service call numbers:
+; ---------------------------------------------------------------
+d640 hcall_getversion  TRAP Hypervisor: get MEGA65 version -> AXY
+d641 hcall_putchar     TRAP Hypervisor: output char A to serial console
+d642 hcall_getchar     TRAP Hypervisor: read char from serial console -> A
+d643 hcall_exit        TRAP Hypervisor: exit / soft reset
+d644 hcall_map         TRAP Hypervisor: set memory mapping
+d645 hcall_dma         TRAP Hypervisor: queue DMA job
+d660 hcall_dos_open    TRAP Hypervisor DOS: open file (XY=name ptr)
+d661 hcall_dos_close   TRAP Hypervisor DOS: close file (A=fd)
+d662 hcall_dos_read    TRAP Hypervisor DOS: read bytes (A=fd, XY=buf, Z=len)
+d663 hcall_dos_write   TRAP Hypervisor DOS: write bytes (A=fd, XY=buf, Z=len)
+d664 hcall_dos_seek    TRAP Hypervisor DOS: seek in file
+d665 hcall_dos_dir     TRAP Hypervisor DOS: read directory entry
+d666 hcall_dos_mkdir   TRAP Hypervisor DOS: create directory
+d667 hcall_dos_rmdir   TRAP Hypervisor DOS: remove directory
+d668 hcall_dos_delete  TRAP Hypervisor DOS: delete file
+d66e hcall_dos_rename  TRAP Hypervisor DOS: rename file
+d670 hcall_task_new    TRAP Hypervisor: create new task
+d671 hcall_task_switch TRAP Hypervisor: switch to task (A=task id)
+d672 hcall_task_kill   TRAP Hypervisor: kill task (A=task id)
 
-; Bit Plane Support
-d700 bitplane_control IO Bitplane Control
-d701 bitplane_config IO Bitplane Config
-d702 bitplane_data IO Bitplane Data
+; ---------------------------------------------------------------
+; MEGA65 VIC-IV (Video Controller)
+; ---------------------------------------------------------------
+d000 vic_sprite_0_x    IO VIC Sprite 0 X
+d001 vic_sprite_0_y    IO VIC Sprite 0 Y
+d011 vic_control1      IO VIC Control 1
+d012 vic_raster        IO VIC Raster Line
+d015 vic_sprite_enable IO VIC Sprite Enable
+d016 vic_control2      IO VIC Control 2
+d018 vic_memory_setup  IO VIC Memory Setup
+d019 vic_irq_status    IO VIC IRQ Status
+d01a vic_irq_enable    IO VIC IRQ Enable
+d020 vic_border_color  IO VIC Border Color
+d021 vic_background    IO VIC Background Color 0
+d030 vic_emulation     IO VIC Emulation Mode (C65 ROMSEL)
+d040 viciv_key         IO VIC-IV Unlock Key ($A5 then $96)
+d048 viciv_linestep_lo IO VIC-IV Chars Per Row Lo
+d049 viciv_linestep_hi IO VIC-IV Chars Per Row Hi
+d04c viciv_xpos_lo     IO VIC-IV Horizontal Position Lo
+d04d viciv_xpos_hi     IO VIC-IV Horizontal Position Hi
+d050 viciv_scrnptr_lo  IO VIC-IV Screen RAM Pointer Lo
+d051 viciv_scrnptr_mid IO VIC-IV Screen RAM Pointer Mid
+d052 viciv_scrnptr_hi  IO VIC-IV Screen RAM Pointer Hi (+ bank)
+d054 viciv_control3    IO VIC-IV Control 3 (16-bit chars etc.)
+d058 viciv_sprptr_lo   IO VIC-IV Sprite Pointer Lo
+d05a viciv_charptr_lo  IO VIC-IV Char ROM Pointer Lo
+d05b viciv_charptr_mid IO VIC-IV Char ROM Pointer Mid
+d05c viciv_charptr_hi  IO VIC-IV Char ROM Pointer Hi
+d05d viciv_palette_ofs IO VIC-IV Palette Offset
+d060 viciv_border_x_lo IO VIC-IV Border X Start Lo
+d061 viciv_border_x_hi IO VIC-IV Border X Start Hi
+d062 viciv_border_w_lo IO VIC-IV Border Width Lo
+d063 viciv_border_w_hi IO VIC-IV Border Width Hi
+d070 viciv_palette     IO VIC-IV Palette RAM (banked via D070-D07F)
 
-; Extended SID (Stereo)
-d400 sid_left IO SID Left Channel
-de00 sid_right IO SID Right Channel
+; ---------------------------------------------------------------
+; MEGA65 SID (dual SID)
+; ---------------------------------------------------------------
+d400 sid_left_base  IO Left SID ($D400-$D41F)
+d420 sid_right_base IO Right SID ($D420-$D43F, or $DE00 in some configs)
 
-; DHE (Disk Host Engine)
-df00 dhe_control IO DHE Control
-df01 dhe_status IO DHE Status
-df02 dhe_data IO DHE Data Port
+; ---------------------------------------------------------------
+; MEGA65 CIA 1 & 2
+; ---------------------------------------------------------------
+dc00 cia1_port_a IO CIA 1 Port A (keyboard cols / joy 2)
+dc01 cia1_port_b IO CIA 1 Port B (keyboard rows / joy 1)
+dc0d cia1_icr    IO CIA 1 Interrupt Control/Status
+dc0e cia1_cra    IO CIA 1 Control Register A
+dc0f cia1_crb    IO CIA 1 Control Register B
+dd00 cia2_port_a IO CIA 2 Port A (serial bus / VIC bank)
+dd01 cia2_port_b IO CIA 2 Port B (user port)
+dd0d cia2_icr    IO CIA 2 Interrupt Control/Status
 
-; Mega65 Specific Kernal
-ff00 mega65_init FUNC Mega65 Initialization
-ff03 mega65_fast_mode FUNC Set Fast Mode (40MHz)
-ff06 mega65_hypervisor_call FUNC Hypervisor Call
-ff09 mega65_dma FUNC DMA Operations
-ff84 mega65_version FUNC Get Version
+; ---------------------------------------------------------------
+; MEGA65 DMA Controller (F011 / C65-style)
+; ---------------------------------------------------------------
+d700 dma_list_lo  IO DMA List Address Lo (write to trigger)
+d701 dma_list_hi  IO DMA List Address Hi
+d702 dma_list_bank IO DMA List Address Bank
+d703 dma_enable   IO DMA Enable / Status
+d704 dma_src_mb   IO DMA Source Megabyte (bits 27:20)
+d705 dma_dst_mb   IO DMA Destination Megabyte (bits 27:20)
+d706 dma_ctrl     IO DMA Enhanced Mode Control
 
-; Version/Features Register
-d640 mega65_version_reg IO Mega65 Version
-d641 mega65_features_reg IO Mega65 Features
+; ---------------------------------------------------------------
+; MEGA65 RTC (Real-Time Clock)
+; ---------------------------------------------------------------
+d730 rtc_seconds  IO RTC Seconds
+d731 rtc_minutes  IO RTC Minutes
+d732 rtc_hours    IO RTC Hours
+d733 rtc_dow      IO RTC Day of Week
+d734 rtc_date     IO RTC Date
+d735 rtc_month    IO RTC Month
+d736 rtc_year     IO RTC Year
 
-; 45GS02 CPU Features
-; Z Register (pseudo-register in zero page)
-0010 z_register VAR Z Register
+; ---------------------------------------------------------------
+; MEGA65 CPU Math Accelerator
+; ---------------------------------------------------------------
+d768 math_div_a_lo  IO Math Divider Dividend Lo
+d769 math_div_a_hi  IO Math Divider Dividend Hi
+d76a math_div_b_lo  IO Math Divider Divisor Lo
+d76b math_div_b_hi  IO Math Divider Divisor Hi
+d770 math_mul_a_lo  IO Math Multiplier A Lo
+d771 math_mul_a_hi  IO Math Multiplier A Hi
+d772 math_mul_b_lo  IO Math Multiplier B Lo
+d773 math_mul_b_hi  IO Math Multiplier B Hi
+d778 math_result_0  IO Math Result Byte 0 (LSB)
+d779 math_result_1  IO Math Result Byte 1
+d77a math_result_2  IO Math Result Byte 2
+d77b math_result_3  IO Math Result Byte 3 (MSB)
 
-; Extended Registers
-0011 b_register VAR B Register (Banking)
-
-; RAM Banking (up to 64MB)
-00000 ram_bank_0 REGION Bank 0
-10000 ram_bank_1 REGION Bank 1
-20000 ram_bank_2 REGION Bank 2
-
-; Fast IO Page
-fff0000 fast_io_page REGION Fast I/O Page
-
-; Extended Interrupts
-fffa mega65_nmi_vector REGION NMI Vector
-fffc mega65_reset_vector REGION Reset Vector
-fffe mega65_irq_vector REGION IRQ Vector
-10000 mega65_extended_vector REGION Extended Vector
-
-; Color RAM
-d800 color_ram REGION Color RAM (1KB)
-
-; Character ROM / Bitmap ROM
-8000 charset_rom REGION Character ROM
-
-; Video RAM Areas
-10000 video_ram_0 REGION Video RAM Bank 0
-20000 video_ram_1 REGION Video RAM Bank 1
+; ---------------------------------------------------------------
+; MEGA65 Memory Layout
+; ---------------------------------------------------------------
+0100 stack_base     REGION Stack Page 1
+01ff stack_top      REGION Stack Page 1 Top
+0400 screen_buffer  REGION Default 40-col Screen Buffer
+d800 color_ram      REGION Color RAM (1KB)
+8000 charset_rom    REGION Character ROM
+e000 kernal_start   REGION KERNAL ROM Start
+ffff kernal_end     REGION KERNAL ROM End

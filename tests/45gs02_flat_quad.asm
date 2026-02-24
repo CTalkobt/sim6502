@@ -1,4 +1,4 @@
-; EXPECT: A=78 X=56 Y=34 Z=12 B=00 PC=0024
+; EXPECT: A=78 X=56 Y=34 Z=00 B=00 PC=0024
 .processor 45gs02
 
 ; Store 32-bit far address $00020000 in ZP $10-$13 first,
@@ -11,14 +11,14 @@ STA $12
 LDA #$00
 STA $13
 
-; Set Q = $12345678
+; Set Q = $00345678 (Z=0 so STQ [$10],Z writes at $00020000 with no offset)
 LDA #$78
 LDX #$56
 LDY #$34
-LDZ #$12
+LDZ #$00
 
-; Write Q to far address $00020000 using flat STQ [$10]
-STQ [$10]
+; Write Q to far address $00020000 using flat STQ [$10],Z (Z=0)
+STQ [$10],Z
 
 ; Clear Q and Z
 LDA #$00

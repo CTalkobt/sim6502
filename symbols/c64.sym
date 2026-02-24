@@ -28,144 +28,179 @@
 0800 color_buffer REGION Color Buffer (1KB)
 
 ; BASIC ROM
-a000 basic_start FUNC BASIC ROM Start
-bfff basic_end FUNC BASIC ROM End
+a000 basic_start REGION BASIC ROM Start
+bfff basic_end REGION BASIC ROM End
 
 ; KERNAL ROM
-e000 kernal_start FUNC Kernal ROM Start
-ffff kernal_end FUNC Kernal ROM End
+e000 kernal_start REGION Kernal ROM Start
+ffff kernal_end REGION Kernal ROM End
 
-; Kernal Entry Points
-ffd2 kernal_chrout FUNC Kernal CHROUT
-ffd5 kernal_chrin FUNC Kernal CHRIN
-ffb1 kernal_load FUNC Kernal LOAD
-ffd8 kernal_save FUNC Kernal SAVE
-ffe4 kernal_getin FUNC Kernal GETIN
-ffe1 kernal_clall FUNC Kernal CLALL
-ff81 kernal_cint FUNC Kernal CINT
-ffe7 kernal_readst FUNC Kernal READST
+; ---------------------------------------------------------------
+; C64 KERNAL Jump Table ($FF81–$FFF3)
+; All entries are TRAPs: JSR/JMP to these addresses prints a
+; register dump and simulates an immediate RTS.
+; ---------------------------------------------------------------
+ff81 CINT   TRAP Init screen editor and VIC-II
+ff84 IOINIT TRAP Init I/O devices (CIA, SID, VIC)
+ff87 RAMTAS TRAP Test and initialise RAM; set vectors
+ff8a RESTOR TRAP Restore default I/O vectors
+ff8d VECTOR TRAP Read/set I/O vectors (XY=table ptr)
+ff90 SETMSG TRAP Set kernal message flag (A=mask)
+ff93 SECOND TRAP Send secondary addr after LISTEN (A=addr)
+ff96 TKSA   TRAP Send secondary addr after TALK (A=addr)
+ff99 MEMTOP TRAP Read/set top of memory (XY=addr, C=dir)
+ff9c MEMBOT TRAP Read/set bottom of memory (XY=addr, C=dir)
+ff9f SCNKEY TRAP Scan keyboard; put result in buffer
+ffa2 SETTMO TRAP Set IEEE-488 bus timeout (A=flag)
+ffa5 ACPTR  TRAP Read byte from serial bus -> A
+ffa8 CIOUT  TRAP Output byte A to serial bus
+ffab UNTLK  TRAP Send UNTALK to serial bus
+ffae UNLSN  TRAP Send UNLISTEN to serial bus
+ffb1 LISTEN TRAP Send LISTEN to device A on serial bus
+ffb4 TALK   TRAP Send TALK to device A on serial bus
+ffb7 READST TRAP Read I/O status word -> A
+ffba SETLFS TRAP Set logical/first/second addr (A=LA, X=FA, Y=SA)
+ffbd SETNAM TRAP Set filename (A=len, XY=ptr)
+ffc0 OPEN   TRAP Open logical file (uses SETLFS/SETNAM params)
+ffc3 CLOSE  TRAP Close logical file (A=logical file number)
+ffc6 CHKIN  TRAP Open channel for input (X=logical file)
+ffc9 CHKOUT TRAP Open channel for output (X=logical file)
+ffcc CLRCHN TRAP Clear I/O channels; restore default
+ffcf CHRIN  TRAP Input char from current channel -> A
+ffd2 CHROUT TRAP Output char A to current channel
+ffd5 LOAD   TRAP Load from device (A=0=load,1=verify; XY=addr)
+ffd8 SAVE   TRAP Save to device (A=ZP start ptr; XY=end addr)
+ffdb SETTIM TRAP Set real-time clock (AXY = 24-bit count)
+ffde RDTIM  TRAP Read real-time clock -> AXY (24-bit)
+ffe1 STOP   TRAP Check STOP key; Z=1 if pressed -> clears input
+ffe4 GETIN  TRAP Get char from keyboard queue -> A
+ffe7 CLALL  TRAP Close all open files; clear channels
+ffea UDTIM  TRAP Increment real-time clock by one frame
+ffed SCRORG TRAP Get screen dimensions -> X=cols, Y=rows
+fff0 PLOT   TRAP Read/set cursor position (C=0 set; XY=row,col)
+fff3 IOBASE TRAP Return base address of CIA I/O block -> XY
 
 ; Interrupt Vectors
-fffa nmi_vector REGION NMI Vector
-fffc reset_vector REGION Reset Vector
-fffe irq_vector REGION IRQ Vector
+fffa nmi_vector   REGION NMI Vector ($FFFA-$FFFB)
+fffc reset_vector REGION Reset Vector ($FFFC-$FFFD)
+fffe irq_vector   REGION IRQ/BRK Vector ($FFFE-$FFFF)
 
 ; VIC-II (Video Controller)
-d000 vic_sprite_0_x IO VIC Sprite 0 X
-d001 vic_sprite_0_y IO VIC Sprite 0 Y
-d002 vic_sprite_1_x IO VIC Sprite 1 X
-d003 vic_sprite_1_y IO VIC Sprite 1 Y
-d004 vic_sprite_2_x IO VIC Sprite 2 X
-d005 vic_sprite_2_y IO VIC Sprite 2 Y
-d006 vic_sprite_3_x IO VIC Sprite 3 X
-d007 vic_sprite_3_y IO VIC Sprite 3 Y
-d008 vic_sprite_4_x IO VIC Sprite 4 X
-d009 vic_sprite_4_y IO VIC Sprite 4 Y
-d00a vic_sprite_5_x IO VIC Sprite 5 X
-d00b vic_sprite_5_y IO VIC Sprite 5 Y
-d00c vic_sprite_6_x IO VIC Sprite 6 X
-d00d vic_sprite_6_y IO VIC Sprite 6 Y
-d00e vic_sprite_7_x IO VIC Sprite 7 X
-d00f vic_sprite_7_y IO VIC Sprite 7 Y
-d010 vic_sprite_x_msb IO VIC Sprite X MSB
-d011 vic_control1 IO VIC Control 1
-d012 vic_raster IO VIC Raster Line
-d015 vic_sprite_enable IO VIC Sprite Enable
-d016 vic_control2 IO VIC Control 2
+d000 vic_sprite_0_x     IO VIC Sprite 0 X
+d001 vic_sprite_0_y     IO VIC Sprite 0 Y
+d002 vic_sprite_1_x     IO VIC Sprite 1 X
+d003 vic_sprite_1_y     IO VIC Sprite 1 Y
+d004 vic_sprite_2_x     IO VIC Sprite 2 X
+d005 vic_sprite_2_y     IO VIC Sprite 2 Y
+d006 vic_sprite_3_x     IO VIC Sprite 3 X
+d007 vic_sprite_3_y     IO VIC Sprite 3 Y
+d008 vic_sprite_4_x     IO VIC Sprite 4 X
+d009 vic_sprite_4_y     IO VIC Sprite 4 Y
+d00a vic_sprite_5_x     IO VIC Sprite 5 X
+d00b vic_sprite_5_y     IO VIC Sprite 5 Y
+d00c vic_sprite_6_x     IO VIC Sprite 6 X
+d00d vic_sprite_6_y     IO VIC Sprite 6 Y
+d00e vic_sprite_7_x     IO VIC Sprite 7 X
+d00f vic_sprite_7_y     IO VIC Sprite 7 Y
+d010 vic_sprite_x_msb   IO VIC Sprite X MSB
+d011 vic_control1       IO VIC Control 1 (screen on, scroll, rows)
+d012 vic_raster         IO VIC Raster Line
+d013 vic_light_pen_x    IO VIC Light Pen X
+d014 vic_light_pen_y    IO VIC Light Pen Y
+d015 vic_sprite_enable  IO VIC Sprite Enable
+d016 vic_control2       IO VIC Control 2 (multicolor, cols)
 d017 vic_sprite_y_expand IO VIC Sprite Y Expand
-d018 vic_memory_setup IO VIC Memory Setup
-d019 vic_irq_status IO VIC IRQ Status
-d01a vic_irq_enable IO VIC IRQ Enable
-d01b vic_bgcolor IO VIC Background Color
-d01c vic_bgcolor_1 IO VIC BG Color 1
-d01d vic_bgcolor_2 IO VIC BG Color 2
-d01e vic_bgcolor_3 IO VIC BG Color 3
-d01f vic_sprite_mcolor_0 IO VIC Sprite Multicolor 0
-d020 vic_border_color IO VIC Border Color
-d021 vic_background IO VIC Background Color
-d022 vic_bgcolor_2_alt IO VIC BG Color 2 Alt
-d023 vic_bgcolor_3_alt IO VIC BG Color 3 Alt
-d025 vic_sprite_mcolor IO VIC Sprite Multicolor
-d026 vic_sprite_0_color IO VIC Sprite 0 Color
-d027 vic_sprite_1_color IO VIC Sprite 1 Color
-d028 vic_sprite_2_color IO VIC Sprite 2 Color
-d029 vic_sprite_3_color IO VIC Sprite 3 Color
-d02a vic_sprite_4_color IO VIC Sprite 4 Color
-d02b vic_sprite_5_color IO VIC Sprite 5 Color
-d02c vic_sprite_6_color IO VIC Sprite 6 Color
-d02d vic_sprite_7_color IO VIC Sprite 7 Color
+d018 vic_memory_setup   IO VIC Memory Setup (screen/char base)
+d019 vic_irq_status     IO VIC IRQ Status
+d01a vic_irq_enable     IO VIC IRQ Enable
+d01b vic_sprite_priority IO VIC Sprite/BG Priority
+d01c vic_sprite_mcolor  IO VIC Sprite Multicolor Mode
+d01d vic_sprite_x_expand IO VIC Sprite X Expand
+d01e vic_sprite_sprite_coll IO VIC Sprite-Sprite Collision
+d01f vic_sprite_bg_coll IO VIC Sprite-Background Collision
+d020 vic_border_color   IO VIC Border Color
+d021 vic_background     IO VIC Background Color 0
+d022 vic_bg_color_1     IO VIC Background Color 1
+d023 vic_bg_color_2     IO VIC Background Color 2
+d024 vic_bg_color_3     IO VIC Background Color 3
+d025 vic_sprite_mcolor_0 IO VIC Sprite Shared Multicolor 0
+d026 vic_sprite_mcolor_1 IO VIC Sprite Shared Multicolor 1
+d027 vic_sprite_0_color IO VIC Sprite 0 Color
+d028 vic_sprite_1_color IO VIC Sprite 1 Color
+d029 vic_sprite_2_color IO VIC Sprite 2 Color
+d02a vic_sprite_3_color IO VIC Sprite 3 Color
+d02b vic_sprite_4_color IO VIC Sprite 4 Color
+d02c vic_sprite_5_color IO VIC Sprite 5 Color
+d02d vic_sprite_6_color IO VIC Sprite 6 Color
+d02e vic_sprite_7_color IO VIC Sprite 7 Color
 
-; SID (Sound)
-d400 sid_v1_freq_lo IO SID Voice 1 Freq Lo
-d401 sid_v1_freq_hi IO SID Voice 1 Freq Hi
-d402 sid_v1_pulse_lo IO SID Voice 1 Pulse Lo
-d403 sid_v1_pulse_hi IO SID Voice 1 Pulse Hi
-d404 sid_v1_control IO SID Voice 1 Control
-d405 sid_v1_ad IO SID Voice 1 A/D
-d406 sid_v1_sr IO SID Voice 1 S/R
-d407 sid_v2_freq_lo IO SID Voice 2 Freq Lo
-d408 sid_v2_freq_hi IO SID Voice 2 Freq Hi
-d409 sid_v2_pulse_lo IO SID Voice 2 Pulse Lo
-d40a sid_v2_pulse_hi IO SID Voice 2 Pulse Hi
-d40b sid_v2_control IO SID Voice 2 Control
-d40c sid_v2_ad IO SID Voice 2 A/D
-d40d sid_v2_sr IO SID Voice 2 S/R
-d40e sid_v3_freq_lo IO SID Voice 3 Freq Lo
-d40f sid_v3_freq_hi IO SID Voice 3 Freq Hi
-d410 sid_v3_pulse_lo IO SID Voice 3 Pulse Lo
-d411 sid_v3_pulse_hi IO SID Voice 3 Pulse Hi
-d412 sid_v3_control IO SID Voice 3 Control
-d413 sid_v3_ad IO SID Voice 3 A/D
-d414 sid_v3_sr IO SID Voice 3 S/R
-d415 sid_filter_cutoff_lo IO SID Filter Cutoff Lo
-d416 sid_filter_cutoff_hi IO SID Filter Cutoff Hi
-d417 sid_filter_control IO SID Filter Control
-d418 sid_volume IO SID Master Volume
+; SID (Sound Interface Device)
+d400 sid_v1_freq_lo     IO SID Voice 1 Frequency Lo
+d401 sid_v1_freq_hi     IO SID Voice 1 Frequency Hi
+d402 sid_v1_pulse_lo    IO SID Voice 1 Pulse Width Lo
+d403 sid_v1_pulse_hi    IO SID Voice 1 Pulse Width Hi
+d404 sid_v1_control     IO SID Voice 1 Control
+d405 sid_v1_ad          IO SID Voice 1 Attack/Decay
+d406 sid_v1_sr          IO SID Voice 1 Sustain/Release
+d407 sid_v2_freq_lo     IO SID Voice 2 Frequency Lo
+d408 sid_v2_freq_hi     IO SID Voice 2 Frequency Hi
+d409 sid_v2_pulse_lo    IO SID Voice 2 Pulse Width Lo
+d40a sid_v2_pulse_hi    IO SID Voice 2 Pulse Width Hi
+d40b sid_v2_control     IO SID Voice 2 Control
+d40c sid_v2_ad          IO SID Voice 2 Attack/Decay
+d40d sid_v2_sr          IO SID Voice 2 Sustain/Release
+d40e sid_v3_freq_lo     IO SID Voice 3 Frequency Lo
+d40f sid_v3_freq_hi     IO SID Voice 3 Frequency Hi
+d410 sid_v3_pulse_lo    IO SID Voice 3 Pulse Width Lo
+d411 sid_v3_pulse_hi    IO SID Voice 3 Pulse Width Hi
+d412 sid_v3_control     IO SID Voice 3 Control
+d413 sid_v3_ad          IO SID Voice 3 Attack/Decay
+d414 sid_v3_sr          IO SID Voice 3 Sustain/Release
+d415 sid_filter_lo      IO SID Filter Cutoff Frequency Lo
+d416 sid_filter_hi      IO SID Filter Cutoff Frequency Hi
+d417 sid_filter_control IO SID Filter Resonance/Control
+d418 sid_volume         IO SID Volume and Filter Mode
+d419 sid_adc_x          IO SID A/D Converter X (read)
+d41a sid_adc_y          IO SID A/D Converter Y (read)
+d41b sid_v3_osc         IO SID Voice 3 Oscillator (read)
+d41c sid_v3_env         IO SID Voice 3 Envelope (read)
 
-; CIA 1 (Keyboard, Joystick)
-dc00 cia1_port_a IO CIA 1 Port A (Keyboard)
-dc01 cia1_port_b IO CIA 1 Port B
-dc02 cia1_ddr_a IO CIA 1 DDR A
-dc03 cia1_ddr_b IO CIA 1 DDR B
-dc04 cia1_timer_a_lo IO CIA 1 Timer A Lo
-dc05 cia1_timer_a_hi IO CIA 1 Timer A Hi
-dc06 cia1_timer_b_lo IO CIA 1 Timer B Lo
-dc07 cia1_timer_b_hi IO CIA 1 Timer B Hi
-dc08 cia1_tod_10th IO CIA 1 TOD 1/10th
+; CIA 1 (Keyboard/Joystick)
+dc00 cia1_port_a IO CIA 1 Port A (keyboard cols / joy 2)
+dc01 cia1_port_b IO CIA 1 Port B (keyboard rows / joy 1)
+dc02 cia1_ddr_a  IO CIA 1 Data Direction A
+dc03 cia1_ddr_b  IO CIA 1 Data Direction B
+dc04 cia1_ta_lo  IO CIA 1 Timer A Low
+dc05 cia1_ta_hi  IO CIA 1 Timer A High
+dc06 cia1_tb_lo  IO CIA 1 Timer B Low
+dc07 cia1_tb_hi  IO CIA 1 Timer B High
+dc08 cia1_tod_10 IO CIA 1 TOD Tenths of Seconds
 dc09 cia1_tod_sec IO CIA 1 TOD Seconds
 dc0a cia1_tod_min IO CIA 1 TOD Minutes
-dc0b cia1_tod_hour IO CIA 1 TOD Hours
-dc0c cia1_sdr IO CIA 1 Serial Data
-dc0d cia1_icr IO CIA 1 Interrupt Control
-dc0e cia1_cra IO CIA 1 Control A
-dc0f cia1_crb IO CIA 1 Control B
+dc0b cia1_tod_hr  IO CIA 1 TOD Hours / AM-PM
+dc0c cia1_sdr    IO CIA 1 Serial Data Register
+dc0d cia1_icr    IO CIA 1 Interrupt Control/Status
+dc0e cia1_cra    IO CIA 1 Control Register A
+dc0f cia1_crb    IO CIA 1 Control Register B
 
-; CIA 2 (Serial, NMI)
-dd00 cia2_port_a IO CIA 2 Port A (Serial)
-dd01 cia2_port_b IO CIA 2 Port B
-dd02 cia2_ddr_a IO CIA 2 DDR A
-dd03 cia2_ddr_b IO CIA 2 DDR B
-dd04 cia2_timer_a_lo IO CIA 2 Timer A Lo
-dd05 cia2_timer_a_hi IO CIA 2 Timer A Hi
-dd06 cia2_timer_b_lo IO CIA 2 Timer B Lo
-dd07 cia2_timer_b_hi IO CIA 2 Timer B Hi
-dd08 cia2_tod_10th IO CIA 2 TOD 1/10th
+; CIA 2 (Serial Bus / User Port / NMI)
+dd00 cia2_port_a IO CIA 2 Port A (serial bus / VIC bank)
+dd01 cia2_port_b IO CIA 2 Port B (user port)
+dd02 cia2_ddr_a  IO CIA 2 Data Direction A
+dd03 cia2_ddr_b  IO CIA 2 Data Direction B
+dd04 cia2_ta_lo  IO CIA 2 Timer A Low
+dd05 cia2_ta_hi  IO CIA 2 Timer A High
+dd06 cia2_tb_lo  IO CIA 2 Timer B Low
+dd07 cia2_tb_hi  IO CIA 2 Timer B High
+dd08 cia2_tod_10 IO CIA 2 TOD Tenths of Seconds
 dd09 cia2_tod_sec IO CIA 2 TOD Seconds
 dd0a cia2_tod_min IO CIA 2 TOD Minutes
-dd0b cia2_tod_hour IO CIA 2 TOD Hours
-dd0c cia2_sdr IO CIA 2 Serial Data
-dd0d cia2_icr IO CIA 2 Interrupt Control
-dd0e cia2_cra IO CIA 2 Control A
-dd0f cia2_crb IO CIA 2 Control B
+dd0b cia2_tod_hr  IO CIA 2 TOD Hours / AM-PM
+dd0c cia2_sdr    IO CIA 2 Serial Data Register
+dd0d cia2_icr    IO CIA 2 Interrupt Control/Status
+dd0e cia2_cra    IO CIA 2 Control Register A
+dd0f cia2_crb    IO CIA 2 Control Register B
 
-; Expansion Port
-de00 exp_io_1 IO Expansion IO 1
-de01 exp_io_2 IO Expansion IO 2
-df00 exp_io_3 IO Expansion IO 3
-df01 exp_io_4 IO Expansion IO 4
-
-; Character ROM
-d000 charset_base REGION Character Set ROM
-
-; Disk Controller (if 1541 attached)
-fec0 disk_control FUNC Disk Controller
+; Expansion Port I/O
+de00 exp_io_1 IO Expansion I/O Area 1 ($DE00-$DEFF)
+df00 exp_io_2 IO Expansion I/O Area 2 ($DF00-$DFFF)
