@@ -299,7 +299,16 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 		
 		if (toupper(*line) == 'X') instr->mode = (digits <= 2) ? MODE_ZP_X : MODE_ABSOLUTE_X;
 		else if (toupper(*line) == 'Y') instr->mode = (digits <= 2) ? MODE_ZP_Y : MODE_ABSOLUTE_Y;
-		else instr->mode = (digits <= 2) ? MODE_ZP : MODE_ABSOLUTE;
+		else if (is_branch) {
+			unsigned short target = instr->arg;
+			if (is_long_branch_opcode(instr->op)) {
+				instr->mode = MODE_RELATIVE_LONG;
+				instr->arg = (unsigned short)(target - (pc + 3));
+			} else {
+				instr->mode = MODE_RELATIVE;
+				instr->arg = (unsigned short)(target - (pc + 2));
+			}
+		} else instr->mode = (digits <= 2) ? MODE_ZP : MODE_ABSOLUTE;
 	} else if (*line == '(') {
 		line++;
 		if (*line == '$') {
