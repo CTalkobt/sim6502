@@ -314,6 +314,36 @@ static void parse_pseudo_op(const char *line, cpu_type_t *cpu_type) {
 	}
 }
 
+/* parse_value: convert a literal constant to a numeric value.
+ * Supported formats:
+ *   $xx / $xxxx  — hexadecimal
+ *   %xxxxxxxx    — binary
+ *   'c'          — ASCII character constant
+ *   123          — decimal
+ * If out_digits is non-NULL, sets it to a digit-count hint used to decide
+ * between ZP and absolute addressing: <=2 means byte-sized, >2 means word. */
+static unsigned short parse_value(const char *str, int *out_digits) {
+	unsigned short val;
+	int digits;
+	if (str[0] == '$') {
+		const char *start = str + 1;
+		val = (unsigned short)strtol(start, NULL, 16);
+		digits = 0;
+		while (isxdigit(start[digits])) digits++;
+	} else if (str[0] == '%') {
+		val = (unsigned short)strtol(str + 1, NULL, 2);
+		digits = (val <= 0xFF) ? 2 : 4;
+	} else if (str[0] == '\'') {
+		val = (unsigned short)(unsigned char)str[1];
+		digits = 2;
+	} else {
+		val = (unsigned short)strtol(str, NULL, 10);
+		digits = (val <= 0xFF) ? 2 : 4;
+	}
+	if (out_digits) *out_digits = digits;
+	return val;
+}
+
 static void parse_line(const char *line, instruction_t *instr, symbol_table_t *symbols, int pc) {
 	int i = 0;
 	const char *colon = strchr(line, ':');
@@ -339,15 +369,11 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 		if (strcmp(instr->op, "PHW") == 0) instr->mode = MODE_IMMEDIATE_WORD;
 		else instr->mode = MODE_IMMEDIATE;
 		line++;
-		if (*line == '$') line++;
-		instr->arg = (unsigned short)strtol(line, NULL, 16);
-	} else if (*line == '$') {
-		const char *start = line + 1;
-		instr->arg = (unsigned short)strtol(start, NULL, 16);
-		int digits = 0;
-		while (isxdigit(start[digits])) digits++;
-		
-		line++;
+		instr->arg = parse_value(line, NULL);
+	} else if (*line == '$' || *line == '%' || *line == '\'' || isdigit(*line)) {
+		int digits;
+		instr->arg = parse_value(line, &digits);
+
 		while (*line && !isspace(*line) && *line != ',') line++;
 		while (*line && (isspace(*line) || *line == ',')) line++;
 		
@@ -365,9 +391,8 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 		} else instr->mode = (digits <= 2) ? MODE_ZP : MODE_ABSOLUTE;
 	} else if (*line == '(') {
 		line++;
-		if (*line == '$') {
-			line++;
-			instr->arg = (unsigned short)strtol(line, NULL, 16);
+		if (*line == '$' || *line == '%' || *line == '\'' || isdigit(*line)) {
+			instr->arg = parse_value(line, NULL);
 			while (*line && *line != ')' && *line != ',') line++;
 			if (*line == ',') {
 				line++;
@@ -409,9 +434,8 @@ static void parse_line(const char *line, instruction_t *instr, symbol_table_t *s
 	} else if (*line == '[') {
 		/* [zp] or [zp],Z — flat/far indirect via 32-bit ZP pointer */
 		line++;
-		if (*line == '$') {
-			line++;
-			instr->arg = (unsigned short)strtol(line, NULL, 16);
+		if (*line == '$' || *line == '%' || *line == '\'' || isdigit(*line)) {
+			instr->arg = parse_value(line, NULL);
 			while (*line && *line != ']') line++;
 			if (*line == ']') line++;
 			while (*line && isspace(*line)) line++;

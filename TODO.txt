@@ -37,6 +37,8 @@ This document outlines suggested next steps, feature enhancements, and technical
 
 3. Debugging & Trace Features
 ----------------------------
+*   [ ] Support standard pseudo-ops: `.org`, `.byte`, `.word`, `.text`, `.align`.
+*   [ ] Add support for numeric constants in decimal (`123`) and binary (`%10101010`). Also support character contants such as 'a'. 
 *   [ ] Allow binary file retrieval of mem (eg: Bload "filename" LOAD_ADDRESS) will load the filename at the load address. 
 *   [ ] Allow binary file saving of mem (eg: BSave "filename" START END ) will save the filename at address range.
 *   [ ] Allow disassembly of memory (eg: D or Disasm START END) if just D then use PC. 
@@ -76,3 +78,15 @@ This document outlines suggested next steps, feature enhancements, and technical
     *   Interrupts: No tools to trigger IRQ or NMI.
 *   [ ] **CLI Missing Features:**
     *   Dynamic Code Loading: CLI requires a file path; cannot accept raw assembly string arguments (unlike MCP's `load_program`).
+
+8. Code Infrastructure
+----------------------
+*   [ ] Reduce Code Duplication: Use macros or generic addressing mode handlers to implement opcodes. Currently, many instructions (like `LDA`) have nearly identical implementations for every addressing mode.
+*   [ ] **Modularization**:
+    *   [ ]  Split the monolithic `sim6502.c` into separate modules: `assembler.c`, `debugger.c`, `cpu_dispatch.c`, and `main.c`.
+    *   [ ] Decouple the interactive debug shell from the core execution logic.
+*   [ ] **Memory Management**:
+    *   [ ] Move large structures like `memory_t` from the stack to the heap to prevent potential stack overflows.
+    *   [ ] Implement a proper cleanup function for `memory_t` to `free()` sparse memory pages allocated via `calloc`.
+*   [ ] **Error Handling**: Improve error reporting during assembly parsing, providing line numbers and specific error messages for invalid syntax.
+
