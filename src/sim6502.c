@@ -292,18 +292,31 @@ static void print_opcode_info(opcode_handler_t *handlers, int num_handlers, cons
 	printf("\n");
 }
 
-static void parse_pseudo_op(const char *line, cpu_type_t *cpu_type) {
-	if (strncmp(line, ".processor", 10) == 0) {
-		line += 10;
+static unsigned short parse_value(const char *str, int *out_digits);  /* forward decl */
+
+/* handle_pseudo_op: process a assembler directive line.
+ * line     — points at or before the leading '.' (leading whitespace is skipped)
+ * cpu_type — updated by .processor
+ * pc       — updated by .org / .byte / .word / .text / .align
+ * mem      — if non-NULL (second pass) bytes are written; if NULL (first pass) only pc advances
+ * symbols  — used in second pass to resolve label operands in .word/.byte; may be NULL */
+static void handle_pseudo_op(const char *line, cpu_type_t *cpu_type, int *pc,
+                              memory_t *mem, symbol_table_t *symbols) {
+	while (*line && isspace(*line)) line++;
+	if (*line != '.') return;
+	line++;  /* skip '.' */
+
+	/* .processor <variant> */
+	if (strncmp(line, "processor", 9) == 0 && (!line[9] || isspace(line[9]))) {
+		line += 9;
 		while (*line && isspace(*line)) line++;
-		
-		if (strncmp(line, "45gs02", 6) == 0 || strncmp(line, "45GS02", 6) == 0) {
+		if (strncmp(line, "45gs02", 6) == 0 || strncmp(line, "45GS02", 6) == 0)
 			*cpu_type = CPU_45GS02;
-		} else if (strncmp(line, "65ce02", 6) == 0 || strncmp(line, "65CE02", 6) == 0) {
+		else if (strncmp(line, "65ce02", 6) == 0 || strncmp(line, "65CE02", 6) == 0)
 			*cpu_type = CPU_65CE02;
-		} else if (strncmp(line, "65c02", 5) == 0 || strncmp(line, "65C02", 5) == 0) {
+		else if (strncmp(line, "65c02", 5) == 0 || strncmp(line, "65C02", 5) == 0)
 			*cpu_type = CPU_65C02;
-		} else if (strncmp(line, "6502", 4) == 0) {
+		else if (strncmp(line, "6502", 4) == 0) {
 			line += 4;
 			while (*line && isspace(*line)) line++;
 			if (strncmp(line, "undoc", 5) == 0)
@@ -311,6 +324,129 @@ static void parse_pseudo_op(const char *line, cpu_type_t *cpu_type) {
 			else
 				*cpu_type = CPU_6502;
 		}
+		return;
+	}
+
+	/* .org <addr> — set program counter */
+	if (strncmp(line, "org", 3) == 0 && (!line[3] || isspace(line[3]))) {
+		line += 3;
+		while (*line && isspace(*line)) line++;
+		*pc = (int)parse_value(line, NULL);
+		return;
+	}
+
+	/* .byte <val>[, <val>...] — emit one byte per value */
+	if (strncmp(line, "byte", 4) == 0 && (!line[4] || isspace(line[4]))) {
+		line += 4;
+		while (*line && isspace(*line)) line++;
+		while (*line && *line != ';' && *line != '\n' && *line != '\r') {
+			while (*line && isspace(*line)) line++;
+			if (!*line || *line == ';' || *line == '\n' || *line == '\r') break;
+			unsigned char val;
+			if (isalpha((unsigned char)*line) || *line == '_') {
+				/* label reference — emit low byte of address */
+				char lbl[64]; int j = 0;
+				while ((isalnum((unsigned char)*line) || *line == '_') && j < 63)
+					lbl[j++] = *line++;
+				lbl[j] = 0;
+				unsigned short addr = 0;
+				if (symbols) symbol_lookup_name(symbols, lbl, &addr);
+				val = (unsigned char)(addr & 0xFF);
+			} else {
+				val = (unsigned char)parse_value(line, NULL);
+				/* advance past the token */
+				while (*line && !isspace((unsigned char)*line) &&
+				       *line != ',' && *line != ';') line++;
+			}
+			if (mem) mem->mem[(*pc)++] = val;
+			else (*pc)++;
+			/* skip trailing whitespace and one comma to reach next value */
+			while (*line && isspace((unsigned char)*line)) line++;
+			if (*line == ',') line++;
+		}
+		return;
+	}
+
+	/* .word <val>[, <val>...] — emit one 16-bit little-endian word per value */
+	if (strncmp(line, "word", 4) == 0 && (!line[4] || isspace(line[4]))) {
+		line += 4;
+		while (*line && isspace(*line)) line++;
+		while (*line && *line != ';' && *line != '\n' && *line != '\r') {
+			while (*line && isspace(*line)) line++;
+			if (!*line || *line == ';' || *line == '\n' || *line == '\r') break;
+			unsigned short val;
+			if (isalpha((unsigned char)*line) || *line == '_') {
+				char lbl[64]; int j = 0;
+				while ((isalnum((unsigned char)*line) || *line == '_') && j < 63)
+					lbl[j++] = *line++;
+				lbl[j] = 0;
+				val = 0;
+				if (symbols) symbol_lookup_name(symbols, lbl, &val);
+			} else {
+				val = parse_value(line, NULL);
+				while (*line && !isspace((unsigned char)*line) &&
+				       *line != ',' && *line != ';') line++;
+			}
+			if (mem) {
+				mem->mem[(*pc)++] = val & 0xFF;
+				mem->mem[(*pc)++] = (val >> 8) & 0xFF;
+			} else {
+				(*pc) += 2;
+			}
+			while (*line && isspace((unsigned char)*line)) line++;
+			if (*line == ',') line++;
+		}
+		return;
+	}
+
+	/* .text "string" — emit raw string bytes (no implicit terminator)
+	 * Escape sequences: \n \r \t \0 \\ \" */
+	if (strncmp(line, "text", 4) == 0 && (!line[4] || isspace(line[4]))) {
+		line += 4;
+		while (*line && isspace(*line)) line++;
+		if (*line == '"') {
+			line++;  /* skip opening quote */
+			while (*line && *line != '"') {
+				unsigned char c;
+				if (*line == '\\') {
+					line++;
+					switch (*line) {
+					case 'n':  c = '\n'; break;
+					case 'r':  c = '\r'; break;
+					case 't':  c = '\t'; break;
+					case '0':  c = '\0'; break;
+					case '\\': c = '\\'; break;
+					case '"':  c = '"';  break;
+					default:   c = (unsigned char)*line; break;
+					}
+				} else {
+					c = (unsigned char)*line;
+				}
+				line++;
+				if (mem) mem->mem[(*pc)++] = c;
+				else (*pc)++;
+			}
+		}
+		return;
+	}
+
+	/* .align <n> — advance pc to the next multiple of n, filling with zeros */
+	if (strncmp(line, "align", 5) == 0 && (!line[5] || isspace(line[5]))) {
+		line += 5;
+		while (*line && isspace(*line)) line++;
+		int n = (int)parse_value(line, NULL);
+		if (n > 1) {
+			int rem = (*pc) % n;
+			if (rem != 0) {
+				int pad = n - rem;
+				if (mem) {
+					for (int i = 0; i < pad; i++) mem->mem[(*pc)++] = 0;
+				} else {
+					*pc += pad;
+				}
+			}
+		}
+		return;
 	}
 }
 
@@ -953,18 +1089,22 @@ int main(int argc, char *argv[]) {
 	FILE *f = fopen(filename, "r");
 	if (!f) { perror("fopen"); return 1; }
 
-	char line[128];
+	char line[512];
 	int pc = start_addr_provided ? start_addr : 0x0200;
 	while (fgets(line, sizeof(line), f)) {
-		if (line[0] == '.') { parse_pseudo_op(line, &cpu_type); continue; }
 		char *ptr = line;
 		while (*ptr && isspace(*ptr)) ptr++;
-		if (!*ptr || *ptr == ';' || *ptr == '.') continue;
+		if (!*ptr || *ptr == ';') continue;
+		if (*ptr == '.') { handle_pseudo_op(ptr, &cpu_type, &pc, NULL, NULL); continue; }
 		char *colon = strchr(ptr, ':');
 		if (colon) {
 			char label_name[64]; int len = colon - ptr; if (len >= 64) len = 63;
 			strncpy(label_name, ptr, len); label_name[len] = 0;
 			symbol_add(&symbols, label_name, pc, SYM_LABEL, "Source");
+			/* handle "label: .pseudo_op" */
+			const char *after = colon + 1;
+			while (*after && isspace(*after)) after++;
+			if (*after == '.') { handle_pseudo_op(after, &cpu_type, &pc, NULL, NULL); continue; }
 		}
 		instruction_t instr; parse_line(line, &instr, NULL, pc);
 		if (instr.op[0]) {
@@ -999,7 +1139,17 @@ int main(int argc, char *argv[]) {
 	rewind(f);
 	pc = start_addr_provided ? start_addr : 0x0200;
 	while (fgets(line, sizeof(line), f)) {
-		if (line[0] == '.' || line[0] == ';') continue;
+		const char *ptr = line;
+		while (*ptr && isspace(*ptr)) ptr++;
+		if (!*ptr || *ptr == ';') continue;
+		if (*ptr == '.') { handle_pseudo_op(ptr, &cpu_type, &pc, &mem, &symbols); continue; }
+		/* handle "label: .pseudo_op" */
+		const char *colon = strchr(ptr, ':');
+		if (colon) {
+			const char *after = colon + 1;
+			while (*after && isspace(*after)) after++;
+			if (*after == '.') { handle_pseudo_op(after, &cpu_type, &pc, &mem, &symbols); continue; }
+		}
 		instruction_t instr; parse_line(line, &instr, &symbols, pc);
 		if (instr.op[0]) {
 			rom[pc] = instr;  /* debug overlay */

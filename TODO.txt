@@ -14,16 +14,16 @@ This document outlines suggested next steps, feature enhancements, and technical
     *   [X] Missing Quad (32-bit) Instructions: Implement compound instructions using double NEG ($42 $42) prefix: LDQ, STQ, ADCQ, SBCQ, CPQ, EORQ, ANDQ, BITQ, ORQ, ASLQ, ASRQ, LSRQ, ROLQ, RORQ, INQ, DEQ.
     *   [X] Verify/Complete: MAP (0x5C stub), NEG (0x42), RTN (0x62).
     *   [X] EOM Prefix Logic (quad-flat): execute_from_mem() now detects $42 $42 $EA $base (quad-flat) vs $42 $42 $base (quad) and sets eom_prefix=2 directly; dispatch_table_t gained quad_eom[256] for routing.
-*   [ ] 45GS02 Architectural Features:
+*   [X] 45GS02 Architectural Features:
     *   [X] 16-bit Stack Pointer: `cpu_t.s` widened to `unsigned short`; CLE/SEE now functionally switch between emulation (E=1, page-1 stack) and extended (E=0, full 16-bit SP) modes. All 45GS02 stack operations are E-flag-aware. 45GS02 initialises with E=1 (emulation mode) matching real hardware reset behaviour.
     *   [X] E Flag (Extended Stack): Bit 5 of P toggles 16-bit vs 8-bit stack via CLE/SEE.
-    *   [ ] 32-bit Address Support: Implement the 45GS02's ability to access up to 1MB/4GB via MAP and EOM instructions.
+    *   [X] 32-bit Address Support: Implement the 45GS02's ability to access up to 1MB/4GB via MAP and EOM instructions.
 *   [X] Decimal Mode Accuracy: Ensure ADC/SBC correctly handle the D flag across all CPU variants (6502 vs 65C02 differences). Shared do_adc()/do_sbc() helpers in cpu.h implement correct BCD arithmetic for all variants; N/V/Z flags are always well-defined (not emulating NMOS quirks).
 *   [ ] Cycle Accuracy: Refine cycle counts for page crossings, branch success/failure, and 65CE02/45GS02 specific timing.
 *   [ ] Processor-Specific Reset State: Different CPU variants have slightly different register states after RESET.
 *   [ ] Complete Opcode Byte Values: Provide the correct machine code byte value for all opcodes in all processor tables (currently only partially implemented).
 *   [X] Fix Branch Logic: Resolved double-increment bug in Bxx instructions for 6502 (opcodes_6502.c).
-*   [ ] Fix Branch Logic: Apply similar fixes to 65C02, 65CE02, 45GS02 opcode files.
+*   [X] Fix Branch Logic: Apply similar fixes to 65C02, 65CE02, 45GS02 opcode files.
 
 2. Memory System Enhancements
 ----------------------------
@@ -38,7 +38,7 @@ This document outlines suggested next steps, feature enhancements, and technical
 3. Debugging & Trace Features
 ----------------------------
 *   [ ] Support standard pseudo-ops: `.org`, `.byte`, `.word`, `.text`, `.align`.
-*   [ ] Add support for numeric constants in decimal (`123`) and binary (`%10101010`). Also support character contants such as 'a'. 
+*   [X] Add support for numeric constants in decimal (`123`) and binary (`%10101010`). Also support character contants such as 'a'. 
 *   [ ] Allow binary file retrieval of mem (eg: Bload "filename" LOAD_ADDRESS) will load the filename at the load address. 
 *   [ ] Allow binary file saving of mem (eg: BSave "filename" START END ) will save the filename at address range.
 *   [ ] Allow disassembly of memory (eg: D or Disasm START END) if just D then use PC. 
