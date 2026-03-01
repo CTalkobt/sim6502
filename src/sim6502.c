@@ -887,6 +887,100 @@ static int encode_to_mem(memory_t *mem, int pc_base,
 	return pc - pc_base;  /* total bytes written */
 }
 
+/* disasm_one: disassemble one instruction at 'addr'.
+ *
+ * Writes a formatted line into buf (address + hex bytes + mnemonic + operand).
+ * Returns the number of bytes consumed (>= 1).
+ * Unknown opcodes are rendered as ".byte $XX".
+ */
+static int disasm_one(const memory_t *mem, const dispatch_table_t *dt,
+                      cpu_type_t cpu_type, unsigned short addr,
+                      char *buf, int bufsz) {
+    unsigned char b0 = mem->mem[addr];
+    const dispatch_entry_t *e = NULL;
+    int prefix_len = 0;
+
+    /* 45GS02 double-NEG ($42 $42) and quad-flat ($42 $42 $EA) prefixes */
+    if (cpu_type == CPU_45GS02 && b0 == 0x42) {
+        unsigned char b1 = mem->mem[(unsigned short)(addr + 1)];
+        if (b1 == 0x42) {
+            unsigned char b2 = mem->mem[(unsigned short)(addr + 2)];
+            if (b2 == 0xEA) {
+                unsigned char b3 = mem->mem[(unsigned short)(addr + 3)];
+                if (dt->quad_eom[b3].fn) { e = &dt->quad_eom[b3]; prefix_len = 3; }
+            }
+            if (!e && dt->quad[b2].fn) { e = &dt->quad[b2]; prefix_len = 2; }
+        }
+    }
+    if (!e) {
+        const dispatch_entry_t *be = &dt->base[b0];
+        if (be->fn) e = be;
+    }
+
+    if (!e) {
+        /* Unknown opcode */
+        snprintf(buf, bufsz, "$%04X: %02X                    .byte $%02X", addr, b0, b0);
+        return 1;
+    }
+
+    int instr_len  = get_instruction_length(e->mode);
+    int total_len  = prefix_len + instr_len;
+
+    /* Operand bytes (relative to the base opcode, not the prefix) */
+    unsigned char op1 = (instr_len >= 2) ? mem->mem[(unsigned short)(addr + prefix_len + 1)] : 0;
+    unsigned char op2 = (instr_len >= 3) ? mem->mem[(unsigned short)(addr + prefix_len + 2)] : 0;
+    unsigned short operand = (unsigned short)(op1 | (op2 << 8));
+
+    /* Build hex-bytes string (all bytes, including prefix) */
+    char hexbuf[24] = "";
+    int hpos = 0;
+    for (int i = 0; i < total_len; i++)
+        hpos += snprintf(hexbuf + hpos, (int)sizeof(hexbuf) - hpos,
+                         "%02X ", mem->mem[(unsigned short)(addr + i)]);
+
+    /* Format operand according to addressing mode */
+    char opstr[32] = "";
+    switch (e->mode) {
+    case MODE_IMPLIED:                                                          break;
+    case MODE_IMMEDIATE:        snprintf(opstr, sizeof(opstr), "#$%02X",   op1);       break;
+    case MODE_IMMEDIATE_WORD:   snprintf(opstr, sizeof(opstr), "#$%04X",   operand);   break;
+    case MODE_ZP:               snprintf(opstr, sizeof(opstr), "$%02X",    op1);       break;
+    case MODE_ZP_X:             snprintf(opstr, sizeof(opstr), "$%02X,X",  op1);       break;
+    case MODE_ZP_Y:             snprintf(opstr, sizeof(opstr), "$%02X,Y",  op1);       break;
+    case MODE_ABSOLUTE:         snprintf(opstr, sizeof(opstr), "$%04X",    operand);   break;
+    case MODE_ABSOLUTE_X:       snprintf(opstr, sizeof(opstr), "$%04X,X",  operand);   break;
+    case MODE_ABSOLUTE_Y:       snprintf(opstr, sizeof(opstr), "$%04X,Y",  operand);   break;
+    case MODE_INDIRECT:         snprintf(opstr, sizeof(opstr), "($%04X)",  operand);   break;
+    case MODE_INDIRECT_X:       snprintf(opstr, sizeof(opstr), "($%02X,X)",op1);       break;
+    case MODE_INDIRECT_Y:       snprintf(opstr, sizeof(opstr), "($%02X),Y",op1);       break;
+    case MODE_ZP_INDIRECT:      snprintf(opstr, sizeof(opstr), "($%02X)",  op1);       break;
+    case MODE_ABS_INDIRECT_Y:   snprintf(opstr, sizeof(opstr), "($%04X),Y",operand);   break;
+    case MODE_ZP_INDIRECT_Z:    snprintf(opstr, sizeof(opstr), "($%02X),Z",op1);       break;
+    case MODE_SP_INDIRECT_Y:    snprintf(opstr, sizeof(opstr), "($%02X,SP),Y", op1);   break;
+    case MODE_ABS_INDIRECT_X:   snprintf(opstr, sizeof(opstr), "($%04X,X)",operand);   break;
+    case MODE_ZP_INDIRECT_FLAT: snprintf(opstr, sizeof(opstr), "[$%02X]",  op1);       break;
+    case MODE_ZP_INDIRECT_Z_FLAT: snprintf(opstr, sizeof(opstr), "[$%02X],Z", op1);    break;
+    case MODE_RELATIVE: {
+        /* Resolve branch target: base opcode addr + instr_len + signed offset */
+        int target = (int)(addr + prefix_len) + instr_len + (signed char)op1;
+        snprintf(opstr, sizeof(opstr), "$%04X", (unsigned short)target);
+        break;
+    }
+    case MODE_RELATIVE_LONG: {
+        int target = (int)(addr + prefix_len) + instr_len + (short)operand;
+        snprintf(opstr, sizeof(opstr), "$%04X", (unsigned short)target);
+        break;
+    }
+    default:
+        snprintf(opstr, sizeof(opstr), "?");
+        break;
+    }
+
+    /* %-18s gives room for up to 6 bytes ("XX XX XX XX XX XX ") */
+    snprintf(buf, bufsz, "$%04X: %-18s %-6s %s", addr, hexbuf, e->mnemonic, opstr);
+    return total_len;
+}
+
 /* run_asm_mode: interactive inline assembler entered via the "asm" command.
  *
  * Reads assembly source lines from stdin one at a time and assembles each
@@ -1063,9 +1157,10 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
             printf("          mem <addr> [len], write <addr> <val>, reset,\n");
             printf("          processors, processor <type>, info <opcode>,\n");
             printf("          jump <addr>, set <reg> <val>, flag <flag> <0|1>,\n");
-            printf("          bload \"file\" <addr>, asm [addr], quit\n");
+            printf("          bload \"file\" <addr>, asm [addr], disasm [addr [count]], quit\n");
             printf("  Addresses/values accept: $hex  %%binary  decimal\n");
-            printf("  asm [addr]  Inline assembler at addr (default: PC); exit with '.' alone\n");
+            printf("  asm    [addr]  Inline assembler at addr (default: PC); exit with '.' alone\n");
+            printf("  disasm [addr [count]]  Disassemble count instructions from addr (defaults: PC, 15)\n");
         } else if (strcmp(cmd, "break") == 0) {
             const char *p = line; SKIP_CMD(p);
             unsigned long addr;
@@ -1225,6 +1320,17 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
             unsigned long tmp;
             int asm_pc = parse_mon_value(&p, &tmp) ? (int)tmp : (int)cpu->pc;
             run_asm_mode(mem, symbols, *p_handlers, *p_num_handlers, *p_cpu_type, &asm_pc);
+        } else if (strcmp(cmd, "disasm") == 0) {
+            const char *p = line; SKIP_CMD(p);
+            unsigned long tmp;
+            unsigned short daddr = parse_mon_value(&p, &tmp) ? (unsigned short)tmp : cpu->pc;
+            int dcount = parse_mon_value(&p, &tmp) ? (int)tmp : 15;
+            char dbuf[80];
+            for (int i = 0; i < dcount; i++) {
+                int consumed = disasm_one(mem, dt, *p_cpu_type, daddr, dbuf, sizeof(dbuf));
+                printf("%s\n", dbuf);
+                daddr = (unsigned short)(daddr + consumed);
+            }
         } else if (strcmp(cmd, "reset") == 0) {
             cpu_init(cpu); cpu->pc = start_addr;
             if (*p_cpu_type == CPU_45GS02) set_flag(cpu, FLAG_E, 1);

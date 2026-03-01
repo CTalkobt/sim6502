@@ -259,6 +259,41 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {},
         },
       },
+      {
+        name: "assemble",
+        description: "Inline-assembles code into memory starting at the given address (default: current PC). Accepts the same syntax as the interactive asm command, including pseudo-ops (.org, .byte, .word, .text, .align). Returns assembled byte output for each line.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            code: {
+              type: "string",
+              description: "Assembly source lines (one instruction or pseudo-op per line)",
+            },
+            address: {
+              type: "number",
+              description: "Start address (decimal). Defaults to current PC if omitted.",
+            },
+          },
+          required: ["code"],
+        },
+      },
+      {
+        name: "disassemble",
+        description: "Disassembles instructions from memory. Unknown bytes are shown as .byte directives. Branch targets are shown as resolved absolute addresses.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            address: {
+              type: "number",
+              description: "Start address (decimal). Defaults to current PC if omitted.",
+            },
+            count: {
+              type: "number",
+              description: "Number of instructions to disassemble (default 15)",
+            },
+          },
+        },
+      },
     ],
   };
 });
@@ -285,18 +320,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [{ type: "text", text: output }],
       };
     } else if (name === "read_memory") {
-      const addr = args.address; // Handle hex/dec
+      const addr = args.address;
       const len = args.length || 16;
-      // Convert decimal addr to hex string for simulator if needed
-      // Simulator accepts hex input for address
-      const hexAddr = addr.toString(16);
-      const output = await sendCommand(`mem ${hexAddr} ${len}`);
+      const output = await sendCommand(`mem $${addr.toString(16)} ${len}`);
       return {
         content: [{ type: "text", text: output }],
       };
     } else if (name === "write_memory") {
-      const addr = args.address.toString(16);
-      const val = args.value.toString(16);
+      const addr = `$${args.address.toString(16)}`;
+      const val = `$${args.value.toString(16)}`;
       const output = await sendCommand(`write ${addr} ${val}`);
       return {
         content: [{ type: "text", text: output }],
@@ -321,14 +353,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return {
         content: [{ type: "text", text: output }],
       };
+    } else if (name === "assemble") {
+      const addrPart = args.address !== undefined ? ` $${args.address.toString(16)}` : '';
+      const lines = (args.code || '').split('\n').filter(l => l.trim());
+      const parts = [];
+      parts.push(await sendCommand(`asm${addrPart}`));
+      for (const line of lines) {
+        parts.push(await sendCommand(line));
+      }
+      parts.push(await sendCommand('.'));
+      return {
+        content: [{ type: "text", text: parts.filter(Boolean).join('\n') }],
+      };
+    } else if (name === "disassemble") {
+      const count = args.count || 15;
+      const addrPart = args.address !== undefined ? ` $${args.address.toString(16)}` : '';
+      const output = await sendCommand(`disasm${addrPart} ${count}`);
+      return {
+        content: [{ type: "text", text: output }],
+      };
     } else if (name === "set_breakpoint") {
-      const addr = args.address.toString(16);
+      const addr = `$${args.address.toString(16)}`;
       const output = await sendCommand(`break ${addr}`);
       return {
         content: [{ type: "text", text: output }],
       };
     } else if (name === "clear_breakpoint") {
-      const addr = args.address.toString(16);
+      const addr = `$${args.address.toString(16)}`;
       const output = await sendCommand(`clear ${addr}`);
       return {
         content: [{ type: "text", text: output }],

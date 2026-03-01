@@ -246,21 +246,24 @@ Enter the monitor with `-I`. A source file is optional — you can start from bl
 
 ### Commands
 
+All commands that take an address or numeric value accept `$hex`, `%binary`, or plain decimal.
+
 | Command | Description |
 |---------|-------------|
 | `step [n]` | Execute `n` instructions (default 1). Blank line also steps once. |
 | `run` | Run until BRK, STP, or a breakpoint |
-| `break <addr>` | Set a breakpoint at hex address |
+| `break <addr>` | Set a breakpoint |
 | `clear <addr>` | Remove a breakpoint |
 | `list` | List all breakpoints |
 | `regs` | Show all registers (A X Y Z B S P PC Cycles) |
 | `mem <addr> [len]` | Hex dump starting at address (default 16 bytes) |
 | `write <addr> <val>` | Write one byte to memory |
-| `bload "file" $addr` | Load a raw binary file into memory at address |
+| `bload "file" <addr>` | Load a raw binary file into memory at address |
+| `disasm [addr [count]]` | Disassemble `count` instructions from `addr` (defaults: current PC, 15). Unknown bytes shown as `.byte $XX`. Branch targets shown as resolved absolute addresses. |
 | `asm [addr]` | Enter inline assembler at `addr` (default: current PC); exit with `.` alone on a line |
 | `jump <addr>` | Set the Program Counter |
 | `set <reg> <val>` | Set a register (A X Y Z B S P PC) |
-| `flag <flag> <0\|1>` | Set a flag (N V B D I Z C) |
+| `flag <flag> <val>` | Set a flag (N V B D I Z C) |
 | `reset` | Reset CPU to program start address |
 | `processor <type>` | Switch active processor type |
 | `processors` | List all processor types |
@@ -278,13 +281,19 @@ Type 'help' for commands.
 Loaded 3 bytes at $0200
 > regs
 REGS A=00 X=00 Y=00 S=FF P=00 PC=0200 Cycles=0
+> disasm
+$0200: 42                    .byte $42
+$0201: AB                    .byte $AB
+$0202: FF                    .byte $FF
+$0203: 00                 BRK
+...
 >              <- blank line: single step
-STOP 0201
+STOP $0201
 >              <- another step
-STOP 0202
+STOP $0202
 > regs
 REGS A=00 X=00 Y=00 S=FF P=00 PC=0202 Cycles=0
-> mem 200 4
+> mem $0200 4
 0200: 42 AB FF 00
 > quit
 ```
@@ -380,6 +389,8 @@ Or add to `~/.claude/settings.json`:
 | `write_memory(address, value)` | Write one byte |
 | `reset_cpu()` | Reset to initial state |
 | `run_program()` | Run until BRK / STP / breakpoint |
+| `assemble(code, address?)` | Inline-assemble source lines into memory at `address` (default: PC); returns per-line byte output |
+| `disassemble(address?, count?)` | Disassemble `count` instructions from `address` (defaults: PC, 15) |
 | `set_breakpoint(address)` | Add a breakpoint |
 | `clear_breakpoint(address)` | Remove a breakpoint |
 | `list_breakpoints()` | List all breakpoints |
