@@ -88,6 +88,47 @@ static inline void update_nz(cpu_t *cpu, unsigned char val) {
 	set_flag(cpu, FLAG_N, val & 0x80);
 }
 
+static inline void do_adc(cpu_t *cpu, unsigned char val) {
+	if (get_flag(cpu, FLAG_D)) {
+		int lo = (cpu->a & 0x0F) + (val & 0x0F) + get_flag(cpu, FLAG_C);
+		int hi = (cpu->a >> 4) + (val >> 4);
+		if (lo > 9) { lo -= 10; hi++; }
+		int bin = cpu->a + val + get_flag(cpu, FLAG_C);
+		set_flag(cpu, FLAG_V, ((cpu->a ^ bin) & (val ^ bin) & 0x80) != 0);
+		if (hi > 9) { hi -= 10; set_flag(cpu, FLAG_C, 1); }
+		else        {            set_flag(cpu, FLAG_C, 0); }
+		cpu->a = (unsigned char)(((hi & 0x0F) << 4) | (lo & 0x0F));
+		update_nz(cpu, cpu->a);
+	} else {
+		int result = cpu->a + val + get_flag(cpu, FLAG_C);
+		set_flag(cpu, FLAG_C, result > 0xFF);
+		set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (val ^ result) & 0x80) != 0);
+		cpu->a = result & 0xFF;
+		update_nz(cpu, cpu->a);
+	}
+}
+
+static inline void do_sbc(cpu_t *cpu, unsigned char val) {
+	if (get_flag(cpu, FLAG_D)) {
+		int borrow = 1 - get_flag(cpu, FLAG_C);
+		int lo = (cpu->a & 0x0F) - (val & 0x0F) - borrow;
+		int hi = (cpu->a >> 4) - (val >> 4);
+		if (lo < 0) { lo += 10; hi--; }
+		int bin = cpu->a - val - borrow;
+		set_flag(cpu, FLAG_C, bin >= 0);
+		set_flag(cpu, FLAG_V, ((cpu->a ^ bin) & (~val ^ bin) & 0x80) != 0);
+		if (hi < 0) hi += 10;
+		cpu->a = (unsigned char)(((hi & 0x0F) << 4) | (lo & 0x0F));
+		update_nz(cpu, cpu->a);
+	} else {
+		int result = cpu->a - val - (1 - get_flag(cpu, FLAG_C));
+		set_flag(cpu, FLAG_C, result >= 0);
+		set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (~val ^ result) & 0x80) != 0);
+		cpu->a = result & 0xFF;
+		update_nz(cpu, cpu->a);
+	}
+}
+
 /* Cycle timing tables - base cycle counts per instruction */
 /* All processors support these base cycles */
 #define CYC_IMPLIED_BASE 2

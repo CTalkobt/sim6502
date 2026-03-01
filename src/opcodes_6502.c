@@ -212,66 +212,42 @@ void sty_zp_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 
 void adc_imm(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned char val = arg & 0xFF;
-	int result = cpu->a + val + get_flag(cpu, FLAG_C);
-	set_flag(cpu, FLAG_C, result > 0xFF);
-	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (val ^ result) & 0x80) != 0);
-	cpu->a = result & 0xFF;
-	update_nz(cpu, cpu->a);
+	do_adc(cpu, val);
 	cpu->cycles += 2;
 	cpu->pc += 2;
 }
 
 void adc_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned char val = mem_read(mem, arg);
-	int result = cpu->a + val + get_flag(cpu, FLAG_C);
-	set_flag(cpu, FLAG_C, result > 0xFF);
-	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (val ^ result) & 0x80) != 0);
-	cpu->a = result & 0xFF;
-	update_nz(cpu, cpu->a);
+	do_adc(cpu, val);
 	cpu->cycles += 4;
 	cpu->pc += 3;
 }
 
 void adc_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned char val = mem_read(mem, arg + cpu->x);
-	int result = cpu->a + val + get_flag(cpu, FLAG_C);
-	set_flag(cpu, FLAG_C, result > 0xFF);
-	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (val ^ result) & 0x80) != 0);
-	cpu->a = result & 0xFF;
-	update_nz(cpu, cpu->a);
+	do_adc(cpu, val);
 	cpu->cycles += 4;
 	cpu->pc += 3;
 }
 
 void adc_abs_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned char val = mem_read(mem, arg + cpu->y);
-	int result = cpu->a + val + get_flag(cpu, FLAG_C);
-	set_flag(cpu, FLAG_C, result > 0xFF);
-	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (val ^ result) & 0x80) != 0);
-	cpu->a = result & 0xFF;
-	update_nz(cpu, cpu->a);
+	do_adc(cpu, val);
 	cpu->cycles += 4;
 	cpu->pc += 3;
 }
 
 void adc_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned char val = mem_read(mem, arg & 0xFF);
-	int result = cpu->a + val + get_flag(cpu, FLAG_C);
-	set_flag(cpu, FLAG_C, result > 0xFF);
-	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (val ^ result) & 0x80) != 0);
-	cpu->a = result & 0xFF;
-	update_nz(cpu, cpu->a);
+	do_adc(cpu, val);
 	cpu->cycles += 3;
 	cpu->pc += 2;
 }
 
 void adc_zp_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned char val = mem_read(mem, (arg + cpu->x) & 0xFF);
-	int result = cpu->a + val + get_flag(cpu, FLAG_C);
-	set_flag(cpu, FLAG_C, result > 0xFF);
-	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (val ^ result) & 0x80) != 0);
-	cpu->a = result & 0xFF;
-	update_nz(cpu, cpu->a);
+	do_adc(cpu, val);
 	cpu->cycles += 4;
 	cpu->pc += 2;
 }
@@ -280,11 +256,7 @@ void adc_ind_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned short addr = mem_read(mem, (arg + cpu->x) & 0xFF) |
 		(mem_read(mem, (arg + cpu->x + 1) & 0xFF) << 8);
 	unsigned char val = mem_read(mem, addr);
-	int result = cpu->a + val + get_flag(cpu, FLAG_C);
-	set_flag(cpu, FLAG_C, result > 0xFF);
-	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (val ^ result) & 0x80) != 0);
-	cpu->a = result & 0xFF;
-	update_nz(cpu, cpu->a);
+	do_adc(cpu, val);
 	cpu->cycles += 6;
 	cpu->pc += 2;
 }
@@ -292,33 +264,21 @@ void adc_ind_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 void adc_ind_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned short addr = mem_read(mem, arg) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
 	unsigned char val = mem_read(mem, addr + cpu->y);
-	int result = cpu->a + val + get_flag(cpu, FLAG_C);
-	set_flag(cpu, FLAG_C, result > 0xFF);
-	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (val ^ result) & 0x80) != 0);
-	cpu->a = result & 0xFF;
-	update_nz(cpu, cpu->a);
+	do_adc(cpu, val);
 	cpu->cycles += 5;
 	cpu->pc += 2;
 }
 
 void sbc_imm(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned char val = arg & 0xFF;
-	int result = cpu->a - val - (1 - get_flag(cpu, FLAG_C));
-	set_flag(cpu, FLAG_C, result >= 0);
-	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (~val ^ result) & 0x80) != 0);
-	cpu->a = result & 0xFF;
-	update_nz(cpu, cpu->a);
+	do_sbc(cpu, val);
 	cpu->cycles += 2;
 	cpu->pc += 2;
 }
 
 void sbc_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	unsigned char val = mem_read(mem, arg);
-	int result = cpu->a - val - (1 - get_flag(cpu, FLAG_C));
-	set_flag(cpu, FLAG_C, result >= 0);
-	set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (~val ^ result) & 0x80) != 0);
-	cpu->a = result & 0xFF;
-	update_nz(cpu, cpu->a);
+	do_sbc(cpu, val);
 	cpu->cycles += 4;
 	cpu->pc += 3;
 }

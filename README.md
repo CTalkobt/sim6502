@@ -500,6 +500,10 @@ ffd2 CHROUT TRAP Output char A to current channel
 - Limited error messages
 - Single-file programs only
 
+### Decimal Mode (BCD) Note
+
+ADC and SBC always perform correct BCD arithmetic when the D (Decimal) flag is set, across all supported processor variants (6502, 65C02, 65CE02, 45GS02). The NMOS 6502 hardware has undefined N, V, and Z flag behavior in decimal mode, but this simulator produces well-defined, correct flag values for all variants. Programs relying on the exact undefined 6502 flag state in decimal mode may see different results.
+
 ## Future Enhancements
 
 - [ ] Conditional breakpoints
