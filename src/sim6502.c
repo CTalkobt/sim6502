@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
 #include <unistd.h>
 #include "cpu.h"
 #include "memory.h"
@@ -294,6 +295,31 @@ static void print_opcode_info(opcode_handler_t *handlers, int num_handlers, cons
 
 static unsigned short parse_value(const char *str, int *out_digits);  /* forward decl */
 
+/* load_binary_to_mem: read a raw binary file into memory starting at addr.
+ * If mem is NULL (first pass), the file is opened only to measure its size so
+ * the PC can be advanced by the right amount without writing anything.
+ * Returns the number of bytes loaded/measured, or -1 if the file cannot be opened. */
+static int load_binary_to_mem(memory_t *mem, int addr, const char *filename) {
+	FILE *bf = fopen(filename, "rb");
+	if (!bf) {
+		fprintf(stderr, "Warning: cannot open binary '%s': %s\n", filename, strerror(errno));
+		return -1;
+	}
+	fseek(bf, 0, SEEK_END);
+	long size = ftell(bf);
+	rewind(bf);
+	if (mem) {
+		for (long i = 0; i < size; i++) {
+			int c = fgetc(bf);
+			if (c == EOF) { size = i; break; }
+			if (addr + (int)i < 65536)
+				mem->mem[addr + (int)i] = (unsigned char)c;
+		}
+	}
+	fclose(bf);
+	return (int)size;
+}
+
 /* handle_pseudo_op: process a assembler directive line.
  * line     — points at or before the leading '.' (leading whitespace is skipped)
  * cpu_type — updated by .processor
@@ -445,6 +471,21 @@ static void handle_pseudo_op(const char *line, cpu_type_t *cpu_type, int *pc,
 					*pc += pad;
 				}
 			}
+		}
+		return;
+	}
+
+	/* .bin "filename" — include a raw binary file at the current PC */
+	if (strncmp(line, "bin", 3) == 0 && (!line[3] || isspace(line[3]))) {
+		line += 3;
+		while (*line && isspace(*line)) line++;
+		if (*line == '"') {
+			line++;
+			char fname[256]; int j = 0;
+			while (*line && *line != '"' && j < 255) fname[j++] = *line++;
+			fname[j] = 0;
+			int n = load_binary_to_mem(mem, *pc, fname);
+			if (n > 0) *pc += n;
 		}
 		return;
 	}
@@ -864,7 +905,7 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
         if (strcmp(cmd, "quit") == 0 || strcmp(cmd, "exit") == 0) break;
         else if (strcmp(cmd, "help") == 0) {
             printf("Commands: step [n], run, break <addr>, clear <addr>, list, regs, mem <addr> <len>, write <addr> <val>, reset, processors, processor <type>, info <opcode>, quit\n");
-            printf("          jump <addr>, set <reg> <val>, flag <flag> <0|1>\n");
+            printf("          jump <addr>, set <reg> <val>, flag <flag> <0|1>, bload \"file\" $addr\n");
         } else if (strcmp(cmd, "break") == 0) {
             unsigned int addr;
             if (sscanf(line, "%*s %x", &addr) == 1) breakpoint_add(breakpoints, (unsigned short)addr);
@@ -966,6 +1007,29 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
         } else if (strcmp(cmd, "write") == 0) {
             unsigned int addr, val;
             if (sscanf(line + 5, "%x %x", &addr, &val) == 2) mem_write(mem, addr, (unsigned char)val);
+        } else if (strcmp(cmd, "bload") == 0) {
+            /* bload "filename" $addr — load a raw binary file into memory */
+            char fname[256] = {0};
+            unsigned int addr = 0;
+            const char *p = line;
+            while (*p && !isspace((unsigned char)*p)) p++;  /* skip "bload" */
+            while (*p && isspace((unsigned char)*p)) p++;
+            if (*p == '"') {
+                p++;
+                int j = 0;
+                while (*p && *p != '"' && j < 255) fname[j++] = *p++;
+                fname[j] = 0;
+                if (*p == '"') p++;
+            }
+            while (*p && isspace((unsigned char)*p)) p++;
+            if (*p == '$') p++;
+            addr = (unsigned int)strtol(p, NULL, 16);
+            if (fname[0]) {
+                int n = load_binary_to_mem(mem, (int)addr, fname);
+                if (n >= 0) printf("Loaded %d bytes at $%04X\n", n, addr);
+            } else {
+                printf("Usage: bload \"filename\" $addr\n");
+            }
         } else if (strcmp(cmd, "reset") == 0) {
             cpu_init(cpu); cpu->pc = start_addr;
             if (*p_cpu_type == CPU_45GS02) set_flag(cpu, FLAG_E, 1);

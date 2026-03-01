@@ -37,9 +37,9 @@ This document outlines suggested next steps, feature enhancements, and technical
 
 3. Debugging & Trace Features
 ----------------------------
-*   [ ] Support standard pseudo-ops: `.org`, `.byte`, `.word`, `.text`, `.align`.
+*   [X] Support standard pseudo-ops: `.org`, `.byte`, `.word`, `.text`, `.align`.
 *   [X] Add support for numeric constants in decimal (`123`) and binary (`%10101010`). Also support character contants such as 'a'. 
-*   [ ] Allow binary file retrieval of mem (eg: Bload "filename" LOAD_ADDRESS) will load the filename at the load address. 
+*   [X] Allow psuedo-op to include a binary at the current PC. (.bin "filename")). Also allow Interactive command "bload" to perform the same function using 'bload "filename" $addr'  where addr is the address to start loading at. 
 *   [ ] Allow binary file saving of mem (eg: BSave "filename" START END ) will save the filename at address range.
 *   [ ] Allow disassembly of memory (eg: D or Disasm START END) if just D then use PC. 
 *   [ ] Improved Trace Formatting: Make trace output more readable and include register changes (e.g., "A: 00 -> 01").
