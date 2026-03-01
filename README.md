@@ -257,6 +257,7 @@ Enter the monitor with `-I`. A source file is optional — you can start from bl
 | `mem <addr> [len]` | Hex dump starting at address (default 16 bytes) |
 | `write <addr> <val>` | Write one byte to memory |
 | `bload "file" $addr` | Load a raw binary file into memory at address |
+| `asm [addr]` | Enter inline assembler at `addr` (default: current PC); exit with `.` alone on a line |
 | `jump <addr>` | Set the Program Counter |
 | `set <reg> <val>` | Set a register (A X Y Z B S P PC) |
 | `flag <flag> <0\|1>` | Set a flag (N V B D I Z C) |

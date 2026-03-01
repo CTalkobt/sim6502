@@ -59,6 +59,7 @@ This document outlines suggested next steps, feature enhancements, and technical
 --------------------------
 *   [X] Interactive CLI Mode: A "monitor" style interface where users can type commands (step, continue, examine, modify) without restarting. (Required for MCP).
     *   [X] Interactive mode can now be entered without specifying a source file (`./sim6502 -I`); pressing Enter on a blank line steps one instruction.
+    *   [X] Inline assembler: `asm [addr]` enters an assembly sub-mode at the given address (default: current PC); all pseudo-ops supported; exit with `.` alone on a line; assembled bytes echoed in monitor format.
 *   [X] MCP Server Implementation: Wrap the simulator in a Model Context Protocol server to expose execution control to LLMs.
 *   [ ] Web-based UI: Use the existing plugin-gemini structure or similar to create a visual representation of the CPU state and memory.
 *   [ ] Configuration Files: Support for .ini or .json files to specify CPU type, memory maps, and pre-loaded binaries.

@@ -887,6 +887,149 @@ static int encode_to_mem(memory_t *mem, int pc_base,
 	return pc - pc_base;  /* total bytes written */
 }
 
+/* run_asm_mode: interactive inline assembler entered via the "asm" command.
+ *
+ * Reads assembly source lines from stdin one at a time and assembles each
+ * one directly into *mem, starting at *asm_pc.  *asm_pc advances after
+ * every encoded byte so the next line lands at the right address.
+ *
+ * Supported input:
+ *   Regular instructions : LDA #$42  /  JSR $FFD2  /  BNE loop
+ *   All pseudo-ops       : .org, .byte, .word, .text, .align, .bin
+ *   Label definitions    : loop:  /  data: .byte 1,2,3
+ *   Comments             : ; this line is ignored
+ *   Blank lines          : silently skipped
+ *   Exit sentinel        : a line containing only '.' (period)
+ *
+ * After each encoded line the assembled bytes are echoed:
+ *   $0200: A9 42        LDA #$42
+ *   $0202: 20 D2 FF     JSR $FFD2
+ *
+ * Labels are added to the shared symbol table immediately (single-pass),
+ * so forward references to labels not yet defined encode as $0000 with a
+ * warning — define labels before jumping to them in interactive mode.
+ */
+static void run_asm_mode(memory_t *mem, symbol_table_t *symbols,
+                          opcode_handler_t *handlers, int num_handlers,
+                          cpu_type_t cpu_type, int *asm_pc) {
+    char buf[512];
+    printf("Assembling from $%04X  (enter '.' on a blank line to finish)\n",
+           (unsigned int)*asm_pc);
+    for (;;) {
+        printf("$%04X> ", (unsigned int)*asm_pc);
+        fflush(stdout);
+        if (!fgets(buf, sizeof(buf), stdin)) break;
+
+        /* Strip trailing CR/LF */
+        size_t blen = strlen(buf);
+        while (blen > 0 && (buf[blen-1] == '\n' || buf[blen-1] == '\r'))
+            buf[--blen] = '\0';
+
+        /* Locate first non-whitespace character */
+        const char *p = buf;
+        while (*p && isspace((unsigned char)*p)) p++;
+
+        /* Exit sentinel: lone '.' */
+        if (p[0] == '.' && p[1] == '\0') break;
+
+        /* Skip blank or comment-only lines */
+        if (!*p || *p == ';') continue;
+
+        int base_pc = *asm_pc;
+
+        /* ── Pseudo-op ──────────────────────────────────────────────── */
+        if (*p == '.') {
+            handle_pseudo_op(p, &cpu_type, asm_pc, mem, symbols);
+            int emitted = *asm_pc - base_pc;
+            if (emitted > 0) {
+                printf("$%04X:", base_pc);
+                int show = emitted < 4 ? emitted : 4;
+                for (int i = 0; i < show; i++)
+                    printf(" %02X", mem->mem[base_pc + i]);
+                if (emitted > 4) printf(" ...");
+                printf("\n");
+            } else {
+                /* .org and similar: PC changed but no bytes emitted */
+                printf("       -> PC=$%04X\n", (unsigned int)*asm_pc);
+            }
+            continue;
+        }
+
+        /* ── Label definition (may have instruction/pseudo-op after ':') ── */
+        const char *colon = strchr(p, ':');
+        if (colon) {
+            /* Extract and register the label */
+            char lname[64];
+            int llen = (int)(colon - p);
+            if (llen > 63) llen = 63;
+            memcpy(lname, p, (size_t)llen); lname[llen] = '\0';
+            while (llen > 0 && isspace((unsigned char)lname[llen-1]))
+                lname[--llen] = '\0';
+            symbol_add(symbols, lname, (unsigned short)*asm_pc, SYM_LABEL, "asm");
+            printf("       %s = $%04X\n", lname, (unsigned int)*asm_pc);
+
+            /* Handle what follows the colon */
+            const char *after = colon + 1;
+            while (*after && isspace((unsigned char)*after)) after++;
+            if (*after == '.') {
+                /* label: .pseudo_op */
+                handle_pseudo_op(after, &cpu_type, asm_pc, mem, symbols);
+                continue;
+            }
+            if (!*after || *after == ';') continue;  /* label-only line */
+            /* Otherwise fall through — parse_line handles the label internally */
+        }
+
+        /* ── Instruction ─────────────────────────────────────────────── */
+        instruction_t instr;
+        parse_line(buf, &instr, symbols, *asm_pc);
+        if (!instr.op[0]) continue;
+
+        int enc = encode_to_mem(mem, *asm_pc, &instr, handlers, num_handlers);
+        if (enc < 0) {
+            printf("       error: cannot encode '%s' (unknown instruction or "
+                   "addressing mode)\n", instr.op);
+            continue;
+        }
+        *asm_pc += enc;
+
+        /* Echo: $ADDR: BB BB BB   source-text */
+        printf("$%04X:", base_pc);
+        int show = enc < 4 ? enc : 4;
+        for (int i = 0; i < show; i++)
+            printf(" %02X", mem->mem[base_pc + i]);
+        if (enc > 4) printf(" ...");
+        for (int i = show; i < 4; i++) printf("   ");  /* alignment pad */
+        printf("  %s\n", p);
+    }
+    printf("Assembly done.  End address: $%04X\n", (unsigned int)*asm_pc);
+}
+
+/* parse_mon_value: parse a $hex, %binary, or decimal token from *pp.
+ * Skips leading whitespace.  Returns 1 on success (value in *out, *pp
+ * advanced past the token), 0 if no numeric token is found. */
+static int parse_mon_value(const char **pp, unsigned long *out) {
+    const char *p = *pp;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (!*p) return 0;
+    char *end;
+    unsigned long val;
+    if (*p == '$') {
+        if (!isxdigit((unsigned char)p[1])) return 0;
+        val = strtoul(p + 1, &end, 16);
+    } else if (*p == '%') {
+        if (p[1] != '0' && p[1] != '1') return 0;
+        val = strtoul(p + 1, &end, 2);
+    } else if (isdigit((unsigned char)*p)) {
+        val = strtoul(p, &end, 10);
+    } else {
+        return 0;
+    }
+    *pp = end;
+    *out = val;
+    return 1;
+}
+
 static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
                                  opcode_handler_t **p_handlers, int *p_num_handlers,
                                  cpu_type_t *p_cpu_type, dispatch_table_t *dt,
@@ -896,7 +1039,7 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
     char cmd[32];
     setvbuf(stdout, NULL, _IONBF, 0);
     printf("6502 Simulator Interactive Mode\nType 'help' for commands.\n");
-    
+
     while (1) {
         printf("> ");
         if (!fgets(line, sizeof(line), stdin)) break;
@@ -910,65 +1053,94 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
             printf("STOP %04X\n", cpu->pc);
             continue;
         }
-        
+
+        /* helper macro: skip past the command word */
+#define SKIP_CMD(lp) do { while (*(lp) && !isspace((unsigned char)*(lp))) (lp)++; } while (0)
+
         if (strcmp(cmd, "quit") == 0 || strcmp(cmd, "exit") == 0) break;
         else if (strcmp(cmd, "help") == 0) {
-            printf("Commands: step [n], run, break <addr>, clear <addr>, list, regs, mem <addr> <len>, write <addr> <val>, reset, processors, processor <type>, info <opcode>, quit\n");
-            printf("          jump <addr>, set <reg> <val>, flag <flag> <0|1>, bload \"file\" $addr\n");
+            printf("Commands: step [n], run, break <addr>, clear <addr>, list, regs,\n");
+            printf("          mem <addr> [len], write <addr> <val>, reset,\n");
+            printf("          processors, processor <type>, info <opcode>,\n");
+            printf("          jump <addr>, set <reg> <val>, flag <flag> <0|1>,\n");
+            printf("          bload \"file\" <addr>, asm [addr], quit\n");
+            printf("  Addresses/values accept: $hex  %%binary  decimal\n");
+            printf("  asm [addr]  Inline assembler at addr (default: PC); exit with '.' alone\n");
         } else if (strcmp(cmd, "break") == 0) {
-            unsigned int addr;
-            if (sscanf(line, "%*s %x", &addr) == 1) breakpoint_add(breakpoints, (unsigned short)addr);
+            const char *p = line; SKIP_CMD(p);
+            unsigned long addr;
+            if (parse_mon_value(&p, &addr)) breakpoint_add(breakpoints, (unsigned short)addr);
+            else printf("Usage: break <addr>\n");
         } else if (strcmp(cmd, "clear") == 0) {
-            unsigned int addr;
-            if (sscanf(line, "%*s %x", &addr) == 1) breakpoint_remove(breakpoints, (unsigned short)addr);
-        } else if (strcmp(cmd, "list") == 0) breakpoint_list(breakpoints);
-        else if (strcmp(cmd, "jump") == 0) {
-            unsigned int addr;
-            if (sscanf(line, "%*s %x", &addr) == 1) {
+            const char *p = line; SKIP_CMD(p);
+            unsigned long addr;
+            if (parse_mon_value(&p, &addr)) breakpoint_remove(breakpoints, (unsigned short)addr);
+            else printf("Usage: clear <addr>\n");
+        } else if (strcmp(cmd, "list") == 0) {
+            breakpoint_list(breakpoints);
+        } else if (strcmp(cmd, "jump") == 0) {
+            const char *p = line; SKIP_CMD(p);
+            unsigned long addr;
+            if (parse_mon_value(&p, &addr)) {
                 cpu->pc = (unsigned short)addr;
-                printf("PC set to %04X\n", cpu->pc);
+                printf("PC set to $%04X\n", cpu->pc);
             } else {
                 printf("Usage: jump <addr>\n");
             }
         } else if (strcmp(cmd, "set") == 0) {
             char reg[16];
-            unsigned int val;
-            if (sscanf(line, "%*s %15s %x", reg, &val) == 2) {
-                if (strcmp(reg, "A") == 0 || strcmp(reg, "a") == 0) cpu->a = (unsigned char)val;
-                else if (strcmp(reg, "X") == 0 || strcmp(reg, "x") == 0) cpu->x = (unsigned char)val;
-                else if (strcmp(reg, "Y") == 0 || strcmp(reg, "y") == 0) cpu->y = (unsigned char)val;
-                else if (strcmp(reg, "Z") == 0 || strcmp(reg, "z") == 0) cpu->z = (unsigned char)val;
-                else if (strcmp(reg, "B") == 0 || strcmp(reg, "b") == 0) cpu->b = (unsigned char)val;
-                else if (strcmp(reg, "S") == 0 || strcmp(reg, "s") == 0 || strcmp(reg, "SP") == 0 || strcmp(reg, "sp") == 0) cpu->s = (unsigned short)val;
-                else if (strcmp(reg, "P") == 0 || strcmp(reg, "p") == 0) cpu->p = (unsigned char)val;
-                else if (strcmp(reg, "PC") == 0 || strcmp(reg, "pc") == 0) cpu->pc = (unsigned short)val;
-                else printf("Unknown register: %s\n", reg);
-                printf("Register %s set to %02X\n", reg, val);
+            if (sscanf(line, "%*s %15s", reg) == 1) {
+                const char *p = line; SKIP_CMD(p);  /* skip "set" */
+                while (*p && isspace((unsigned char)*p)) p++;
+                SKIP_CMD(p);                         /* skip reg name */
+                unsigned long val;
+                if (parse_mon_value(&p, &val)) {
+                    if      (strcmp(reg, "A")  == 0 || strcmp(reg, "a")  == 0) cpu->a = (unsigned char)val;
+                    else if (strcmp(reg, "X")  == 0 || strcmp(reg, "x")  == 0) cpu->x = (unsigned char)val;
+                    else if (strcmp(reg, "Y")  == 0 || strcmp(reg, "y")  == 0) cpu->y = (unsigned char)val;
+                    else if (strcmp(reg, "Z")  == 0 || strcmp(reg, "z")  == 0) cpu->z = (unsigned char)val;
+                    else if (strcmp(reg, "B")  == 0 || strcmp(reg, "b")  == 0) cpu->b = (unsigned char)val;
+                    else if (strcmp(reg, "S")  == 0 || strcmp(reg, "s")  == 0 ||
+                             strcmp(reg, "SP") == 0 || strcmp(reg, "sp") == 0) cpu->s = (unsigned short)val;
+                    else if (strcmp(reg, "P")  == 0 || strcmp(reg, "p")  == 0) cpu->p = (unsigned char)val;
+                    else if (strcmp(reg, "PC") == 0 || strcmp(reg, "pc") == 0) cpu->pc = (unsigned short)val;
+                    else { printf("Unknown register: %s\n", reg); continue; }
+                    printf("Register %s set to $%02lX\n", reg, val);
+                } else {
+                    printf("Usage: set <reg> <val>\n");
+                }
             } else {
                 printf("Usage: set <reg> <val>\n");
             }
         } else if (strcmp(cmd, "flag") == 0) {
             char flag_name[16];
-            int val;
-            if (sscanf(line, "%*s %15s %d", flag_name, &val) == 2) {
-                unsigned char flag_mask = 0;
-                if (toupper(flag_name[0]) == 'C') flag_mask = FLAG_C;
-                else if (toupper(flag_name[0]) == 'Z') flag_mask = FLAG_Z;
-                else if (toupper(flag_name[0]) == 'I') flag_mask = FLAG_I;
-                else if (toupper(flag_name[0]) == 'D') flag_mask = FLAG_D;
-                else if (toupper(flag_name[0]) == 'B') flag_mask = FLAG_B;
-                else if (toupper(flag_name[0]) == 'V') flag_mask = FLAG_V;
-                else if (toupper(flag_name[0]) == 'N') flag_mask = FLAG_N;
-                
-                if (flag_mask) {
-                    if (val) cpu->p |= flag_mask;
-                    else cpu->p &= ~flag_mask;
-                    printf("Flag %c set to %d (P=%02X)\n", toupper(flag_name[0]), val ? 1 : 0, cpu->p);
+            if (sscanf(line, "%*s %15s", flag_name) == 1) {
+                const char *p = line; SKIP_CMD(p);  /* skip "flag" */
+                while (*p && isspace((unsigned char)*p)) p++;
+                SKIP_CMD(p);                         /* skip flag name */
+                unsigned long val;
+                if (parse_mon_value(&p, &val)) {
+                    unsigned char flag_mask = 0;
+                    if      (toupper((unsigned char)flag_name[0]) == 'C') flag_mask = FLAG_C;
+                    else if (toupper((unsigned char)flag_name[0]) == 'Z') flag_mask = FLAG_Z;
+                    else if (toupper((unsigned char)flag_name[0]) == 'I') flag_mask = FLAG_I;
+                    else if (toupper((unsigned char)flag_name[0]) == 'D') flag_mask = FLAG_D;
+                    else if (toupper((unsigned char)flag_name[0]) == 'B') flag_mask = FLAG_B;
+                    else if (toupper((unsigned char)flag_name[0]) == 'V') flag_mask = FLAG_V;
+                    else if (toupper((unsigned char)flag_name[0]) == 'N') flag_mask = FLAG_N;
+                    if (flag_mask) {
+                        if (val) cpu->p |= flag_mask;
+                        else     cpu->p &= ~flag_mask;
+                        printf("Flag %c set to %lu (P=$%02X)\n",
+                               toupper((unsigned char)flag_name[0]), val & 1, cpu->p);
+                    } else {
+                        printf("Unknown flag: %s\n", flag_name);
+                    }
                 } else {
-                    printf("Unknown flag: %s\n", flag_name);
+                    printf("Usage: flag <N|V|B|D|I|Z|C> <val>\n");
                 }
             } else {
-                printf("Usage: flag <N|V|B|D|I|Z|C> <0|1>\n");
+                printf("Usage: flag <N|V|B|D|I|Z|C> <val>\n");
             }
         } else if (strcmp(cmd, "run") == 0) {
             while (1) {
@@ -983,45 +1155,55 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
                 execute_from_mem(cpu, mem, dt, *p_cpu_type);
                 if (cpu->cycles > 100000000) break;
             }
-            printf("STOP at %04X\n", cpu->pc);
-        } else if (strcmp(cmd, "processors") == 0) list_processors();
-        else if (strcmp(cmd, "info") == 0) {
+            printf("STOP at $%04X\n", cpu->pc);
+        } else if (strcmp(cmd, "processors") == 0) {
+            list_processors();
+        } else if (strcmp(cmd, "info") == 0) {
             char mnemonic[16];
-            if (sscanf(line, "%*s %15s", mnemonic) == 1) print_opcode_info(*p_handlers, *p_num_handlers, mnemonic);
+            if (sscanf(line, "%*s %15s", mnemonic) == 1)
+                print_opcode_info(*p_handlers, *p_num_handlers, mnemonic);
         } else if (strcmp(cmd, "processor") == 0) {
             char type_str[16];
             if (sscanf(line, "%*s %15s", type_str) == 1) {
-                if (strcmp(type_str, "6502") == 0) { *p_handlers = opcodes_6502; *p_num_handlers = OPCODES_6502_COUNT; *p_cpu_type = CPU_6502; }
+                if      (strcmp(type_str, "6502")     == 0) { *p_handlers = opcodes_6502;       *p_num_handlers = OPCODES_6502_COUNT;       *p_cpu_type = CPU_6502; }
                 else if (strcmp(type_str, "6502-undoc") == 0) { *p_handlers = opcodes_6502_undoc; *p_num_handlers = OPCODES_6502_UNDOC_COUNT; *p_cpu_type = CPU_6502_UNDOCUMENTED; }
-                else if (strcmp(type_str, "65c02") == 0) { *p_handlers = opcodes_65c02; *p_num_handlers = OPCODES_65C02_COUNT; *p_cpu_type = CPU_65C02; }
-                else if (strcmp(type_str, "65ce02") == 0) { *p_handlers = opcodes_65ce02; *p_num_handlers = OPCODES_65CE02_COUNT; *p_cpu_type = CPU_65CE02; }
-                else if (strcmp(type_str, "45gs02") == 0) { *p_handlers = opcodes_45gs02; *p_num_handlers = OPCODES_45GS02_COUNT; *p_cpu_type = CPU_45GS02; }
+                else if (strcmp(type_str, "65c02")    == 0) { *p_handlers = opcodes_65c02;      *p_num_handlers = OPCODES_65C02_COUNT;      *p_cpu_type = CPU_65C02; }
+                else if (strcmp(type_str, "65ce02")   == 0) { *p_handlers = opcodes_65ce02;     *p_num_handlers = OPCODES_65CE02_COUNT;     *p_cpu_type = CPU_65CE02; }
+                else if (strcmp(type_str, "45gs02")   == 0) { *p_handlers = opcodes_45gs02;     *p_num_handlers = OPCODES_45GS02_COUNT;     *p_cpu_type = CPU_45GS02; }
                 dispatch_build(dt, *p_handlers, *p_num_handlers, *p_cpu_type);
                 printf("Processor set to %s\n", type_str);
             }
         } else if (strcmp(cmd, "regs") == 0) {
             if (*p_cpu_type == CPU_45GS02)
-                printf("REGS A=%02X X=%02X Y=%02X Z=%02X B=%02X S=%02X P=%02X PC=%04X Cycles=%lu\n", cpu->a, cpu->x, cpu->y, cpu->z, cpu->b, cpu->s, cpu->p, cpu->pc, cpu->cycles);
+                printf("REGS A=%02X X=%02X Y=%02X Z=%02X B=%02X S=%02X P=%02X PC=%04X Cycles=%lu\n",
+                       cpu->a, cpu->x, cpu->y, cpu->z, cpu->b, cpu->s, cpu->p, cpu->pc, cpu->cycles);
             else
-                printf("REGS A=%02X X=%02X Y=%02X S=%02X P=%02X PC=%04X Cycles=%lu\n", cpu->a, cpu->x, cpu->y, cpu->s, cpu->p, cpu->pc, cpu->cycles);
+                printf("REGS A=%02X X=%02X Y=%02X S=%02X P=%02X PC=%04X Cycles=%lu\n",
+                       cpu->a, cpu->x, cpu->y, cpu->s, cpu->p, cpu->pc, cpu->cycles);
         } else if (strcmp(cmd, "mem") == 0) {
-            unsigned int addr, len = 16;
-            if (sscanf(line + 3, "%x %u", &addr, &len) >= 1) {
-                for (unsigned int i = 0; i < len; i++) {
-                    if (i % 16 == 0) printf("\n%04X: ", addr + i);
+            const char *p = line; SKIP_CMD(p);
+            unsigned long addr, len = 16, tmp;
+            if (parse_mon_value(&p, &addr)) {
+                if (parse_mon_value(&p, &tmp)) len = tmp;
+                for (unsigned long i = 0; i < len; i++) {
+                    if (i % 16 == 0) printf("\n%04lX: ", addr + i);
                     printf("%02X ", mem->mem[addr + i]);
                 }
                 printf("\n");
+            } else {
+                printf("Usage: mem <addr> [len]\n");
             }
         } else if (strcmp(cmd, "write") == 0) {
-            unsigned int addr, val;
-            if (sscanf(line + 5, "%x %x", &addr, &val) == 2) mem_write(mem, addr, (unsigned char)val);
+            const char *p = line; SKIP_CMD(p);
+            unsigned long addr, val;
+            if (parse_mon_value(&p, &addr) && parse_mon_value(&p, &val))
+                mem_write(mem, (unsigned int)addr, (unsigned char)val);
+            else
+                printf("Usage: write <addr> <val>\n");
         } else if (strcmp(cmd, "bload") == 0) {
-            /* bload "filename" $addr — load a raw binary file into memory */
+            /* bload "filename" <addr> */
             char fname[256] = {0};
-            unsigned int addr = 0;
-            const char *p = line;
-            while (*p && !isspace((unsigned char)*p)) p++;  /* skip "bload" */
+            const char *p = line; SKIP_CMD(p);  /* skip "bload" */
             while (*p && isspace((unsigned char)*p)) p++;
             if (*p == '"') {
                 p++;
@@ -1030,21 +1212,26 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
                 fname[j] = 0;
                 if (*p == '"') p++;
             }
-            while (*p && isspace((unsigned char)*p)) p++;
-            if (*p == '$') p++;
-            addr = (unsigned int)strtol(p, NULL, 16);
+            unsigned long addr = 0;
+            parse_mon_value(&p, &addr);   /* optional address; defaults to 0 */
             if (fname[0]) {
                 int n = load_binary_to_mem(mem, (int)addr, fname);
-                if (n >= 0) printf("Loaded %d bytes at $%04X\n", n, addr);
+                if (n >= 0) printf("Loaded %d bytes at $%04lX\n", n, addr);
             } else {
-                printf("Usage: bload \"filename\" $addr\n");
+                printf("Usage: bload \"filename\" <addr>\n");
             }
+        } else if (strcmp(cmd, "asm") == 0) {
+            const char *p = line; SKIP_CMD(p);
+            unsigned long tmp;
+            int asm_pc = parse_mon_value(&p, &tmp) ? (int)tmp : (int)cpu->pc;
+            run_asm_mode(mem, symbols, *p_handlers, *p_num_handlers, *p_cpu_type, &asm_pc);
         } else if (strcmp(cmd, "reset") == 0) {
             cpu_init(cpu); cpu->pc = start_addr;
             if (*p_cpu_type == CPU_45GS02) set_flag(cpu, FLAG_E, 1);
         } else if (strcmp(cmd, "step") == 0) {
-            int steps = 1;
-            if (sscanf(line + 4, "%d", &steps) != 1) steps = 1;
+            const char *p = line; SKIP_CMD(p);
+            unsigned long tmp;
+            int steps = parse_mon_value(&p, &tmp) ? (int)tmp : 1;
             for (int i = 0; i < steps; i++) {
                 int tr = handle_trap(symbols, cpu, mem, *p_handlers);
                 if (tr < 0) break;
@@ -1053,8 +1240,9 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
                 if (opc == 0x00) break;  /* BRK */
                 execute_from_mem(cpu, mem, dt, *p_cpu_type);
             }
-            printf("STOP %04X\n", cpu->pc);
+            printf("STOP $%04X\n", cpu->pc);
         }
+#undef SKIP_CMD
     }
 }
 
