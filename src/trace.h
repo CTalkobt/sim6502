@@ -60,7 +60,7 @@ static inline void trace_instruction(trace_t *trace, const cpu_t *cpu,
 	
 	if (!trace->enabled || !trace->file) return;
 	
-	unsigned long cycle_delta = cpu->cycles - cycles_before;
+	(void)cycles_before;
 	
 	fprintf(trace->file, "%04X | %s  | 0x0000   | %02X %02X %02X %02X %02X | %lu\n",
 		cpu->pc,
@@ -74,6 +74,8 @@ static inline void trace_instruction_full(trace_t *trace, const cpu_t *cpu,
 	const char *mnemonic, const char *addr_mode, unsigned long cycles_before) {
 	
 	if (!trace->enabled || !trace->file) return;
+	
+	(void)cycles_before;
 	
 	fprintf(trace->file, "%04X | %-3s | %s | %02X %02X %02X %02X %02X | %lu\n",
 		cpu->pc,

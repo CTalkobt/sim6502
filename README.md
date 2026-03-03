@@ -116,7 +116,7 @@ EXECUTION
 
 DEBUGGING
   -I, --interactive        Enter interactive monitor (no source file required)
-  -b, --break <ADDR>       Set a breakpoint (hex address, e.g. 0x1000 or $1000)
+  -b, --break <ADDR>       Set a breakpoint (hex address, e.g. 0x1000 or $1000; can also take an optional condition)
   -t, --trace [FILE]       Enable execution trace; optional output file
 
 MEMORY
@@ -254,7 +254,7 @@ All commands that take an address or numeric value accept `$hex`, `%binary`, or 
 |---------|-------------|
 | `step [n]` | Execute `n` instructions (default 1). Blank line also steps once. |
 | `run` | Run until BRK, STP, or a breakpoint |
-| `break <addr>` | Set a breakpoint |
+| `break <addr> [cond]` | Set a breakpoint with an optional condition (e.g., `PC == $1234 && A == $00 && .Z == 1`) |
 | `clear <addr>` | Remove a breakpoint |
 | `list` | List all breakpoints |
 | `regs` | Show all registers (A X Y Z B S P PC Cycles) |
@@ -272,6 +272,16 @@ All commands that take an address or numeric value accept `$hex`, `%binary`, or 
 | `info <mnemonic>` | Show addressing modes and cycles for an opcode |
 | `help` | Show command summary |
 | `quit` / `exit` | Exit the simulator |
+
+### Breakpoint Conditions
+
+Conditions use the syntax `REG OP VAL` or `REG OP REG`, joined by `&&`.
+- **Registers**: `A, X, Y, Z, B, S (or SP), P, PC`
+- **Flags**: `.C, .Z, .I, .D, .B, .V, .N` (return 1 if set, 0 if clear)
+- **Operators**: `==, !=, <, >, <=, >=`
+- **Values**: `$hex`, `%binary`, or decimal.
+
+Example: `break $C000 A == $00 && .Z == 1`
 
 ### Example Session
 

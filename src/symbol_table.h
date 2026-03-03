@@ -55,14 +55,14 @@ static inline int symbol_add(symbol_table_t *st, const char *name,
 		}
 	}
 	
-	strncpy(st->symbols[st->count].name, name, MAX_SYMBOL_NAME - 1);
+	strncpy(st->symbols[st->count].name, name, MAX_SYMBOL_NAME);
 	st->symbols[st->count].name[MAX_SYMBOL_NAME - 1] = 0;
 	st->symbols[st->count].address = addr;
 	st->symbols[st->count].type = type;
 	st->symbols[st->count].size = 1;
 	
 	if (comment) {
-		strncpy(st->symbols[st->count].comment, comment, MAX_SYMBOL_COMMENT - 1);
+		strncpy(st->symbols[st->count].comment, comment, MAX_SYMBOL_COMMENT);
 		st->symbols[st->count].comment[MAX_SYMBOL_COMMENT - 1] = 0;
 	} else {
 		st->symbols[st->count].comment[0] = 0;

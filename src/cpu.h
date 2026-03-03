@@ -12,6 +12,7 @@ typedef enum {
 typedef struct {
 	unsigned short address;
 	int enabled;
+	char condition[128];
 } breakpoint_t;
 
 typedef struct {

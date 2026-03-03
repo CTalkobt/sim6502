@@ -1238,17 +1238,21 @@ $ ./sim6502 -a main program.asm
 
 ### Debugging
 
-**`-b <addr>` / `--break <addr>`**
+**`-b <addr> [cond]` / `--break <addr> [cond]`**
 
-Set a breakpoint. The simulator halts before executing the instruction at that address and
-prints the register state. You can set up to 16 breakpoints:
+Set a breakpoint with an optional condition. The simulator halts before executing the
+instruction at that address and prints the register state, but only if the provided
+condition (if any) evaluates to true. You can set up to 16 breakpoints.
 
+Conditions use the syntax `REG OP VAL` or `REG OP REG`, joined by `&&`.
+Supported registers: `A, X, Y, Z, B, SP, P, PC`.
+Supported flags: `.C, .Z, .I, .D, .B, .V, .N` (return 1 if set, 0 if clear).
+Supported operators: `==, !=, <, >, <=, >=`.
+Values accept `$hex`, `%binary`, and decimal.
+
+Example:
 ```
-$ ./sim6502 -b 0x0204 tests/6502_basic.asm
-Starting execution at 0x0200...
-
-Execution Finished.
-Registers: A=42 X=10 Y=00 S=FF PC=0204
+$ ./sim6502 -b "$0204 A == $42" tests/6502_basic.asm
 ```
 
 Execution stopped before the `LDY #$20` at `$0204`, so Y is still `$00`.
@@ -1419,22 +1423,36 @@ retain their current values unless you explicitly change them.
 
 ### Breakpoints
 
+Breakpoints can be unconditional (halting every time the address is reached) or
+conditional (halting only when a specific CPU state is met).
+
 ```
 > break $0204
+> break $0210 A == $42 && X > 5
 > list
 Breakpoints:
   0: 0x0204 [enabled]
+  1: 0x0210 [enabled] if A == $42 && X > 5
 > run
 STOP at $0204
+> run
+STOP at $0210
 > regs
-REGS A=42 X=10 Y=00 S=FF P=00 PC=0204 Cycles=4
+REGS A=42 X=06 Y=00 S=FF P=00 PC=0210 Cycles=12
 > clear $0204
 > list
-No breakpoints set.
+Breakpoints:
+  1: 0x0210 [enabled] if A == $42 && X > 5
 ```
 
-The simulator stopped before the `LDY #$20` at `$0204`. Y is still `$00`. Up to 16
-breakpoints can be active simultaneously.
+The `break` command supports conditions with the following rules:
+- **Registers**: `A, X, Y, Z, B, S (or SP), P, PC`
+- **Flags**: `.C, .Z, .I, .D, .B, .V, .N` (return 1 if set, 0 if clear)
+- **Operators**: `==, !=, <, >, <=, >=`
+- **Logic**: Multiple conditions can be joined by `&&`
+- **Literals**: `$hex`, `%binary`, or decimal values
+
+Up to 16 breakpoints can be active simultaneously.
 
 ### Register and Flag Modification
 

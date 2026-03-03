@@ -18,6 +18,8 @@
  * instruction_t: Represents a parsed instruction.
  * Global ROM array holds the program to allow random access (loops).
  */
+static int parse_mon_value(const char **pp, unsigned long *out);
+
 typedef struct {
 	char op[8];
 	unsigned char mode;
@@ -705,20 +707,6 @@ static int handle_trap(const symbol_table_t *st, cpu_t *cpu, memory_t *mem,
 	return 0;
 }
 
-static void execute(cpu_t *cpu, memory_t *mem, instruction_t *instr,
-		const opcode_handler_t *handlers, int num_handlers) {
-	if (!instr->op[0]) return;
-	/* Promote a fresh EOM signal (1) to the active flat sentinel (2) that
-	 * _zp_ind_z handlers check.  Any stale sentinel (2) is cleared to 0. */
-	cpu->eom_prefix = (cpu->eom_prefix == 1) ? 2 : 0;
-	for (int i = 0; i < num_handlers; i++) {
-		if (strcmp(instr->op, handlers[i].mnemonic) == 0 && handlers[i].mode == instr->mode) {
-			handlers[i].fn(cpu, mem, instr->arg);
-			return;
-		}
-	}
-	cpu->eom_prefix = 0;
-}
 
 /* ============================================================
  * Dispatch table — O(1) byte-indexed execution (Phases 2+4)
@@ -1099,6 +1087,70 @@ static void run_asm_mode(memory_t *mem, symbol_table_t *symbols,
     printf("Assembly done.  End address: $%04X\n", (unsigned int)*asm_pc);
 }
 
+static unsigned long get_reg_val(const char *name, cpu_t *cpu) {
+    if      (strcasecmp(name, "A")  == 0) return cpu->a;
+    else if (strcasecmp(name, "X")  == 0) return cpu->x;
+    else if (strcasecmp(name, "Y")  == 0) return cpu->y;
+    else if (strcasecmp(name, "Z")  == 0) return cpu->z;
+    else if (strcasecmp(name, "B")  == 0) return cpu->b;
+    else if (strcasecmp(name, "S")  == 0 || strcasecmp(name, "SP") == 0) return cpu->s;
+    else if (strcasecmp(name, "P")  == 0) return cpu->p;
+    else if (strcasecmp(name, "PC") == 0) return cpu->pc;
+    else if (strcasecmp(name, ".C") == 0) return (cpu->p & FLAG_C) ? 1 : 0;
+    else if (strcasecmp(name, ".Z") == 0) return (cpu->p & FLAG_Z) ? 1 : 0;
+    else if (strcasecmp(name, ".I") == 0) return (cpu->p & FLAG_I) ? 1 : 0;
+    else if (strcasecmp(name, ".D") == 0) return (cpu->p & FLAG_D) ? 1 : 0;
+    else if (strcasecmp(name, ".B") == 0) return (cpu->p & FLAG_B) ? 1 : 0;
+    else if (strcasecmp(name, ".V") == 0) return (cpu->p & FLAG_V) ? 1 : 0;
+    else if (strcasecmp(name, ".N") == 0) return (cpu->p & FLAG_N) ? 1 : 0;
+    return 0;
+}
+
+int evaluate_condition(const char *cond, cpu_t *cpu) {
+    if (!cond || *cond == '\0') return 1;
+    
+    char buf[128];
+    strncpy(buf, cond, sizeof(buf)-1);
+    buf[sizeof(buf)-1] = '\0';
+    
+    /* Simple evaluator: split by '&&' and check each part */
+    /* Example: "PC == $1234 && A == $00" */
+    char *saveptr;
+    char *part = strtok_r(buf, "&&", &saveptr);
+    while (part) {
+        char left[32], op[8], right[32];
+        if (sscanf(part, "%31s %7s %31s", left, op, right) == 3) {
+            unsigned long lval = 0, rval = 0;
+            
+            /* Resolve left */
+            const char *p = left;
+            if (!parse_mon_value(&p, &lval)) {
+                lval = get_reg_val(left, cpu);
+            }
+            
+            /* Resolve right */
+            p = right;
+            if (!parse_mon_value(&p, &rval)) {
+                rval = get_reg_val(right, cpu);
+            }
+            
+            printf("DEBUG: evaluate_condition: %s %s %s -> %lu %s %lu\n", left, op, right, lval, op, rval);
+            
+            int ok = 0;
+            if      (strcmp(op, "==") == 0) ok = (lval == rval);
+            else if (strcmp(op, "!=") == 0) ok = (lval != rval);
+            else if (strcmp(op, "<")  == 0) ok = (lval < rval);
+            else if (strcmp(op, ">")  == 0) ok = (lval > rval);
+            else if (strcmp(op, "<=") == 0) ok = (lval <= rval);
+            else if (strcmp(op, ">=") == 0) ok = (lval >= rval);
+            
+            if (!ok) return 0;
+        }
+        part = strtok_r(NULL, "&&", &saveptr);
+    }
+    return 1;
+}
+
 /* parse_mon_value: parse a $hex, %binary, or decimal token from *pp.
  * Skips leading whitespace.  Returns 1 on success (value in *out, *pp
  * advanced past the token), 0 if no numeric token is found. */
@@ -1131,6 +1183,7 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
                                  symbol_table_t *symbols) {
     char line[256];
     char cmd[32];
+    (void)rom;
     setvbuf(stdout, NULL, _IONBF, 0);
     printf("6502 Simulator Interactive Mode\nType 'help' for commands.\n");
 
@@ -1164,8 +1217,16 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
         } else if (strcmp(cmd, "break") == 0) {
             const char *p = line; SKIP_CMD(p);
             unsigned long addr;
-            if (parse_mon_value(&p, &addr)) breakpoint_add(breakpoints, (unsigned short)addr);
-            else printf("Usage: break <addr>\n");
+            if (parse_mon_value(&p, &addr)) {
+                /* check for optional condition */
+                while (*p && isspace((unsigned char)*p)) p++;
+                if (*p != '\0') {
+                    breakpoint_add(breakpoints, (unsigned short)addr, p);
+                } else {
+                    breakpoint_add(breakpoints, (unsigned short)addr, NULL);
+                }
+            }
+            else printf("Usage: break <addr> [condition]\n");
         } else if (strcmp(cmd, "clear") == 0) {
             const char *p = line; SKIP_CMD(p);
             unsigned long addr;
@@ -1246,7 +1307,7 @@ static void run_interactive_mode(cpu_t *cpu, memory_t *mem, instruction_t *rom,
                 if (opc == 0x00) break;  /* BRK */
                 const dispatch_entry_t *te = peek_dispatch(cpu, mem, dt, *p_cpu_type);
                 if (te->mnemonic && strcmp(te->mnemonic, "STP") == 0) break;
-                if (breakpoint_hit(breakpoints, cpu->pc)) break;
+                if (breakpoint_hit(breakpoints, cpu)) break;
                 execute_from_mem(cpu, mem, dt, *p_cpu_type);
                 if (cpu->cycles > 100000000) break;
             }
@@ -1390,7 +1451,17 @@ int main(int argc, char *argv[]) {
 				else { info_mnemonic = arg; i++; }
 			}
 		} else if (strcmp(argv[i], "--info") == 0) { if (i + 1 < argc) { info_mnemonic = argv[i+1]; i++; } }
-		else if (strcmp(argv[i], "-b") == 0 || strcmp(argv[i], "--break") == 0) { if (i + 1 < argc) breakpoint_add(&breakpoints, (unsigned short)strtol(argv[++i], NULL, 16)); }
+		else if (strcmp(argv[i], "-b") == 0 || strcmp(argv[i], "--break") == 0) { 
+			if (i + 1 < argc) {
+				const char *p = argv[++i];
+				unsigned long addr;
+				if (parse_mon_value(&p, &addr)) {
+					while (*p && isspace((unsigned char)*p)) p++;
+					if (*p != '\0') breakpoint_add(&breakpoints, (unsigned short)addr, p);
+					else breakpoint_add(&breakpoints, (unsigned short)addr, NULL);
+				}
+			}
+		}
 		else if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--address") == 0) {
 			if (i + 1 < argc) {
 				if (argv[i+1][0] == '$') { start_addr = (unsigned short)strtol(argv[i+1] + 1, NULL, 16); start_addr_provided = 1; }
@@ -1551,16 +1622,19 @@ int main(int argc, char *argv[]) {
 
 	if (interactive_mode) { run_interactive_mode(&cpu, &mem, rom, &handlers, &num_handlers, &cpu_type, &dt, start_addr_provided ? start_addr : 0x0200, &breakpoints, &symbols); return 0; }
 
-	printf("\nStarting execution at 0x%04X...\n", cpu.pc);
+    printf("\nStarting execution at 0x%04X...\n", cpu.pc);
 	while (cpu.cycles < 100000) {
 		int tr = handle_trap(&symbols, &cpu, &mem, handlers);
 		if (tr < 0) break;	/* bad return address — halt */
 		if (tr > 0) continue;
+		if (breakpoint_hit(&breakpoints, &cpu)) {
+            printf("STOP at $%04X\n", cpu.pc);
+            break;
+        }
 		unsigned char opc = mem_read(&mem, cpu.pc);
 		if (opc == 0x00) break;  /* BRK halts */
 		const dispatch_entry_t *te = peek_dispatch(&cpu, &mem, &dt, cpu_type);
 		if (te->mnemonic && strcmp(te->mnemonic, "STP") == 0) break;
-		if (breakpoint_hit(&breakpoints, cpu.pc)) break;
 		if (trace_info.enabled) {
 			const char *mn = te->mnemonic ? te->mnemonic : "???";
 			trace_instruction_full(&trace_info, &cpu, mn, mode_name(te->mode), cpu.cycles);

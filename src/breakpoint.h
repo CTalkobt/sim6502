@@ -17,16 +17,23 @@ static inline void breakpoint_init(breakpoint_list_t *bp_list) {
 	for (int i = 0; i < MAX_BREAKPOINTS; i++) {
 		bp_list->breakpoints[i].address = 0;
 		bp_list->breakpoints[i].enabled = 0;
+		bp_list->breakpoints[i].condition[0] = '\0';
 	}
 }
 
-/* Add a breakpoint at address */
-static inline int breakpoint_add(breakpoint_list_t *bp_list, unsigned short address) {
+/* Add a breakpoint at address with optional condition */
+static inline int breakpoint_add(breakpoint_list_t *bp_list, unsigned short address, const char *condition) {
 	if (bp_list->count >= MAX_BREAKPOINTS) {
 		return 0;  /* Too many breakpoints */
 	}
 	bp_list->breakpoints[bp_list->count].address = address;
 	bp_list->breakpoints[bp_list->count].enabled = 1;
+	if (condition) {
+		strncpy(bp_list->breakpoints[bp_list->count].condition, condition, sizeof(bp_list->breakpoints[bp_list->count].condition) - 1);
+		bp_list->breakpoints[bp_list->count].condition[sizeof(bp_list->breakpoints[bp_list->count].condition) - 1] = '\0';
+	} else {
+		bp_list->breakpoints[bp_list->count].condition[0] = '\0';
+	}
 	bp_list->count++;
 	return 1;
 }
@@ -46,12 +53,20 @@ static inline int breakpoint_remove(breakpoint_list_t *bp_list, unsigned short a
 	return 0;
 }
 
-/* Check if PC has breakpoint */
-static inline int breakpoint_hit(breakpoint_list_t *bp_list, unsigned short pc) {
+/* Check if PC has breakpoint and condition is met */
+static inline int breakpoint_hit(breakpoint_list_t *bp_list, cpu_t *cpu) {
 	for (int i = 0; i < bp_list->count; i++) {
 		if (bp_list->breakpoints[i].enabled && 
-		    bp_list->breakpoints[i].address == pc) {
-			return 1;
+		    bp_list->breakpoints[i].address == cpu->pc) {
+			if (bp_list->breakpoints[i].condition[0] != '\0') {
+				/* Forward declaration or header needed for evaluate_condition */
+				extern int evaluate_condition(const char *cond, cpu_t *cpu);
+				if (evaluate_condition(bp_list->breakpoints[i].condition, cpu)) {
+					return 1;
+				}
+			} else {
+				return 1;
+			}
 		}
 	}
 	return 0;
@@ -65,8 +80,10 @@ static inline void breakpoint_list(breakpoint_list_t *bp_list) {
 	}
 	printf("Breakpoints:\n");
 	for (int i = 0; i < bp_list->count; i++) {
-		printf("  %d: 0x%04X %s\n", i, bp_list->breakpoints[i].address,
-			bp_list->breakpoints[i].enabled ? "[enabled]" : "[disabled]");
+		printf("  %d: 0x%04X %s%s%s\n", i, bp_list->breakpoints[i].address,
+			bp_list->breakpoints[i].enabled ? "[enabled]" : "[disabled]",
+			bp_list->breakpoints[i].condition[0] ? " if " : "",
+			bp_list->breakpoints[i].condition);
 	}
 }
 

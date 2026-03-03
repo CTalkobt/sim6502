@@ -43,7 +43,7 @@ This document outlines suggested next steps, feature enhancements, and technical
 *   [ ] Allow binary file saving of mem (eg: BSave "filename" START END ) will save the filename at address range.
 *   [ ] Allow disassembly of memory (eg: D or Disasm START END) if just D then use PC. 
 *   [ ] Improved Trace Formatting: Make trace output more readable and include register changes (e.g., "A: 00 -> 01").
-*   [ ] Conditional Breakpoints: Support breakpoints that trigger only when a condition is met (e.g., "PC == $1234 && A == $00").
+*   [X] Conditional Breakpoints: Support breakpoints that trigger only when a condition is met (e.g., "PC == $1234 && A == $00").
 *   [ ] Reverse Debugging: Implement a limited "step back" capability by keeping a history of CPU states.
 *   [ ] Stack Visualization: Add a dedicated view for the current stack contents and depth.
 *   [ ] Disassembler Integration: Improve the trace and memory viewer to show disassembled instructions alongside hex values.

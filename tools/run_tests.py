@@ -3,6 +3,7 @@ import os
 import subprocess
 import re
 import sys
+import shlex
 
 def run_test(asm_file):
     print(f"Running test: {asm_file}...", end=" ", flush=True)
@@ -20,7 +21,7 @@ def run_test(asm_file):
                 expectations = m.group(1).strip()
             m = re.search(r'FLAGS: (.*)', line)
             if m:
-                extra_flags = m.group(1).strip().split()
+                extra_flags = shlex.split(m.group(1).strip())
 
     if expectations is None:
         print("SKIP (no expectations found)")
