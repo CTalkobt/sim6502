@@ -33,6 +33,7 @@ This document outlines suggested next steps, feature enhancements, and technical
 *   [ ] Memory Mapping (MMU): Support for banking and the MEGA65 MAP instructions.
 *   [ ] I/O Region Simulation: Implement basic hardware registers (e.g., VIC-II, SID, or MEGA65 specific registers) to allow running more complex programs.
 *   [ ] Read/Write Callbacks: Allow attaching functional hooks to specific memory addresses (useful for simulating hardware I/O).
+*   [ ] VIC Register Model: Maintain a structured parse of VIC-II ($D000–$D3FF), VIC-III ($D000–$D7FF), and VIC-IV ($D000–$DFFF) register banks so that the GUI graphics viewer can query video mode, sprite state, color RAM, and bitmap/character base addresses without raw memory scanning.
 *   [ ] Memory Protection: Add the ability to mark regions as Read-Only or No-Execute.
 
 3. Debugging & Trace Features
@@ -44,7 +45,12 @@ This document outlines suggested next steps, feature enhancements, and technical
 *   [ ] Allow disassembly of memory (eg: D or Disasm START END) if just D then use PC. 
 *   [ ] Improved Trace Formatting: Make trace output more readable and include register changes (e.g., "A: 00 -> 01").
 *   [X] Conditional Breakpoints: Support breakpoints that trigger only when a condition is met (e.g., "PC == $1234 && A == $00").
-*   [ ] Reverse Debugging: Implement a limited "step back" capability by keeping a history of CPU states.
+*   [ ] Reverse Debugging / Execution History: Implement full forward/backward time-travel by recording a delta log after every instruction:
+    *   [ ] History entry format: full cpu_t snapshot (~32 bytes) + sparse memory delta ({addr, old_value} pairs from the write log).
+    *   [ ] Ring buffer with configurable depth (e.g. 1M entries); automatic eviction of oldest entry when full.
+    *   [ ] `sim_history_push()` API call made automatically by sim_step(); `sim_history_step_back()` restores the previous cpu_t and re-applies inverse memory writes.
+    *   [ ] GUI time-machine pane: timeline slider, step-back/step-forward buttons, "rewind to breakpoint" (reverse-continue until a condition is true).
+    *   [ ] CLI command: `stepback [n]` / `sb [n]` to step backwards N instructions.
 *   [ ] Stack Visualization: Add a dedicated view for the current stack contents and depth.
 *   [ ] Disassembler Integration: Improve the trace and memory viewer to show disassembled instructions alongside hex values.
 
@@ -63,6 +69,12 @@ This document outlines suggested next steps, feature enhancements, and technical
 *   [X] MCP Server Implementation: Wrap the simulator in a Model Context Protocol server to expose execution control to LLMs.
 *   [ ] Web-based UI: Use the existing plugin-gemini structure or similar to create a visual representation of the CPU state and memory.
 *   [ ] Configuration Files: Support for .ini or .json files to specify CPU type, memory maps, and pre-loaded binaries.
+*   [ ] GUI — VIC Viewer pane: Live rendered video output derived from current VIC-II/III/IV register state and memory contents; sprite inspector, character set browser, bitmap viewer, color RAM editor. Export frames and sprites as PNG.
+*   [ ] GUI — Execution History / Time Machine pane: Timeline slider over the delta-log ring buffer; step-back/step-forward buttons; table of historical register states; "rewind to breakpoint" reverse-continue.
+*   [ ] GUI — Remote Hardware Integration:
+    *   [ ] VICE remote monitor protocol (TCP, default port 6510): connect/disconnect UI; forward step/run/pause/memory-read/write/breakpoint commands to a live VICE instance; all display panes driven from remote state when connected.
+    *   [ ] M65dbg serial protocol: connect to MEGA65 via USB serial (typically 2 Mbps); send debug commands to read/write 28-bit address space, set breakpoints, single-step; device path + baud rate configurable.
+    *   [ ] M65dbg Ethernet protocol: connect to MEGA65 via IP address (port 4510); same command set as serial; enables debugging over LAN without a USB cable.
 
 6. Documentation
 ---------------

@@ -2,7 +2,7 @@
 
 A single-pass assembler and executor for 6502 and compatible processors, with an interactive monitor, symbol table support, and an MCP server for LLM integration.
 
-For a full walkthrough of all features, see **[tutorial.md](tutorial.md)**.
+For a full walkthrough of all features, see **[doc/tutorial.md](doc/tutorial.md)**
 
 Help with this development by contributing and buy me coffee at: https://kodecoffee.com/i/ctalkobt
 
