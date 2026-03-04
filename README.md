@@ -1,6 +1,6 @@
 # 6502 Simulator
 
-A single-pass assembler and executor for 6502 and compatible processors, with an interactive monitor, symbol table support, and an MCP server for LLM integration.
+A single-pass assembler and executor for 6502 and compatible processors, with an interactive monitor, symbol table support, a Dear ImGui-based graphical debugger, and an MCP server for LLM integration.
 
 For a full walkthrough of all features, see **[doc/tutorial.md](doc/tutorial.md)**
 
@@ -11,15 +11,16 @@ Help with this development by contributing and buy me coffee at: https://kodecof
 ## Table of Contents
 
 1. [Features](#features)
-2. [Building](#building)
-3. [Quick Start](#quick-start)
-4. [Command-Line Options](#command-line-options)
-5. [Assembler Syntax](#assembler-syntax)
-6. [Interactive Monitor](#interactive-monitor)
-7. [Symbol Tables](#symbol-tables)
-8. [MCP Server](#mcp-server)
-9. [File Structure](#file-structure)
-10. [Known Limitations](#known-limitations)
+2. [Graphical Debugger (GUI)](#graphical-debugger-gui)
+3. [Building](#building)
+4. [Quick Start](#quick-start)
+5. [Command-Line Options](#command-line-options)
+6. [Assembler Syntax](#assembler-syntax)
+7. [Interactive Monitor](#interactive-monitor)
+8. [Symbol Tables](#symbol-tables)
+9. [MCP Server](#mcp-server)
+10. [File Structure](#file-structure)
+11. [Known Limitations](#known-limitations)
 
 ---
 
@@ -34,6 +35,7 @@ Help with this development by contributing and buy me coffee at: https://kodecof
 | `65c02` | CMOS 65C02 | WDC extensions (BIT imm, STZ, TRB, TSB, …) |
 | `65ce02` | CSG 65CE02 | Adds Z register, B register, 16-bit branches, word ops |
 | `45gs02` | MEGA65 45GS02 | Full 32-bit quad instructions via `$42 $42` prefix, MAP, flat addressing |
+| `GUI` | Graphical IDE | Dear ImGui-based multi-pane debugger with VIC-II/IV support |
 
 ### Assembler
 
@@ -59,15 +61,38 @@ The simulator includes a two-pass assembler that runs before execution:
 
 ---
 
+## Graphical Debugger (GUI)
+
+Note: The GUI is currently in active development and likely does not support all the functionalities of the full interactive mode at the moment. 
+
+The simulator includes a comprehensive IDE-style debugger built with **Dear ImGui**. It provides a real-time, multi-pane view of the processor state and allows for interactive development.
+
+### Key GUI Panes
+
+- **Register Display**: Live view of all CPU registers (A, X, Y, Z, B, SP, PC) and status flags.
+- **Disassembly View**: Real-time disassembly of memory around the program counter, with breakpoint toggles and source-code interleaving.
+- **Memory View**: Hex + ASCII dump of any 64KB (or 28-bit) memory region with "follow PC" mode.
+- **CLI Console**: A full-featured interactive terminal mirroring the `-I` monitor mode.
+- **VIC-II/IV Viewer**: Graphical rendering of C64/MEGA65 video memory, including character modes, bitmaps, and hardware sprites.
+- **Execution History**: A "time machine" that records past instructions, allowing you to step backwards and forwards through time to find bugs.
+- **Remote Hardware**: Connect the GUI to a real **MEGA65** or **VICE** instance to debug real hardware live.
+
+---
+
 ## Building
 
 ```bash
-make          # build sim6502 binary
+make          # build sim6502 (CLI)
+make gui      # build sim6502-gui (Graphical Debugger)
 make test     # build and run test suite
-make clean    # remove object files and binary
+make clean    # remove object files and binaries
 ```
 
-Requirements: GCC (or compatible C99 compiler), GNU Make, Linux/macOS.
+### Requirements
+
+- **CLI**: GCC (or compatible C99 compiler), GNU Make.
+- **GUI**: G++ (C++11 or later), `libsdl2-dev`, `libgl-dev`, `pkg-config`. 
+  - *Note: Dear ImGui is automatically fetched from GitHub on first `make gui`.*
 
 ---
 
@@ -79,6 +104,9 @@ Requirements: GCC (or compatible C99 compiler), GNU Make, Linux/macOS.
 
 # Choose a processor variant
 ./sim6502 -p 45gs02 examples/45gs02_test.asm
+
+# Launch the Graphical Debugger
+./sim6502-gui
 
 # Interactive monitor with a source file
 ./sim6502 -I examples/hello.asm
@@ -442,6 +470,7 @@ Or add to `~/.claude/settings.json`:
 ├── tools/
 │   └── run_tests.py            Test runner (parses ; EXPECT: comments)
 ├── plugin-gemini/              MCP server (Node.js)
+├── gui/                        Graphical IDE source (Dear ImGui)
 ├── Makefile
 └── README.md
 ```
