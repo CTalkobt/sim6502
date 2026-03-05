@@ -445,32 +445,26 @@ Or add to `~/.claude/settings.json`:
 ```
 6502-simulator/
 ├── src/
-│   ├── sim6502.c               Main: assembler, executor, monitor, main()
-│   ├── cpu.h                   cpu_t struct, flag/mode constants, BCD helpers
-│   ├── memory.h                64KB + 28-bit sparse memory, MAP translation
-│   ├── opcodes.h               opcode_handler_t struct, extern table declarations
-│   ├── opcodes_6502.c          NMOS 6502 opcode table
-│   ├── opcodes_6502_undoc.c    Undocumented NMOS opcodes
-│   ├── opcodes_65c02.c         CMOS 65C02 extensions
-│   ├── opcodes_65ce02.c        CSG 65CE02 extensions
-│   ├── opcodes_45gs02.c        MEGA65 45GS02 (quad/flat instructions)
-│   ├── breakpoint.h            Breakpoint list
-│   ├── trace.h                 Execution trace
-│   ├── memory_viewer.h         Memory hex dump
-│   ├── interrupt_manager.h     IRQ/NMI injection
-│   └── symbol_table.h          Symbol table (load, lookup, display)
-├── symbols/
-│   ├── c64.sym                 Commodore 64
-│   ├── c128.sym                Commodore 128
-│   ├── mega65.sym              MEGA65
-│   └── x16.sym                 Commander X16
+│   ├── cli/                    Command-line interface (main.c, commands.c)
+│   ├── core/                   Simulator engine and common components
+│   │   ├── assembler.c         Single-pass assembler
+│   │   ├── cpu_engine.c        CPU execution loop
+│   │   ├── disassembler.c      Instruction decoder
+│   │   ├── memory.h            Sparse memory and MMU/MAP logic
+│   │   ├── sim_api.c           Core API for frontend/IDE integration
+│   │   └── opcodes/             Processor-specific opcode tables
+│   │       ├── 6502.c          Standard NMOS 6502
+│   │       ├── 65c02.c         CMOS 65C02
+│   │       ├── 65ce02.c        CSG 65CE02
+│   │       └── 45gs02.c        MEGA65 45GS02
+│   └── gui/                    Dear ImGui-based debugger source
+├── doc/                        Tutorials and development plans
+├── ref/                        Reference documentation and PDF manuals
+├── symbols/                    Preset architecture symbol tables (.sym)
 ├── examples/                   Sample assembly programs
-├── tests/                      Regression tests (.asm + expected register output)
-│   └── data/                   Binary fixture files for .bin tests
-├── tools/
-│   └── run_tests.py            Test runner (parses ; EXPECT: comments)
-├── plugin-gemini/              MCP server (Node.js)
-├── gui/                        Graphical IDE source (Dear ImGui)
+├── tests/                      Regression tests (.asm + expectation)
+├── tools/                      Test runner and utility scripts
+├── plugin-gemini/              MCP server for LLM integration (Node.js)
 ├── Makefile
 └── README.md
 ```
