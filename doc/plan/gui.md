@@ -791,7 +791,7 @@ Users can save the current docking layout + open panes as a named preset (e.g., 
 19. Layout presets (save/load)
 20. Multi-instance panes (additional memory views)
 21. Drag-and-drop file loading
-22. macOS / Windows build testing and fixes
+22. <SKIPPED>
 
 ### Phase 6 — Graphics & Time Travel
 23. Execution History ring buffer infrastructure (`history.h`, `sim_history_*` API)
@@ -810,6 +810,9 @@ Users can save the current docking layout + open panes as a named preset (e.g., 
 34. M65dbg Ethernet adapter (`m65dbg_eth.cpp`): IP/port config, TCP transport
 35. All display panes driven from remote target when connected
 36. VIC-IV live hardware frame capture via M65dbg bulk memory read
+
+### Phase future
+99. macOS / Windows build testing and fixes
 
 ---
 

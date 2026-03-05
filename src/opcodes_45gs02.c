@@ -1200,6 +1200,682 @@ static void deq(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	cpu->pc += 1;
 }
 
+/* --- Missing standard opcodes --- */
+
+static void ora_ind_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, (arg + cpu->x) & 0xFF) |
+		(mem_read(mem, (arg + cpu->x + 1) & 0xFF) << 8);
+	cpu->a |= mem_read(mem, addr);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 6;
+	cpu->pc += 2;
+}
+
+static void ora_ind_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	cpu->a |= mem_read(mem, addr + cpu->y);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
+static void ora_abs_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	cpu->a |= mem_read(mem, arg + cpu->y);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 4;
+	cpu->pc += 3;
+}
+
+static void ora_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	cpu->a |= mem_read(mem, arg + cpu->x);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 4;
+	cpu->pc += 3;
+}
+
+static void and_ind_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, (arg + cpu->x) & 0xFF) |
+		(mem_read(mem, (arg + cpu->x + 1) & 0xFF) << 8);
+	cpu->a &= mem_read(mem, addr);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 6;
+	cpu->pc += 2;
+}
+
+static void and_ind_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	cpu->a &= mem_read(mem, addr + cpu->y);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
+static void and_abs_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	cpu->a &= mem_read(mem, arg + cpu->y);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 4;
+	cpu->pc += 3;
+}
+
+static void and_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	cpu->a &= mem_read(mem, arg + cpu->x);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 4;
+	cpu->pc += 3;
+}
+
+static void eor_ind_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, (arg + cpu->x) & 0xFF) |
+		(mem_read(mem, (arg + cpu->x + 1) & 0xFF) << 8);
+	cpu->a ^= mem_read(mem, addr);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 6;
+	cpu->pc += 2;
+}
+
+static void eor_ind_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	cpu->a ^= mem_read(mem, addr + cpu->y);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
+static void eor_abs_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	cpu->a ^= mem_read(mem, arg + cpu->y);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 4;
+	cpu->pc += 3;
+}
+
+static void eor_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	cpu->a ^= mem_read(mem, arg + cpu->x);
+	update_nz(cpu, cpu->a);
+	cpu->cycles += 4;
+	cpu->pc += 3;
+}
+
+static void sbc_ind_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, (arg + cpu->x) & 0xFF) |
+		(mem_read(mem, (arg + cpu->x + 1) & 0xFF) << 8);
+	do_sbc(cpu, mem_read(mem, addr));
+	cpu->cycles += 6;
+	cpu->pc += 2;
+}
+
+static void sbc_ind_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	do_sbc(cpu, mem_read(mem, addr + cpu->y));
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
+static void sbc_abs_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	do_sbc(cpu, mem_read(mem, arg + cpu->y));
+	cpu->cycles += 4;
+	cpu->pc += 3;
+}
+
+static void sbc_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	do_sbc(cpu, mem_read(mem, arg + cpu->x));
+	cpu->cycles += 4;
+	cpu->pc += 3;
+}
+
+static void cmp_ind_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, (arg + cpu->x) & 0xFF) |
+		(mem_read(mem, (arg + cpu->x + 1) & 0xFF) << 8);
+	unsigned char val = mem_read(mem, addr);
+	set_flag(cpu, FLAG_C, cpu->a >= val);
+	update_nz(cpu, (cpu->a - val) & 0xFF);
+	cpu->cycles += 6;
+	cpu->pc += 2;
+}
+
+static void cmp_ind_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short addr = mem_read(mem, arg & 0xFF) | (mem_read(mem, (arg + 1) & 0xFF) << 8);
+	unsigned char val = mem_read(mem, addr + cpu->y);
+	set_flag(cpu, FLAG_C, cpu->a >= val);
+	update_nz(cpu, (cpu->a - val) & 0xFF);
+	cpu->cycles += 5;
+	cpu->pc += 2;
+}
+
+static void cmp_abs_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char val = mem_read(mem, arg + cpu->y);
+	set_flag(cpu, FLAG_C, cpu->a >= val);
+	update_nz(cpu, (cpu->a - val) & 0xFF);
+	cpu->cycles += 4;
+	cpu->pc += 3;
+}
+
+static void cmp_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char val = mem_read(mem, arg + cpu->x);
+	set_flag(cpu, FLAG_C, cpu->a >= val);
+	update_nz(cpu, (cpu->a - val) & 0xFF);
+	cpu->cycles += 4;
+	cpu->pc += 3;
+}
+
+static void asl_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char val = mem_read(mem, arg + cpu->x);
+	set_flag(cpu, FLAG_C, val & 0x80);
+	val = (val << 1) & 0xFF;
+	mem_write(mem, arg + cpu->x, val);
+	update_nz(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 3;
+}
+
+static void rol_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char val = mem_read(mem, arg + cpu->x);
+	int c = get_flag(cpu, FLAG_C);
+	set_flag(cpu, FLAG_C, val & 0x80);
+	val = ((val << 1) | c) & 0xFF;
+	mem_write(mem, arg + cpu->x, val);
+	update_nz(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 3;
+}
+
+static void lsr_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char val = mem_read(mem, arg + cpu->x);
+	set_flag(cpu, FLAG_C, val & 0x01);
+	val >>= 1;
+	mem_write(mem, arg + cpu->x, val);
+	update_nz(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 3;
+}
+
+static void ror_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char val = mem_read(mem, arg + cpu->x);
+	int c = get_flag(cpu, FLAG_C);
+	set_flag(cpu, FLAG_C, val & 0x01);
+	val = ((val >> 1) | (c << 7)) & 0xFF;
+	mem_write(mem, arg + cpu->x, val);
+	update_nz(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 3;
+}
+
+static void sty_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	mem_write(mem, arg + cpu->x, cpu->y);
+	cpu->cycles += 5;
+	cpu->pc += 3;
+}
+
+static void stx_abs_y(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	mem_write(mem, arg + cpu->y, cpu->x);
+	cpu->cycles += 5;
+	cpu->pc += 3;
+}
+
+static void cpx_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char val = mem_read(mem, arg);
+	set_flag(cpu, FLAG_C, cpu->x >= val);
+	update_nz(cpu, (cpu->x - val) & 0xFF);
+	cpu->cycles += 4;
+	cpu->pc += 3;
+}
+
+static void cpy_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char val = mem_read(mem, arg);
+	set_flag(cpu, FLAG_C, cpu->y >= val);
+	update_nz(cpu, (cpu->y - val) & 0xFF);
+	cpu->cycles += 4;
+	cpu->pc += 3;
+}
+
+static void dec_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char val = (mem_read(mem, arg + cpu->x) - 1) & 0xFF;
+	mem_write(mem, arg + cpu->x, val);
+	update_nz(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 3;
+}
+
+static void inc_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char val = (mem_read(mem, arg + cpu->x) + 1) & 0xFF;
+	mem_write(mem, arg + cpu->x, val);
+	update_nz(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 3;
+}
+
+/* --- Quad memory-addressed shift/rotate/inc/dec --- */
+
+static void aslq_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_zp(mem, (unsigned char)(arg & 0xFF));
+	set_flag(cpu, FLAG_C, (val >> 31) & 1);
+	val <<= 1;
+	mem_write32_zp(mem, (unsigned char)(arg & 0xFF), val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 2;
+}
+
+static void aslq_zp_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char addr = (unsigned char)((arg + cpu->x) & 0xFF);
+	unsigned int val = mem_read32_zp(mem, addr);
+	set_flag(cpu, FLAG_C, (val >> 31) & 1);
+	val <<= 1;
+	mem_write32_zp(mem, addr, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 2;
+}
+
+static void aslq_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_abs(mem, arg);
+	set_flag(cpu, FLAG_C, (val >> 31) & 1);
+	val <<= 1;
+	mem_write32_abs(mem, arg, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 3;
+}
+
+static void aslq_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short ea = (unsigned short)(arg + cpu->x);
+	unsigned int val = mem_read32_abs(mem, ea);
+	set_flag(cpu, FLAG_C, (val >> 31) & 1);
+	val <<= 1;
+	mem_write32_abs(mem, ea, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 9;
+	cpu->pc += 3;
+}
+
+static void asrq_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_zp(mem, (unsigned char)(arg & 0xFF));
+	set_flag(cpu, FLAG_C, val & 1);
+	val = (val >> 1) | (val & 0x80000000);
+	mem_write32_zp(mem, (unsigned char)(arg & 0xFF), val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 2;
+}
+
+static void asrq_zp_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char addr = (unsigned char)((arg + cpu->x) & 0xFF);
+	unsigned int val = mem_read32_zp(mem, addr);
+	set_flag(cpu, FLAG_C, val & 1);
+	val = (val >> 1) | (val & 0x80000000);
+	mem_write32_zp(mem, addr, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 2;
+}
+
+static void lsrq_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_zp(mem, (unsigned char)(arg & 0xFF));
+	set_flag(cpu, FLAG_C, val & 1);
+	val >>= 1;
+	mem_write32_zp(mem, (unsigned char)(arg & 0xFF), val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 2;
+}
+
+static void lsrq_zp_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char addr = (unsigned char)((arg + cpu->x) & 0xFF);
+	unsigned int val = mem_read32_zp(mem, addr);
+	set_flag(cpu, FLAG_C, val & 1);
+	val >>= 1;
+	mem_write32_zp(mem, addr, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 2;
+}
+
+static void lsrq_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_abs(mem, arg);
+	set_flag(cpu, FLAG_C, val & 1);
+	val >>= 1;
+	mem_write32_abs(mem, arg, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 3;
+}
+
+static void lsrq_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short ea = (unsigned short)(arg + cpu->x);
+	unsigned int val = mem_read32_abs(mem, ea);
+	set_flag(cpu, FLAG_C, val & 1);
+	val >>= 1;
+	mem_write32_abs(mem, ea, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 9;
+	cpu->pc += 3;
+}
+
+static void rolq_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_zp(mem, (unsigned char)(arg & 0xFF));
+	int c = get_flag(cpu, FLAG_C);
+	set_flag(cpu, FLAG_C, (val >> 31) & 1);
+	val = (val << 1) | (unsigned int)c;
+	mem_write32_zp(mem, (unsigned char)(arg & 0xFF), val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 2;
+}
+
+static void rolq_zp_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char addr = (unsigned char)((arg + cpu->x) & 0xFF);
+	unsigned int val = mem_read32_zp(mem, addr);
+	int c = get_flag(cpu, FLAG_C);
+	set_flag(cpu, FLAG_C, (val >> 31) & 1);
+	val = (val << 1) | (unsigned int)c;
+	mem_write32_zp(mem, addr, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 2;
+}
+
+static void rolq_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_abs(mem, arg);
+	int c = get_flag(cpu, FLAG_C);
+	set_flag(cpu, FLAG_C, (val >> 31) & 1);
+	val = (val << 1) | (unsigned int)c;
+	mem_write32_abs(mem, arg, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 3;
+}
+
+static void rolq_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short ea = (unsigned short)(arg + cpu->x);
+	unsigned int val = mem_read32_abs(mem, ea);
+	int c = get_flag(cpu, FLAG_C);
+	set_flag(cpu, FLAG_C, (val >> 31) & 1);
+	val = (val << 1) | (unsigned int)c;
+	mem_write32_abs(mem, ea, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 9;
+	cpu->pc += 3;
+}
+
+static void rorq_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_zp(mem, (unsigned char)(arg & 0xFF));
+	int c = get_flag(cpu, FLAG_C);
+	set_flag(cpu, FLAG_C, val & 1);
+	val = (val >> 1) | ((unsigned int)c << 31);
+	mem_write32_zp(mem, (unsigned char)(arg & 0xFF), val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 2;
+}
+
+static void rorq_zp_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char addr = (unsigned char)((arg + cpu->x) & 0xFF);
+	unsigned int val = mem_read32_zp(mem, addr);
+	int c = get_flag(cpu, FLAG_C);
+	set_flag(cpu, FLAG_C, val & 1);
+	val = (val >> 1) | ((unsigned int)c << 31);
+	mem_write32_zp(mem, addr, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 2;
+}
+
+static void rorq_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_abs(mem, arg);
+	int c = get_flag(cpu, FLAG_C);
+	set_flag(cpu, FLAG_C, val & 1);
+	val = (val >> 1) | ((unsigned int)c << 31);
+	mem_write32_abs(mem, arg, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 3;
+}
+
+static void rorq_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short ea = (unsigned short)(arg + cpu->x);
+	unsigned int val = mem_read32_abs(mem, ea);
+	int c = get_flag(cpu, FLAG_C);
+	set_flag(cpu, FLAG_C, val & 1);
+	val = (val >> 1) | ((unsigned int)c << 31);
+	mem_write32_abs(mem, ea, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 9;
+	cpu->pc += 3;
+}
+
+static void inq_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_zp(mem, (unsigned char)(arg & 0xFF)) + 1;
+	mem_write32_zp(mem, (unsigned char)(arg & 0xFF), val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 2;
+}
+
+static void inq_zp_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char addr = (unsigned char)((arg + cpu->x) & 0xFF);
+	unsigned int val = mem_read32_zp(mem, addr) + 1;
+	mem_write32_zp(mem, addr, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 2;
+}
+
+static void inq_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_abs(mem, arg) + 1;
+	mem_write32_abs(mem, arg, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 3;
+}
+
+static void inq_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short ea = (unsigned short)(arg + cpu->x);
+	unsigned int val = mem_read32_abs(mem, ea) + 1;
+	mem_write32_abs(mem, ea, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 9;
+	cpu->pc += 3;
+}
+
+static void deq_zp(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_zp(mem, (unsigned char)(arg & 0xFF)) - 1;
+	mem_write32_zp(mem, (unsigned char)(arg & 0xFF), val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 7;
+	cpu->pc += 2;
+}
+
+static void deq_zp_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char addr = (unsigned char)((arg + cpu->x) & 0xFF);
+	unsigned int val = mem_read32_zp(mem, addr) - 1;
+	mem_write32_zp(mem, addr, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 2;
+}
+
+static void deq_abs(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned int val = mem_read32_abs(mem, arg) - 1;
+	mem_write32_abs(mem, arg, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 8;
+	cpu->pc += 3;
+}
+
+static void deq_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned short ea = (unsigned short)(arg + cpu->x);
+	unsigned int val = mem_read32_abs(mem, ea) - 1;
+	mem_write32_abs(mem, ea, val);
+	update_nz_q(cpu, val);
+	cpu->cycles += 9;
+	cpu->pc += 3;
+}
+
+/* --- Quad indirect-Z ALU variants --- */
+
+static void adcq_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char zp = (unsigned char)(arg & 0xFF);
+	unsigned int val;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, zp)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 1)) << 8)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 2)) << 16)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 3)) << 24);
+		addr += cpu->z;
+		val = (unsigned int)far_mem_read(mem, addr)
+			| ((unsigned int)far_mem_read(mem, addr + 1) << 8)
+			| ((unsigned int)far_mem_read(mem, addr + 2) << 16)
+			| ((unsigned int)far_mem_read(mem, addr + 3) << 24);
+		cpu->cycles += 11;
+	} else {
+		unsigned short ptr = mem_read(mem, zp) | (mem_read(mem, (unsigned char)(zp + 1)) << 8);
+		val = mem_read32_abs(mem, (unsigned short)(ptr + cpu->z));
+		cpu->cycles += 9;
+	}
+	unsigned int q = get_q(cpu);
+	unsigned long long result = (unsigned long long)q + val + get_flag(cpu, FLAG_C);
+	set_flag(cpu, FLAG_C, result > 0xFFFFFFFFUL);
+	unsigned int r = (unsigned int)(result & 0xFFFFFFFF);
+	set_flag(cpu, FLAG_V, (~(q ^ val) & (q ^ r) & 0x80000000) != 0);
+	set_q(cpu, r);
+	update_nz_q(cpu, r);
+	cpu->pc += 2;
+}
+
+static void sbcq_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char zp = (unsigned char)(arg & 0xFF);
+	unsigned int val;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, zp)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 1)) << 8)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 2)) << 16)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 3)) << 24);
+		addr += cpu->z;
+		val = (unsigned int)far_mem_read(mem, addr)
+			| ((unsigned int)far_mem_read(mem, addr + 1) << 8)
+			| ((unsigned int)far_mem_read(mem, addr + 2) << 16)
+			| ((unsigned int)far_mem_read(mem, addr + 3) << 24);
+		cpu->cycles += 11;
+	} else {
+		unsigned short ptr = mem_read(mem, zp) | (mem_read(mem, (unsigned char)(zp + 1)) << 8);
+		val = mem_read32_abs(mem, (unsigned short)(ptr + cpu->z));
+		cpu->cycles += 9;
+	}
+	unsigned int q = get_q(cpu);
+	long long result = (long long)q - (long long)val - (1 - get_flag(cpu, FLAG_C));
+	set_flag(cpu, FLAG_C, result >= 0);
+	unsigned int r = (unsigned int)(result & 0xFFFFFFFF);
+	set_flag(cpu, FLAG_V, ((q ^ val) & (q ^ r) & 0x80000000) != 0);
+	set_q(cpu, r);
+	update_nz_q(cpu, r);
+	cpu->pc += 2;
+}
+
+static void cmpq_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char zp = (unsigned char)(arg & 0xFF);
+	unsigned int val;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, zp)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 1)) << 8)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 2)) << 16)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 3)) << 24);
+		addr += cpu->z;
+		val = (unsigned int)far_mem_read(mem, addr)
+			| ((unsigned int)far_mem_read(mem, addr + 1) << 8)
+			| ((unsigned int)far_mem_read(mem, addr + 2) << 16)
+			| ((unsigned int)far_mem_read(mem, addr + 3) << 24);
+		cpu->cycles += 11;
+	} else {
+		unsigned short ptr = mem_read(mem, zp) | (mem_read(mem, (unsigned char)(zp + 1)) << 8);
+		val = mem_read32_abs(mem, (unsigned short)(ptr + cpu->z));
+		cpu->cycles += 9;
+	}
+	unsigned int q = get_q(cpu);
+	set_flag(cpu, FLAG_C, q >= val);
+	update_nz_q(cpu, q - val);
+	cpu->pc += 2;
+}
+
+static void andq_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char zp = (unsigned char)(arg & 0xFF);
+	unsigned int val;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, zp)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 1)) << 8)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 2)) << 16)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 3)) << 24);
+		addr += cpu->z;
+		val = (unsigned int)far_mem_read(mem, addr)
+			| ((unsigned int)far_mem_read(mem, addr + 1) << 8)
+			| ((unsigned int)far_mem_read(mem, addr + 2) << 16)
+			| ((unsigned int)far_mem_read(mem, addr + 3) << 24);
+		cpu->cycles += 11;
+	} else {
+		unsigned short ptr = mem_read(mem, zp) | (mem_read(mem, (unsigned char)(zp + 1)) << 8);
+		val = mem_read32_abs(mem, (unsigned short)(ptr + cpu->z));
+		cpu->cycles += 9;
+	}
+	unsigned int r = get_q(cpu) & val;
+	set_q(cpu, r);
+	update_nz_q(cpu, r);
+	cpu->pc += 2;
+}
+
+static void eorq_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char zp = (unsigned char)(arg & 0xFF);
+	unsigned int val;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, zp)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 1)) << 8)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 2)) << 16)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 3)) << 24);
+		addr += cpu->z;
+		val = (unsigned int)far_mem_read(mem, addr)
+			| ((unsigned int)far_mem_read(mem, addr + 1) << 8)
+			| ((unsigned int)far_mem_read(mem, addr + 2) << 16)
+			| ((unsigned int)far_mem_read(mem, addr + 3) << 24);
+		cpu->cycles += 11;
+	} else {
+		unsigned short ptr = mem_read(mem, zp) | (mem_read(mem, (unsigned char)(zp + 1)) << 8);
+		val = mem_read32_abs(mem, (unsigned short)(ptr + cpu->z));
+		cpu->cycles += 9;
+	}
+	unsigned int r = get_q(cpu) ^ val;
+	set_q(cpu, r);
+	update_nz_q(cpu, r);
+	cpu->pc += 2;
+}
+
+static void orq_zp_ind_z(cpu_t *cpu, memory_t *mem, unsigned short arg) {
+	unsigned char zp = (unsigned char)(arg & 0xFF);
+	unsigned int val;
+	if (cpu->eom_prefix) {
+		cpu->eom_prefix = 0;
+		unsigned int addr = (unsigned int)mem_read(mem, zp)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 1)) << 8)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 2)) << 16)
+			| ((unsigned int)mem_read(mem, (unsigned char)(zp + 3)) << 24);
+		addr += cpu->z;
+		val = (unsigned int)far_mem_read(mem, addr)
+			| ((unsigned int)far_mem_read(mem, addr + 1) << 8)
+			| ((unsigned int)far_mem_read(mem, addr + 2) << 16)
+			| ((unsigned int)far_mem_read(mem, addr + 3) << 24);
+		cpu->cycles += 11;
+	} else {
+		unsigned short ptr = mem_read(mem, zp) | (mem_read(mem, (unsigned char)(zp + 1)) << 8);
+		val = mem_read32_abs(mem, (unsigned short)(ptr + cpu->z));
+		cpu->cycles += 9;
+	}
+	unsigned int r = get_q(cpu) | val;
+	set_q(cpu, r);
+	update_nz_q(cpu, r);
+	cpu->pc += 2;
+}
+
 extern void lda_imm(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void lda_abs(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void lda_abs_x(cpu_t *cpu, memory_t *mem, unsigned short arg);
@@ -1316,6 +1992,7 @@ extern void stz_zp_x(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void bra_rel(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void brl(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void jmp_abs(cpu_t *cpu, memory_t *mem, unsigned short arg);
+extern void jmp_abs_indirect(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void jmp_ind_x(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void jsr_abs(cpu_t *cpu, memory_t *mem, unsigned short arg);
 extern void rts(cpu_t *cpu, memory_t *mem, unsigned short arg);
@@ -1477,9 +2154,11 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"STX", MODE_ABSOLUTE, stx_abs, 4, 0, 0, 0, {0x8E}, 1},
 	{"STX", MODE_ZP, stx_zp, 3, 0, 0, 0, {0x86}, 1},
 	{"STX", MODE_ZP_Y, stx_zp_y, 4, 0, 0, 0, {0x96}, 1},
+	{"STX", MODE_ABSOLUTE_Y, stx_abs_y, 5, 0, 0, 0, {0x9B}, 1},
 	{"STY", MODE_ABSOLUTE, sty_abs, 4, 0, 0, 0, {0x8C}, 1},
 	{"STY", MODE_ZP, sty_zp, 3, 0, 0, 0, {0x84}, 1},
 	{"STY", MODE_ZP_X, sty_zp_x, 4, 0, 0, 0, {0x94}, 1},
+	{"STY", MODE_ABSOLUTE_X, sty_abs_x, 5, 0, 0, 0, {0x8B}, 1},
 	{"ADC", MODE_IMMEDIATE, adc_imm, 2, 0, 0, 0, {0x69}, 1},
 	{"ADC", MODE_ABSOLUTE, adc_abs, 4, 0, 0, 0, {0x6D}, 1},
 	{"ADC", MODE_ABSOLUTE_X, adc_abs_x, 4, 0, 0, 0, {0x7D}, 1},
@@ -1492,6 +2171,10 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"SBC", MODE_ABSOLUTE, sbc_abs, 4, 0, 0, 0, {0xED}, 1},
 	{"SBC", MODE_ZP, sbc_zp, 3, 0, 0, 0, {0xE5}, 1},
 	{"SBC", MODE_ZP_X, sbc_zp_x, 4, 0, 0, 0, {0xF5}, 1},
+	{"SBC", MODE_INDIRECT_X, sbc_ind_x, 6, 0, 0, 0, {0xE1}, 1},
+	{"SBC", MODE_INDIRECT_Y, sbc_ind_y, 5, 0, 0, 0, {0xF1}, 1},
+	{"SBC", MODE_ABSOLUTE_Y, sbc_abs_y, 4, 0, 0, 0, {0xF9}, 1},
+	{"SBC", MODE_ABSOLUTE_X, sbc_abs_x, 4, 0, 0, 0, {0xFD}, 1},
 	{"LDA", MODE_ZP_INDIRECT_Z, lda_zp_ind_z, 5, 0, 0, 0, {0xB2}, 1},
 	{"LDA", MODE_SP_INDIRECT_Y, lda_sp_ind_y, 6, 0, 0, 0, {0xE2}, 1},
 	{"STA", MODE_ZP_INDIRECT_Z, sta_zp_ind_z, 5, 0, 0, 0, {0x92}, 1},
@@ -1515,16 +2198,23 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"CMP", MODE_ABSOLUTE, cmp_abs, 4, 0, 0, 0, {0xCD}, 1},
 	{"CMP", MODE_ZP, cmp_zp, 3, 0, 0, 0, {0xC5}, 1},
 	{"CMP", MODE_ZP_X, cmp_zp_x, 4, 0, 0, 0, {0xD5}, 1},
+	{"CMP", MODE_INDIRECT_X, cmp_ind_x, 6, 0, 0, 0, {0xC1}, 1},
+	{"CMP", MODE_INDIRECT_Y, cmp_ind_y, 5, 0, 0, 0, {0xD1}, 1},
+	{"CMP", MODE_ABSOLUTE_Y, cmp_abs_y, 4, 0, 0, 0, {0xD9}, 1},
+	{"CMP", MODE_ABSOLUTE_X, cmp_abs_x, 4, 0, 0, 0, {0xDD}, 1},
 	{"CPZ", MODE_IMMEDIATE, cpz_imm, 2, 0, 0, 0, {0xC2}, 1},
 	{"CPZ", MODE_ABSOLUTE, cpz_abs, 4, 0, 0, 0, {0xDC}, 1},
 	{"CPZ", MODE_ZP, cpz_zp, 3, 0, 0, 0, {0xD4}, 1},
 	{"CPX", MODE_IMMEDIATE, cpx_imm, 2, 0, 0, 0, {0xE0}, 1},
 	{"CPX", MODE_ZP, cpx_zp, 3, 0, 0, 0, {0xE4}, 1},
+	{"CPX", MODE_ABSOLUTE, cpx_abs, 4, 0, 0, 0, {0xEC}, 1},
 	{"CPY", MODE_IMMEDIATE, cpy_imm, 2, 0, 0, 0, {0xC0}, 1},
 	{"CPY", MODE_ZP, cpy_zp, 3, 0, 0, 0, {0xC4}, 1},
+	{"CPY", MODE_ABSOLUTE, cpy_abs, 4, 0, 0, 0, {0xCC}, 1},
 	{"INC", MODE_ABSOLUTE, inc_abs, 6, 0, 0, 0, {0xEE}, 1},
 	{"INC", MODE_ZP, inc_zp, 5, 0, 0, 0, {0xE6}, 1},
 	{"INC", MODE_ZP_X, inc_zp_x, 6, 0, 0, 0, {0xF6}, 1},
+	{"INC", MODE_ABSOLUTE_X, inc_abs_x, 7, 0, 0, 0, {0xFE}, 1},
 	{"INA", MODE_IMPLIED, ina, 2, 0, 0, 0, {0x1A}, 1},
 	{"INX", MODE_IMPLIED, inx, 2, 0, 0, 0, {0xE8}, 1},
 	{"INY", MODE_IMPLIED, iny, 2, 0, 0, 0, {0xC8}, 1},
@@ -1532,6 +2222,7 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"DEC", MODE_ABSOLUTE, dec_abs, 6, 0, 0, 0, {0xCE}, 1},
 	{"DEC", MODE_ZP, dec_zp, 5, 0, 0, 0, {0xC6}, 1},
 	{"DEC", MODE_ZP_X, dec_zp_x, 6, 0, 0, 0, {0xD6}, 1},
+	{"DEC", MODE_ABSOLUTE_X, dec_abs_x, 7, 0, 0, 0, {0xDE}, 1},
 	{"DEA", MODE_IMPLIED, dea, 2, 0, 0, 0, {0x3A}, 1},
 	{"DEX", MODE_IMPLIED, dex, 2, 0, 0, 0, {0xCA}, 1},
 	{"DEY", MODE_IMPLIED, dey, 2, 0, 0, 0, {0x88}, 1},
@@ -1540,30 +2231,46 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"ASL", MODE_IMPLIED, asla, 2, 0, 0, 0, {0x0A}, 1},
 	{"ASL", MODE_ZP, asl_zp, 5, 0, 0, 0, {0x06}, 1},
 	{"ASL", MODE_ZP_X, asl_zp_x, 6, 0, 0, 0, {0x16}, 1},
+	{"ASL", MODE_ABSOLUTE_X, asl_abs_x, 7, 0, 0, 0, {0x1E}, 1},
 	{"LSR", MODE_ABSOLUTE, lsr_abs, 6, 0, 0, 0, {0x4E}, 1},
 	{"LSR", MODE_IMPLIED, lsra, 2, 0, 0, 0, {0x4A}, 1},
 	{"LSR", MODE_ZP, lsr_zp, 5, 0, 0, 0, {0x46}, 1},
 	{"LSR", MODE_ZP_X, lsr_zp_x, 6, 0, 0, 0, {0x56}, 1},
+	{"LSR", MODE_ABSOLUTE_X, lsr_abs_x, 7, 0, 0, 0, {0x5E}, 1},
 	{"ROL", MODE_ABSOLUTE, rol_abs, 6, 0, 0, 0, {0x2E}, 1},
 	{"ROL", MODE_IMPLIED, rola, 2, 0, 0, 0, {0x2A}, 1},
 	{"ROL", MODE_ZP, rol_zp, 5, 0, 0, 0, {0x26}, 1},
 	{"ROL", MODE_ZP_X, rol_zp_x, 6, 0, 0, 0, {0x36}, 1},
+	{"ROL", MODE_ABSOLUTE_X, rol_abs_x, 7, 0, 0, 0, {0x3E}, 1},
 	{"ROR", MODE_ABSOLUTE, ror_abs, 6, 0, 0, 0, {0x6E}, 1},
 	{"ROR", MODE_IMPLIED, rora, 2, 0, 0, 0, {0x6A}, 1},
 	{"ROR", MODE_ZP, ror_zp, 5, 0, 0, 0, {0x66}, 1},
 	{"ROR", MODE_ZP_X, ror_zp_x, 6, 0, 0, 0, {0x76}, 1},
+	{"ROR", MODE_ABSOLUTE_X, ror_abs_x, 7, 0, 0, 0, {0x7E}, 1},
 	{"AND", MODE_IMMEDIATE, and_imm, 2, 0, 0, 0, {0x29}, 1},
 	{"AND", MODE_ABSOLUTE, and_abs, 4, 0, 0, 0, {0x2D}, 1},
 	{"AND", MODE_ZP, and_zp, 3, 0, 0, 0, {0x25}, 1},
 	{"AND", MODE_ZP_X, and_zp_x, 4, 0, 0, 0, {0x35}, 1},
+	{"AND", MODE_INDIRECT_X, and_ind_x, 6, 0, 0, 0, {0x21}, 1},
+	{"AND", MODE_INDIRECT_Y, and_ind_y, 5, 0, 0, 0, {0x31}, 1},
+	{"AND", MODE_ABSOLUTE_Y, and_abs_y, 4, 0, 0, 0, {0x39}, 1},
+	{"AND", MODE_ABSOLUTE_X, and_abs_x, 4, 0, 0, 0, {0x3D}, 1},
 	{"EOR", MODE_IMMEDIATE, eor_imm, 2, 0, 0, 0, {0x49}, 1},
 	{"EOR", MODE_ABSOLUTE, eor_abs, 4, 0, 0, 0, {0x4D}, 1},
 	{"EOR", MODE_ZP, eor_zp, 3, 0, 0, 0, {0x45}, 1},
 	{"EOR", MODE_ZP_X, eor_zp_x, 4, 0, 0, 0, {0x55}, 1},
+	{"EOR", MODE_INDIRECT_X, eor_ind_x, 6, 0, 0, 0, {0x41}, 1},
+	{"EOR", MODE_INDIRECT_Y, eor_ind_y, 5, 0, 0, 0, {0x51}, 1},
+	{"EOR", MODE_ABSOLUTE_Y, eor_abs_y, 4, 0, 0, 0, {0x59}, 1},
+	{"EOR", MODE_ABSOLUTE_X, eor_abs_x, 4, 0, 0, 0, {0x5D}, 1},
 	{"ORA", MODE_IMMEDIATE, ora_imm, 2, 0, 0, 0, {0x09}, 1},
 	{"ORA", MODE_ABSOLUTE, ora_abs, 4, 0, 0, 0, {0x0D}, 1},
 	{"ORA", MODE_ZP, ora_zp, 3, 0, 0, 0, {0x05}, 1},
 	{"ORA", MODE_ZP_X, ora_zp_x, 4, 0, 0, 0, {0x15}, 1},
+	{"ORA", MODE_INDIRECT_X, ora_ind_x, 6, 0, 0, 0, {0x01}, 1},
+	{"ORA", MODE_INDIRECT_Y, ora_ind_y, 5, 0, 0, 0, {0x11}, 1},
+	{"ORA", MODE_ABSOLUTE_Y, ora_abs_y, 4, 0, 0, 0, {0x19}, 1},
+	{"ORA", MODE_ABSOLUTE_X, ora_abs_x, 4, 0, 0, 0, {0x1D}, 1},
 	{"BIT", MODE_ZP, bit_zp, 3, 0, 0, 0, {0x24}, 1},
 	{"BIT", MODE_ABSOLUTE, bit_abs, 4, 0, 0, 0, {0x2C}, 1},
 	{"BIT", MODE_IMMEDIATE, bit_imm, 2, 0, 0, 0, {0x89}, 1},
@@ -1614,6 +2321,7 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"BRL", MODE_RELATIVE_LONG, bra_relfar, 3, 0, 0, 0, {0x83}, 1},
 	{"LBRA", MODE_RELATIVE_LONG, bra_relfar, 3, 0, 0, 0, {0x83}, 1},
 	{"JMP", MODE_ABSOLUTE, jmp_abs, 3, 0, 0, 0, {0x4C}, 1},
+	{"JMP", MODE_INDIRECT, jmp_abs_indirect, 5, 0, 0, 0, {0x6C}, 1},
 	{"JMP", MODE_INDIRECT_X, jmp_ind_x, 6, 0, 0, 0, {0x7C}, 1},
 	{"JSR", MODE_ABSOLUTE, jsr_abs, 6, 0, 0, 0, {0x20}, 1},
 	{"JSR", MODE_INDIRECT, jsr_ind, 5, 0, 0, 0, {0x22}, 1},
@@ -1693,12 +2401,51 @@ opcode_handler_t opcodes_45gs02[] = {
 	{"ORQ", MODE_ZP, orq_zp, 5, 0, 0, 0, {0x42, 0x42, 0x05}, 3},
 	{"ORQ", MODE_ABSOLUTE, orq_abs, 5, 0, 0, 0, {0x42, 0x42, 0x0D}, 3},
 	{"ASLQ", MODE_IMPLIED, aslq, 2, 0, 0, 0, {0x42, 0x42, 0x0A}, 3},
+	{"ASLQ", MODE_ZP, aslq_zp, 7, 0, 0, 0, {0x42, 0x42, 0x06}, 3},
+	{"ASLQ", MODE_ZP_X, aslq_zp_x, 8, 0, 0, 0, {0x42, 0x42, 0x16}, 3},
+	{"ASLQ", MODE_ABSOLUTE, aslq_abs, 8, 0, 0, 0, {0x42, 0x42, 0x0E}, 3},
+	{"ASLQ", MODE_ABSOLUTE_X, aslq_abs_x, 9, 0, 0, 0, {0x42, 0x42, 0x1E}, 3},
 	{"ASRQ", MODE_IMPLIED, asrq, 2, 0, 0, 0, {0x42, 0x42, 0x43}, 3},
+	{"ASRQ", MODE_ZP, asrq_zp, 7, 0, 0, 0, {0x42, 0x42, 0x44}, 3},
+	{"ASRQ", MODE_ZP_X, asrq_zp_x, 8, 0, 0, 0, {0x42, 0x42, 0x54}, 3},
 	{"LSRQ", MODE_IMPLIED, lsrq, 2, 0, 0, 0, {0x42, 0x42, 0x4A}, 3},
+	{"LSRQ", MODE_ZP, lsrq_zp, 7, 0, 0, 0, {0x42, 0x42, 0x46}, 3},
+	{"LSRQ", MODE_ZP_X, lsrq_zp_x, 8, 0, 0, 0, {0x42, 0x42, 0x56}, 3},
+	{"LSRQ", MODE_ABSOLUTE, lsrq_abs, 8, 0, 0, 0, {0x42, 0x42, 0x4E}, 3},
+	{"LSRQ", MODE_ABSOLUTE_X, lsrq_abs_x, 9, 0, 0, 0, {0x42, 0x42, 0x5E}, 3},
 	{"ROLQ", MODE_IMPLIED, rolq, 2, 0, 0, 0, {0x42, 0x42, 0x2A}, 3},
+	{"ROLQ", MODE_ZP, rolq_zp, 7, 0, 0, 0, {0x42, 0x42, 0x26}, 3},
+	{"ROLQ", MODE_ZP_X, rolq_zp_x, 8, 0, 0, 0, {0x42, 0x42, 0x36}, 3},
+	{"ROLQ", MODE_ABSOLUTE, rolq_abs, 8, 0, 0, 0, {0x42, 0x42, 0x2E}, 3},
+	{"ROLQ", MODE_ABSOLUTE_X, rolq_abs_x, 9, 0, 0, 0, {0x42, 0x42, 0x3E}, 3},
 	{"RORQ", MODE_IMPLIED, rorq, 2, 0, 0, 0, {0x42, 0x42, 0x6A}, 3},
-	{"INQ", MODE_IMPLIED, inq, 2, 0, 0, 0, {0x42, 0x42, 0xE8}, 3},
-	{"DEQ", MODE_IMPLIED, deq, 2, 0, 0, 0, {0x42, 0x42, 0xCA}, 3},
+	{"RORQ", MODE_ZP, rorq_zp, 7, 0, 0, 0, {0x42, 0x42, 0x66}, 3},
+	{"RORQ", MODE_ZP_X, rorq_zp_x, 8, 0, 0, 0, {0x42, 0x42, 0x76}, 3},
+	{"RORQ", MODE_ABSOLUTE, rorq_abs, 8, 0, 0, 0, {0x42, 0x42, 0x6E}, 3},
+	{"RORQ", MODE_ABSOLUTE_X, rorq_abs_x, 9, 0, 0, 0, {0x42, 0x42, 0x7E}, 3},
+	{"INQ", MODE_IMPLIED, inq, 2, 0, 0, 0, {0x42, 0x42, 0x1A}, 3},
+	{"INQ", MODE_ZP, inq_zp, 7, 0, 0, 0, {0x42, 0x42, 0xE6}, 3},
+	{"INQ", MODE_ZP_X, inq_zp_x, 8, 0, 0, 0, {0x42, 0x42, 0xF6}, 3},
+	{"INQ", MODE_ABSOLUTE, inq_abs, 8, 0, 0, 0, {0x42, 0x42, 0xEE}, 3},
+	{"INQ", MODE_ABSOLUTE_X, inq_abs_x, 9, 0, 0, 0, {0x42, 0x42, 0xFE}, 3},
+	{"DEQ", MODE_IMPLIED, deq, 2, 0, 0, 0, {0x42, 0x42, 0x3A}, 3},
+	{"DEQ", MODE_ZP, deq_zp, 7, 0, 0, 0, {0x42, 0x42, 0xC6}, 3},
+	{"DEQ", MODE_ZP_X, deq_zp_x, 8, 0, 0, 0, {0x42, 0x42, 0xD6}, 3},
+	{"DEQ", MODE_ABSOLUTE, deq_abs, 8, 0, 0, 0, {0x42, 0x42, 0xCE}, 3},
+	{"DEQ", MODE_ABSOLUTE_X, deq_abs_x, 9, 0, 0, 0, {0x42, 0x42, 0xDE}, 3},
+	/* Quad indirect-Z ALU variants */
+	{"ADCQ", MODE_ZP_INDIRECT_Z, adcq_zp_ind_z, 9, 0, 0, 0, {0x42, 0x42, 0x72}, 3},
+	{"ADCQ", MODE_ZP_INDIRECT_Z_FLAT, adcq_zp_ind_z, 11, 0, 0, 0, {0x42, 0x42, 0xEA, 0x72}, 4},
+	{"SBCQ", MODE_ZP_INDIRECT_Z, sbcq_zp_ind_z, 9, 0, 0, 0, {0x42, 0x42, 0xF2}, 3},
+	{"SBCQ", MODE_ZP_INDIRECT_Z_FLAT, sbcq_zp_ind_z, 11, 0, 0, 0, {0x42, 0x42, 0xEA, 0xF2}, 4},
+	{"CPQ", MODE_ZP_INDIRECT_Z, cmpq_zp_ind_z, 9, 0, 0, 0, {0x42, 0x42, 0xD2}, 3},
+	{"CPQ", MODE_ZP_INDIRECT_Z_FLAT, cmpq_zp_ind_z, 11, 0, 0, 0, {0x42, 0x42, 0xEA, 0xD2}, 4},
+	{"ANDQ", MODE_ZP_INDIRECT_Z, andq_zp_ind_z, 9, 0, 0, 0, {0x42, 0x42, 0x32}, 3},
+	{"ANDQ", MODE_ZP_INDIRECT_Z_FLAT, andq_zp_ind_z, 11, 0, 0, 0, {0x42, 0x42, 0xEA, 0x32}, 4},
+	{"EORQ", MODE_ZP_INDIRECT_Z, eorq_zp_ind_z, 9, 0, 0, 0, {0x42, 0x42, 0x52}, 3},
+	{"EORQ", MODE_ZP_INDIRECT_Z_FLAT, eorq_zp_ind_z, 11, 0, 0, 0, {0x42, 0x42, 0xEA, 0x52}, 4},
+	{"ORQ", MODE_ZP_INDIRECT_Z, orq_zp_ind_z, 9, 0, 0, 0, {0x42, 0x42, 0x12}, 3},
+	{"ORQ", MODE_ZP_INDIRECT_Z_FLAT, orq_zp_ind_z, 11, 0, 0, 0, {0x42, 0x42, 0xEA, 0x12}, 4},
 };
 
 int OPCODES_45GS02_COUNT = sizeof(opcodes_45gs02) / sizeof(opcodes_45gs02[0]);
