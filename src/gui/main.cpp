@@ -35,6 +35,7 @@
 #include "imgui_internal.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_opengl3.h"
+#include "imgui_filedlg.h"
 
 extern "C" {
 #include "cpu.h"
@@ -161,6 +162,17 @@ static int  g_iref_sel_idx    = -1;
 static char g_sym_filter[64]    = "";
 static bool g_symload_open      = false;
 static char g_symload_path[512] = "";
+
+/* ---- File-open / file-save dialog ---- */
+static FileDlgState g_filedlg;
+
+enum FileDlgMode {
+    FILEDLG_NONE = 0,
+    FILEDLG_OPEN_FILE,   /* toolbar Browse → auto-detect ASM / BIN / PRG */
+    FILEDLG_OPEN_SYM,    /* Symbols pane → load .sym file                */
+    FILEDLG_SAVE_BIN,    /* Save Binary popup → pick output path          */
+};
+static FileDlgMode g_filedlg_mode = FILEDLG_NONE;
 
 /* ---- Source Viewer ---- */
 #define SRC_MAX_LINES    4096
@@ -1778,8 +1790,12 @@ static void draw_pane_symbols(void)
 
     /* Load / preset / clear toolbar */
     if (ImGui::SmallButton("Load File...##slb")) {
-        g_symload_path[0] = '\0';
-        g_symload_open    = true;
+        static const FileDlgFilter sym_filters[] = {
+            { "Symbol Files (*.sym)", ".sym"   },
+            { "All Files (*.*)",       nullptr },
+        };
+        filedlg_open(&g_filedlg, "Load Symbol File", false, sym_filters, 2);
+        g_filedlg_mode = FILEDLG_OPEN_SYM;
     }
     ImGui::SameLine();
     ImGui::TextDisabled("|");
@@ -2411,6 +2427,17 @@ static void draw_icon_hist_fwd(ImDrawList *dl, ImVec2 c, float r, ImU32 col)
         ImVec2(c.x - r*0.12f + off, c.y + r*0.75f), col);
 }
 
+/* 📁 Folder — body rectangle + small tab on top-left */
+static void draw_icon_folder(ImDrawList *dl, ImVec2 c, float r, ImU32 col)
+{
+    dl->AddRectFilled(
+        ImVec2(c.x - r*0.80f, c.y - r*0.38f),
+        ImVec2(c.x + r*0.80f, c.y + r*0.65f), col, 2.0f);
+    dl->AddRectFilled(
+        ImVec2(c.x - r*0.80f, c.y - r*0.70f),
+        ImVec2(c.x - r*0.10f, c.y - r*0.38f), col, 2.0f);
+}
+
 /* --------------------------------------------------------------------------
  * icon_button — InvisibleButton + hover/active bg fill + icon draw.
  * Returns true on the frame the button is clicked (same semantics as
@@ -2561,13 +2588,14 @@ static void draw_toolbar(void)
 {
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 4));
 
-    float btn_w   = 60.0f;
-    float combo_w = 110.0f;
-    float avail   = ImGui::GetContentRegionAvail().x;
-    /* Only Load button + separator + Processor combo remain in this row;
+    float btn_w    = 60.0f;
+    float combo_w  = 110.0f;
+    float browse_w = 26.0f;  /* "..." browse icon button */
+    float avail    = ImGui::GetContentRegionAvail().x;
+    /* Only Load + Browse + separator + Processor combo remain in this row;
      * execution controls moved to draw_execution_bar(). */
-    float input_w = avail - combo_w - btn_w
-                  - ImGui::GetStyle().ItemSpacing.x * 4.0f - 12.0f;
+    float input_w = avail - combo_w - btn_w - browse_w
+                  - ImGui::GetStyle().ItemSpacing.x * 5.0f - 12.0f;
     if (input_w < 80.0f) input_w = 80.0f;
 
     if (g_focus_filename) {
@@ -2581,6 +2609,29 @@ static void draw_toolbar(void)
                                           ImGuiInputTextFlags_EnterReturnsTrue);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Path to .asm / .bin / .prg file (Ctrl+L to focus)");
+
+    /* Browse icon button — opens the file dialog */
+    ImGui::SameLine();
+    {
+        float frame_h = ImGui::GetFrameHeight();
+        ImU32 folder_col = ImGui::ColorConvertFloat4ToU32(
+            ImGui::GetStyleColorVec4(ImGuiCol_Text));
+        if (icon_button("##toolbar_browse", draw_icon_folder,
+                        browse_w, ImGui::GetStyleColorVec4(ImGuiCol_Text),
+                        false, "Browse for file...")) {
+            static const FileDlgFilter load_filters[] = {
+                { "Assembly Files (*.asm)", ".asm"      },
+                { "Binary Files (*.bin)",   ".bin"      },
+                { "PRG Files (*.prg)",      ".prg"      },
+                { "All Files (*.*)",         nullptr    },
+            };
+            (void)frame_h; (void)folder_col;
+            filedlg_open(&g_filedlg, "Open File", false,
+                         load_filters, 4,
+                         g_filename_buf[0] ? g_filename_buf : nullptr);
+            g_filedlg_mode = FILEDLG_OPEN_FILE;
+        }
+    }
 
     ImGui::SameLine();
     if (ImGui::Button("Load") || enter_pressed) {
@@ -3242,8 +3293,21 @@ static void draw_binsave_popup(void)
     if (ImGui::BeginPopupModal("Save Binary##binsave", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Output path (.prg = PRG header, .bin = raw):");
-        ImGui::SetNextItemWidth(320.0f);
+        ImGui::SetNextItemWidth(265.0f);
         ImGui::InputText("##savepath", g_binsave_path, sizeof(g_binsave_path));
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Browse...##bsbr")) {
+            static const FileDlgFilter save_filters[] = {
+                { "PRG Files (*.prg)", ".prg"   },
+                { "Binary (*.bin)",    ".bin"   },
+                { "All Files (*.*)",    nullptr },
+            };
+            filedlg_open(&g_filedlg, "Save Binary As", true,
+                         save_filters, 3,
+                         g_binsave_path[0] ? g_binsave_path : nullptr);
+            g_filedlg_mode = FILEDLG_SAVE_BIN;
+            ImGui::CloseCurrentPopup();
+        }
 
         ImGui::Text("Start (hex):");
         ImGui::SameLine();
@@ -3301,11 +3365,22 @@ static void draw_symload_popup(void)
     if (ImGui::BeginPopupModal("Load Symbol File##slp", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Path to .sym file:");
-        ImGui::SetNextItemWidth(380.0f);
+        ImGui::SetNextItemWidth(265.0f);
         bool enter = ImGui::InputText("##slppath", g_symload_path,
                         sizeof(g_symload_path),
                         ImGuiInputTextFlags_EnterReturnsTrue |
                         ImGuiInputTextFlags_AutoSelectAll);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Browse...##slpbr")) {
+            static const FileDlgFilter sym_filters[] = {
+                { "Symbol Files (*.sym)", ".sym"   },
+                { "All Files (*.*)",       nullptr },
+            };
+            filedlg_open(&g_filedlg, "Load Symbol File", false, sym_filters, 2,
+                         g_symload_path[0] ? g_symload_path : nullptr);
+            g_filedlg_mode = FILEDLG_OPEN_SYM;
+            ImGui::CloseCurrentPopup();
+        }
         bool ok = ImGui::Button("Load") || enter;
         ImGui::SameLine();
         if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape))
@@ -3322,6 +3397,63 @@ static void draw_symload_popup(void)
         }
         ImGui::EndPopup();
     }
+}
+
+/* --------------------------------------------------------------------------
+ * File-dialog popup dispatcher
+ * -------------------------------------------------------------------------- */
+static void draw_file_dialog_popup(void)
+{
+    filedlg_draw(&g_filedlg);
+    if (!g_filedlg.confirmed) return;
+    g_filedlg.confirmed = false;
+
+    const char *path = g_filedlg.result;
+
+    switch (g_filedlg_mode) {
+    case FILEDLG_OPEN_FILE:
+        /* g_filename_buf is 512 bytes; result is at most 1023 — truncation is
+         * safe here (any real path that fits in the OS will fit in 512 chars). */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+        snprintf(g_filename_buf, sizeof(g_filename_buf), "%s", path);
+#pragma GCC diagnostic pop
+        if (ext_is(g_filename_buf, ".bin") || ext_is(g_filename_buf, ".prg")) {
+            open_binload_dialog(g_filename_buf);
+        } else {
+            do_load();
+            if (sim_get_state(g_sim) != SIM_IDLE)
+                con_add(CON_COL_OK,  "Loaded: %s", g_filename_buf);
+            else
+                con_add(CON_COL_ERR, "Failed to load: %s", g_filename_buf);
+        }
+        break;
+
+    case FILEDLG_OPEN_SYM: {
+        int added = sim_sym_load_file(g_sim, path);
+        if (added > 0)
+            con_add(CON_COL_OK,  "Loaded %d symbol(s) from %s", added, path);
+        else
+            con_add(CON_COL_ERR, "Could not load symbols from %s", path);
+        break;
+    }
+
+    case FILEDLG_SAVE_BIN:
+        /* Update binsave path and re-open the save popup for address settings.
+         * g_binsave_path is 512 bytes; filedlg result is at most 1023.  Any
+         * real filesystem path that we can open will fit within 511 chars. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+        strncpy(g_binsave_path, path, sizeof(g_binsave_path) - 1);
+#pragma GCC diagnostic pop
+        g_binsave_path[sizeof(g_binsave_path) - 1] = '\0';
+        g_binsave_open = true;
+        break;
+
+    default:
+        break;
+    }
+    g_filedlg_mode = FILEDLG_NONE;
 }
 
 /* --------------------------------------------------------------------------
@@ -3559,6 +3691,9 @@ int main(int /*argc*/, char ** /*argv*/)
     /* Initialise multi-instance memory view: instance 0 starts open */
     g_mem_views[0].open = true;
 
+    /* Initialise file dialog (sets cwd to current working directory) */
+    filedlg_init(&g_filedlg);
+
     /* Console welcome message */
     con_add(CON_COL_OK,     "sim6502-gui Phase 4 ready.  Type 'help' for commands.");
     con_add(CON_COL_NORMAL, "Processor: %s", sim_processor_name(g_sim));
@@ -3753,6 +3888,16 @@ int main(int /*argc*/, char ** /*argv*/)
             if (ImGui::BeginMenuBar()) {
                 if (ImGui::BeginMenu("File")) {
                     if (ImGui::MenuItem("Load...", "Ctrl+L")) g_focus_filename = true;
+                    if (ImGui::MenuItem("Browse to Load...", nullptr)) {
+                        static const FileDlgFilter load_filters[] = {
+                            { "Assembly Files (*.asm)", ".asm"   },
+                            { "Binary Files (*.bin)",   ".bin"   },
+                            { "PRG Files (*.prg)",      ".prg"   },
+                            { "All Files (*.*)",         nullptr },
+                        };
+                        filedlg_open(&g_filedlg, "Open File", false, load_filters, 4);
+                        g_filedlg_mode = FILEDLG_OPEN_FILE;
+                    }
                     ImGui::Separator();
                     if (ImGui::MenuItem("Save Binary/PRG...")) {
                         /* Pre-populate from the currently loaded program */
@@ -3963,6 +4108,7 @@ int main(int /*argc*/, char ** /*argv*/)
         draw_symload_popup();
         draw_layout_save_popup();
         draw_goto_popup();
+        draw_file_dialog_popup();
 
         /* Render */
         ImGui::Render();

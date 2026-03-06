@@ -55,7 +55,7 @@ IMGUI_OBJS = $(IMGUI_SRCS:.cpp=.o)
 GUI_CXXFLAGS = $(CXXFLAGS) $(SDL2_CFLAGS) -I $(IMGUI_DIR) -I $(IMGUI_BACK)
 GUI_TARGET   = sim6502-gui
 
-src/gui/main.o: src/gui/main.cpp $(IMGUI_DIR)/imgui.h src/sim_api.h
+src/gui/main.o: src/gui/main.cpp $(IMGUI_DIR)/imgui.h src/sim_api.h src/gui/imgui_filedlg.h
 	$(CXX) $(GUI_CXXFLAGS) -c -o $@ $<
 
 .PHONY: gui
