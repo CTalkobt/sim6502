@@ -1,6 +1,7 @@
 #include "commands.h"
 #include "cpu_engine.h"
 #include "condition.h"
+#include "vic2.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -164,7 +165,8 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
             printf("          processors, processor <type>, info <opcode>,\n");
             printf("          jump <addr>, set <reg> <val>, flag <flag> <0|1>,\n");
             printf("          bload \"file\" [addr], bsave \"file\" <start> <end>,\n");
-            printf("          asm [addr], disasm [addr [count]], quit\n");
+            printf("          asm [addr], disasm [addr [count]],\n");
+            printf("          vic2.info, vic2.savescreen [file], quit\n");
         } else if (strcmp(cmd, "break") == 0) {
             const char *p = line; SKIP_CMD(p); unsigned long addr;
             if (parse_mon_value(&p, &addr)) { while (*p && isspace((unsigned char)*p)) p++; breakpoint_add(breakpoints, (unsigned short)addr, *p ? p : NULL); }
@@ -341,6 +343,23 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
                     }
                 }
             }
+        } else if (strcmp(cmd, "vic2.info") == 0) {
+            vic2_print_info(mem);
+        } else if (strcmp(cmd, "vic2.savescreen") == 0) {
+            const char *p = line; SKIP_CMD(p);
+            while (*p && isspace((unsigned char)*p)) p++;
+            char fbuf[512];
+            if (*p && *p != '\n' && *p != '\r') {
+                int fi = 0;
+                while (*p && *p != '\n' && *p != '\r' && fi < 511) fbuf[fi++] = *p++;
+                fbuf[fi] = '\0';
+            } else {
+                strcpy(fbuf, "vic2screen.ppm");
+            }
+            if (vic2_render_ppm(mem, fbuf) == 0)
+                printf("Saved %dx%d PPM to '%s'\n", VIC2_FRAME_W, VIC2_FRAME_H, fbuf);
+            else
+                printf("Error: cannot write '%s'\n", fbuf);
         }
 #undef SKIP_CMD
     }

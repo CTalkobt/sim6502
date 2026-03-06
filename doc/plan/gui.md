@@ -793,13 +793,13 @@ Users can save the current docking layout + open panes as a named preset (e.g., 
 21. [x] Drag-and-drop file loading
 22. [x] <SKIPPED>
 
-### Phase 6 — Graphics & Time Travel
+### Phase 6 — Graphics & Time Travel (in progress)
 23. [x] Execution History ring buffer infrastructure (`sim_history_*` API in `sim_api.c/.h`)
 24. [~] History pane: step-back/step-forward buttons in execution bar, history depth indicator ✓; timeline slider, history table, history enable/disable/clear not yet implemented
 25. [x] CLI `stepback` / `stepfwd` commands
 26. VIC-II renderer: character mode, bitmap mode, sprites (software rasteriser into pixel buffer → OpenGL texture)
 27. VIC Viewer pane: Screen, Sprites, Char Set, Color RAM, Registers sub-panes
-27a. VIC Viewer pane: Screen
+27a. [x] VIC Viewer pane: Screen (384×272 rendered frame via GL texture; std/MCM/ECM/bitmap modes; scale controls; register summary; View->VIC-II Screen)
 27b. VIC Viewer pane: Sprites
 27c. VIC Viewer pane: Char Set
 27d. VIC Viewer pane: Color RAM

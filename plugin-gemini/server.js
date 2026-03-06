@@ -310,6 +310,27 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
         },
       },
+      {
+        name: "vic2_info",
+        description: "Prints a summary of the VIC-II video chip state: mode, D011/D016/D018 registers, active bank, screen/charset/bitmap base addresses, and border/background colours.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      {
+        name: "vic2_savescreen",
+        description: "Renders the current VIC-II output to a PPM image file and returns the saved file path. The PPM is 384×272 pixels (full PAL frame including border).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "Output file path (default: /tmp/vic2screen.ppm)",
+            },
+          },
+        },
+      },
     ],
   };
 });
@@ -417,6 +438,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     } else if (name === "step_forward") {
       const output = await sendCommand(`sf`);
+      return {
+        content: [{ type: "text", text: output }],
+      };
+    } else if (name === "vic2_info") {
+      const output = await sendCommand("vic2.info");
+      return {
+        content: [{ type: "text", text: output }],
+      };
+    } else if (name === "vic2_savescreen") {
+      const filePath = (args.path && args.path.trim()) || '/tmp/vic2screen.ppm';
+      const output = await sendCommand(`vic2.savescreen ${filePath}`);
       return {
         content: [{ type: "text", text: output }],
       };

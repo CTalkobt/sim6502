@@ -23,9 +23,11 @@
 0100 stack_base REGION C64 Stack
 01ff stack_top REGION C64 Stack Top
 
-; Screen Memory
-0400 screen_buffer REGION Screen Buffer (1KB)
-0800 color_buffer REGION Color Buffer (1KB)
+; Screen / Character Memory
+0400 screen_buffer  REGION Default Screen RAM (1KB, 40x25 chars)
+0800 ram_0800       REGION RAM at $0800 (BASIC work area)
+1000 char_rom_bank0 REGION Default Char-Gen Base in VIC Bank 0 (D018 CB=2)
+2000 bitmap_bank0   REGION Default Bitmap Base in VIC Bank 0 (D018 CB=4, BMM)
 
 ; BASIC ROM
 a000 basic_start REGION BASIC ROM Start
@@ -85,7 +87,22 @@ fffa nmi_vector   REGION NMI Vector ($FFFA-$FFFB)
 fffc reset_vector REGION Reset Vector ($FFFC-$FFFD)
 fffe irq_vector   REGION IRQ/BRK Vector ($FFFE-$FFFF)
 
-; VIC-II (Video Controller)
+; VIC-II Colour RAM (always mapped here, independent of VIC bank)
+d800 color_ram        REGION VIC-II Colour RAM start (1000 bytes, 4-bit nibbles)
+dbe8 color_ram_end    REGION VIC-II Colour RAM end
+
+; VIC-II (Video Controller) -- registers $D000-$D02E
+; Bank selection: CIA2 Port A ($DD00) bits 0-1 (inverted).
+;   bits=%11 (cia2=$03) -> bank 0 $0000-$3FFF  (default)
+;   bits=%10 (cia2=$02) -> bank 1 $4000-$7FFF
+;   bits=%01 (cia2=$01) -> bank 2 $8000-$BFFF
+;   bits=%00 (cia2=$00) -> bank 3 $C000-$FFFF
+; D018 memory pointer encoding:
+;   bits 7:4 (VM3-VM0) x 1024  = screen/video-matrix base within bank
+;   bits 3:1 (CB2-CB0) x 2048  = character-generator base within bank
+;   Default D018=$14: screen at bank+$0400, chars at bank+$1000
+; D011 control bits: 7=raster_msb 6=ECM 5=BMM 4=DEN 3=RSEL(0=24,1=25) 2-0=yscroll
+; D016 control bits: 7-5=unused 4=MCM 3=CSEL(0=38,1=40) 2-0=xscroll
 d000 vic_sprite_0_x     IO VIC Sprite 0 X
 d001 vic_sprite_0_y     IO VIC Sprite 0 Y
 d002 vic_sprite_1_x     IO VIC Sprite 1 X

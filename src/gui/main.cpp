@@ -129,6 +129,9 @@ static bool show_symbols  = false;
 static bool show_source   = false;
 static bool show_profiler = false;
 
+/* ---- Phase 6 pane visibility ---- */
+static bool show_vic_screen = false;
+
 /* ---- Phase 5: keyboard shortcut state ---- */
 static bool     g_focus_console     = false;  /* `: focus console input              */
 static bool     g_focus_disasm_addr = false;  /* Ctrl+Shift+F: focus disasm addr bar */
@@ -186,6 +189,11 @@ static int  g_src_search_hit    = -1;
 /* ---- Heatmap texture (profiler) ---- */
 static GLuint g_heatmap_tex   = 0;
 static bool   g_heatmap_dirty = true;
+
+/* ---- VIC-II screen texture (Phase 6 / 27a) ---- */
+static GLuint g_vic_tex    = 0;
+static bool   g_vic_dirty  = true;
+static bool   g_vic_freeze = false;
 
 /* Console */
 #define CON_MAX_LINES   1024
@@ -566,6 +574,7 @@ static void do_step_into(void)
     if (cpu) { g_prev_cpu = *cpu; g_prev_cpu_valid = true; }
     sim_step(g_sim, 1);
     g_last_write_count = sim_get_last_writes(g_sim, g_last_writes, 256);
+    g_vic_dirty = true;
     update_watches();
 }
 
@@ -576,6 +585,7 @@ static void do_reset(void)
     sim_reset(g_sim);
     g_prev_cpu_valid   = false;
     g_last_write_count = 0;
+    g_vic_dirty        = true;
     for (int i = 0; i < g_watch_count; i++) g_watches[i].valid = false;
     update_watches();
 }
@@ -1059,6 +1069,268 @@ static void update_heatmap_tex(void)
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 256, GL_RGB, GL_UNSIGNED_BYTE, pixels);
     glBindTexture(GL_TEXTURE_2D, 0);
     g_heatmap_dirty = false;
+}
+
+/* --------------------------------------------------------------------------
+ * VIC-II Screen Renderer (Phase 6 — item 27a)
+ *
+ * Renders a 384×272 composite frame (320×200 active + border on all sides)
+ * from current simulator memory state.  Supported video modes (decoded from
+ * $D011 / $D016):
+ *
+ *   ECM=0 BMM=0 MCM=0  Standard Character
+ *   ECM=0 BMM=0 MCM=1  Multicolour Character
+ *   ECM=1 BMM=0 MCM=0  Extended Colour
+ *   ECM=0 BMM=1 MCM=0  Standard Bitmap
+ *   ECM=0 BMM=1 MCM=1  Multicolour Bitmap
+ *
+ * VIC bank: CIA2 Port A ($DD00) bits 1:0, inverted (standard C64 mapping).
+ * Colour RAM: always $D800–$DBFF regardless of bank.
+ * -------------------------------------------------------------------------- */
+
+#define VIC_FRAME_W   384
+#define VIC_FRAME_H   272
+#define VIC_ACTIVE_X   32       /* left border width (pixels) */
+#define VIC_ACTIVE_Y   36       /* top  border height (pixels) */
+
+/* C64 colour palette — "Pepto" approximation (sRGB) */
+static const uint8_t VIC2_PAL[16][3] = {
+    {0x00,0x00,0x00}, /* 0  Black      */
+    {0xFF,0xFF,0xFF}, /* 1  White      */
+    {0x88,0x00,0x00}, /* 2  Red        */
+    {0xAA,0xFF,0xEE}, /* 3  Cyan       */
+    {0xCC,0x44,0xCC}, /* 4  Purple     */
+    {0x00,0xCC,0x55}, /* 5  Green      */
+    {0x00,0x00,0xAA}, /* 6  Blue       */
+    {0xEE,0xEE,0x77}, /* 7  Yellow     */
+    {0xDD,0x88,0x55}, /* 8  Orange     */
+    {0x66,0x44,0x00}, /* 9  Brown      */
+    {0xFF,0x77,0x77}, /* A  Lt Red     */
+    {0x33,0x33,0x33}, /* B  Dk Grey    */
+    {0x77,0x77,0x77}, /* C  Grey       */
+    {0xAA,0xFF,0x66}, /* D  Lt Green   */
+    {0x00,0x88,0xFF}, /* E  Lt Blue    */
+    {0xBB,0xBB,0xBB}, /* F  Lt Grey    */
+};
+
+static inline void vic_put(uint8_t *px, int x, int y, int ci)
+{
+    if ((unsigned)x >= VIC_FRAME_W || (unsigned)y >= VIC_FRAME_H) return;
+    ci &= 0xF;
+    int off = (y * VIC_FRAME_W + x) * 3;
+    px[off+0] = VIC2_PAL[ci][0];
+    px[off+1] = VIC2_PAL[ci][1];
+    px[off+2] = VIC2_PAL[ci][2];
+}
+
+static void update_vic_tex(void)
+{
+    if (!g_sim || !g_vic_tex) return;
+    if (g_vic_freeze) { g_vic_dirty = false; return; }
+
+    static uint8_t pixels[VIC_FRAME_W * VIC_FRAME_H * 3];
+
+    /* --- Read VIC-II control registers --- */
+    uint8_t ctrl1    = sim_mem_read_byte(g_sim, 0xD011);
+    uint8_t ctrl2    = sim_mem_read_byte(g_sim, 0xD016);
+    uint8_t memsetup = sim_mem_read_byte(g_sim, 0xD018);
+    uint8_t border   = sim_mem_read_byte(g_sim, 0xD020) & 0xF;
+    uint8_t bg0      = sim_mem_read_byte(g_sim, 0xD021) & 0xF;
+    uint8_t bg1      = sim_mem_read_byte(g_sim, 0xD022) & 0xF;
+    uint8_t bg2      = sim_mem_read_byte(g_sim, 0xD023) & 0xF;
+    uint8_t bg3      = sim_mem_read_byte(g_sim, 0xD024) & 0xF;
+
+    bool ecm = (ctrl1 >> 6) & 1;   /* Extended Colour Mode  */
+    bool bmm = (ctrl1 >> 5) & 1;   /* Bitmap Mode           */
+    bool den = (ctrl1 >> 4) & 1;   /* Display Enable        */
+    bool mcm = (ctrl2 >> 4) & 1;   /* Multicolour Mode      */
+
+    /* VIC bank from CIA2 Port A $DD00 bits 1:0 (inverted) */
+    uint8_t  cia2a    = sim_mem_read_byte(g_sim, 0xDD00);
+    uint32_t vic_bank = (uint32_t)((~cia2a) & 3) * 0x4000u;
+
+    /* Video matrix (screen RAM) base: D018 bits 7:4 × 1024 */
+    uint32_t screen_base = vic_bank + (uint32_t)((memsetup >> 4) & 0xF) * 1024u;
+    /* Character generator base: D018 bits 3:1 × 2048 */
+    uint32_t char_base   = vic_bank + (uint32_t)((memsetup >> 1) & 0x7) * 2048u;
+    /* Bitmap base: CB[2] (D018 bit 3) selects $0000 or $2000 within bank */
+    uint32_t bm_base     = vic_bank + (uint32_t)(((memsetup >> 3) & 1) * 0x2000u);
+    /* Colour RAM is always $D800 */
+    uint16_t color_ram   = 0xD800;
+
+    /* 1. Fill entire frame with border colour */
+    for (int i = 0; i < VIC_FRAME_W * VIC_FRAME_H; i++) {
+        pixels[i*3+0] = VIC2_PAL[border][0];
+        pixels[i*3+1] = VIC2_PAL[border][1];
+        pixels[i*3+2] = VIC2_PAL[border][2];
+    }
+
+    /* 2. Render 320×200 active area when display is enabled */
+    if (den) {
+        if (!bmm) {
+            /* ---- Character modes ---- */
+            for (int row = 0; row < 25; row++) {
+                for (int col = 0; col < 40; col++) {
+                    uint16_t cell = (uint16_t)(row * 40 + col);
+                    uint8_t  sc   = sim_mem_read_byte(g_sim, (uint16_t)(screen_base + cell));
+                    uint8_t  cr   = sim_mem_read_byte(g_sim, (uint16_t)(color_ram + cell)) & 0xF;
+                    int      px0  = VIC_ACTIVE_X + col * 8;
+                    int      py0  = VIC_ACTIVE_Y + row * 8;
+
+                    if (ecm) {
+                        /* Extended Colour: char bits 7:6 pick one of 4 backgrounds */
+                        uint8_t bgtab[4] = { bg0, bg1, bg2, bg3 };
+                        uint32_t cptr = char_base + (uint32_t)(sc & 0x3F) * 8u;
+                        for (int cy = 0; cy < 8; cy++) {
+                            uint8_t bits = sim_mem_read_byte(g_sim, (uint16_t)(cptr + cy));
+                            for (int cx = 0; cx < 8; cx++)
+                                vic_put(pixels, px0+cx, py0+cy,
+                                        (bits & (0x80>>cx)) ? cr : bgtab[sc >> 6]);
+                        }
+                    } else if (mcm && (cr & 0x8)) {
+                        /* Multicolour cell: 2bpp, 4×8 pixel pairs */
+                        uint8_t cols[4] = { bg0, bg1, bg2, (uint8_t)(cr & 0x7) };
+                        uint32_t cptr = char_base + (uint32_t)sc * 8u;
+                        for (int cy = 0; cy < 8; cy++) {
+                            uint8_t bits = sim_mem_read_byte(g_sim, (uint16_t)(cptr + cy));
+                            for (int cx = 0; cx < 4; cx++) {
+                                int sel = (bits >> (6 - cx*2)) & 0x3;
+                                vic_put(pixels, px0+cx*2,   py0+cy, cols[sel]);
+                                vic_put(pixels, px0+cx*2+1, py0+cy, cols[sel]);
+                            }
+                        }
+                    } else {
+                        /* Standard char (also MCM hires cell when cr bit 3 = 0) */
+                        uint32_t cptr = char_base + (uint32_t)sc * 8u;
+                        for (int cy = 0; cy < 8; cy++) {
+                            uint8_t bits = sim_mem_read_byte(g_sim, (uint16_t)(cptr + cy));
+                            for (int cx = 0; cx < 8; cx++)
+                                vic_put(pixels, px0+cx, py0+cy,
+                                        (bits & (0x80>>cx)) ? cr : bg0);
+                        }
+                    }
+                }
+            }
+        } else {
+            /* ---- Bitmap modes ---- */
+            for (int row = 0; row < 25; row++) {
+                for (int col = 0; col < 40; col++) {
+                    uint16_t cell = (uint16_t)(row * 40 + col);
+                    uint8_t  sc   = sim_mem_read_byte(g_sim, (uint16_t)(screen_base + cell));
+                    uint8_t  cr   = sim_mem_read_byte(g_sim, (uint16_t)(color_ram + cell)) & 0xF;
+                    uint8_t  fg   = (sc >> 4) & 0xF;   /* high nibble = foreground */
+                    uint8_t  bg   = sc & 0xF;           /* low  nibble = background */
+                    int      px0  = VIC_ACTIVE_X + col * 8;
+                    int      py0  = VIC_ACTIVE_Y + row * 8;
+                    uint32_t bptr = bm_base + (uint32_t)cell * 8u;
+
+                    if (!mcm) {
+                        /* Standard bitmap: 1bpp per 8×8 block */
+                        for (int cy = 0; cy < 8; cy++) {
+                            uint8_t bits = sim_mem_read_byte(g_sim, (uint16_t)(bptr + cy));
+                            for (int cx = 0; cx < 8; cx++)
+                                vic_put(pixels, px0+cx, py0+cy,
+                                        (bits & (0x80>>cx)) ? fg : bg);
+                        }
+                    } else {
+                        /* Multicolour bitmap: 2bpp, 4×8 pixel pairs */
+                        uint8_t cols[4] = { bg0, fg, bg, cr };
+                        for (int cy = 0; cy < 8; cy++) {
+                            uint8_t bits = sim_mem_read_byte(g_sim, (uint16_t)(bptr + cy));
+                            for (int cx = 0; cx < 4; cx++) {
+                                int sel = (bits >> (6 - cx*2)) & 0x3;
+                                vic_put(pixels, px0+cx*2,   py0+cy, cols[sel]);
+                                vic_put(pixels, px0+cx*2+1, py0+cy, cols[sel]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    glBindTexture(GL_TEXTURE_2D, g_vic_tex);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                    VIC_FRAME_W, VIC_FRAME_H, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    g_vic_dirty = false;
+}
+
+/* --------------------------------------------------------------------------
+ * Pane: VIC-II Screen (Phase 6 — item 27a)
+ *
+ * Displays the rendered VIC-II frame as a scaled image.  The render is
+ * updated whenever memory changes (after step, run, or reset).  A "Freeze"
+ * toggle locks the last rendered frame for comparison while execution
+ * continues.  Register state is summarised below the image.
+ * -------------------------------------------------------------------------- */
+static void draw_pane_vic_screen(void)
+{
+    if (!show_vic_screen) return;
+    ImGui::Begin("VIC-II Screen", &show_vic_screen,
+                 ImGuiWindowFlags_HorizontalScrollbar);
+
+    sim_state_t state = sim_get_state(g_sim);
+    if (state == SIM_IDLE) {
+        ImGui::TextDisabled("(no program loaded)");
+        ImGui::End();
+        return;
+    }
+
+    if (g_vic_dirty)
+        update_vic_tex();
+
+    /* ---- Scale controls ---- */
+    static float vic_scale = 2.0f;
+    ImGui::Text("Scale:");
+    ImGui::SameLine();
+    if (ImGui::RadioButton("1x", vic_scale == 1.0f)) vic_scale = 1.0f;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("2x", vic_scale == 2.0f)) vic_scale = 2.0f;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("3x", vic_scale == 3.0f)) vic_scale = 3.0f;
+    ImGui::SameLine();
+    ImGui::Checkbox("Freeze", &g_vic_freeze);
+
+    /* ---- Rendered frame ---- */
+    ImVec2 img_sz((float)VIC_FRAME_W * vic_scale, (float)VIC_FRAME_H * vic_scale);
+    ImGui::Image((ImTextureID)(uintptr_t)g_vic_tex, img_sz);
+
+    /* ---- Register summary ---- */
+    ImGui::Separator();
+    uint8_t ctrl1    = sim_mem_read_byte(g_sim, 0xD011);
+    uint8_t ctrl2    = sim_mem_read_byte(g_sim, 0xD016);
+    uint8_t memsetup = sim_mem_read_byte(g_sim, 0xD018);
+    uint8_t cia2a    = sim_mem_read_byte(g_sim, 0xDD00);
+    int     bank     = (~cia2a) & 3;
+
+    bool ecm = (ctrl1 >> 6) & 1;
+    bool bmm = (ctrl1 >> 5) & 1;
+    bool den = (ctrl1 >> 4) & 1;
+    bool mcm = (ctrl2 >> 4) & 1;
+
+    const char *mode = "Unknown";
+    if      (!den)             mode = "Display Off";
+    else if (!bmm&&!ecm&&!mcm) mode = "Standard Char";
+    else if (!bmm&&!ecm&& mcm) mode = "Multicolour Char";
+    else if (!bmm&& ecm&&!mcm) mode = "Extended Colour";
+    else if ( bmm&&!ecm&&!mcm) mode = "Standard Bitmap";
+    else if ( bmm&&!ecm&& mcm) mode = "Multicolour Bitmap";
+
+    uint32_t screen_addr = (uint32_t)bank*0x4000u + (uint32_t)((memsetup>>4)&0xF)*1024u;
+    uint32_t cg_addr     = (uint32_t)bank*0x4000u + (uint32_t)((memsetup>>1)&0x7)*2048u;
+
+    ImGui::Text("Mode: %-20s  D011:%02X  D016:%02X  D018:%02X",
+                mode, ctrl1, ctrl2, memsetup);
+    ImGui::Text("Bank: %d ($%04X)  Screen:$%04X  %s:$%04X",
+                bank, bank*0x4000, screen_addr,
+                bmm ? "Bitmap" : "Chars ", cg_addr);
+    ImGui::Text("Border:%X  BG0:%X  CIA2PA:%02X",
+                sim_mem_read_byte(g_sim, 0xD020) & 0xF,
+                sim_mem_read_byte(g_sim, 0xD021) & 0xF,
+                cia2a);
+
+    ImGui::End();
 }
 
 /* --------------------------------------------------------------------------
@@ -3677,6 +3949,15 @@ int main(int /*argc*/, char ** /*argv*/)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 256, 256, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
     glBindTexture(GL_TEXTURE_2D, 0);
 
+    /* VIC-II screen texture: 384×272 RGB (border + 320×200 active area) */
+    glGenTextures(1, &g_vic_tex);
+    glBindTexture(GL_TEXTURE_2D, g_vic_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, VIC_FRAME_W, VIC_FRAME_H,
+                 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
     fprintf(stdout, "sim6502-gui: display %d  scale=%.2fx  font=%.0fpx  window=%dx%d%s\n",
             display_index, ui_scale, font_cfg.SizePixels,
             win_w, win_h, first_run ? "  (first run)" : "");
@@ -3813,9 +4094,12 @@ int main(int /*argc*/, char ** /*argv*/)
                     }
                 }
 
-                /* Ctrl+Shift+E: Export VIC frame (Phase 6) */
-                if (shift && ImGui::IsKeyPressed(ImGuiKey_E))
-                    con_add(CON_COL_WARN, "VIC frame export not yet available (Phase 6).");
+                /* Ctrl+Shift+E: Open VIC-II Screen pane / remind about PNG export */
+                if (shift && ImGui::IsKeyPressed(ImGuiKey_E)) {
+                    show_vic_screen = true;
+                    con_add(CON_COL_WARN,
+                            "VIC-II Screen pane opened.  PNG export coming in Phase 28.");
+                }
             }
 
             /* ` (backtick): Focus CLI console */
@@ -3831,6 +4115,7 @@ int main(int /*argc*/, char ** /*argv*/)
             if (cpu) { g_prev_cpu = *cpu; g_prev_cpu_valid = true; }
             int ev_code = sim_step(g_sim, g_speed);
             g_last_write_count = sim_get_last_writes(g_sim, g_last_writes, 256);
+            g_vic_dirty = true;
             update_watches();
             if (sim_profiler_is_enabled(g_sim)) g_heatmap_dirty = true;
             if (ev_code > 0)
@@ -3991,6 +4276,8 @@ int main(int /*argc*/, char ** /*argv*/)
                     ImGui::MenuItem("Source",      nullptr, &show_source);
                     ImGui::MenuItem("Profiler",    nullptr, &show_profiler);
                     ImGui::Separator();
+                    ImGui::MenuItem("VIC-II Screen", nullptr, &show_vic_screen);
+                    ImGui::Separator();
                     if (ImGui::BeginMenu("Font Size")) {
                         static const int sizes[] = { 10, 11, 12, 13, 14, 15, 16, 18, 20, 24 };
                         for (int sz : sizes) {
@@ -4102,6 +4389,9 @@ int main(int /*argc*/, char ** /*argv*/)
         draw_pane_source();
         draw_pane_profiler();
 
+        /* Phase 6 panes */
+        draw_pane_vic_screen();
+
         /* Popups */
         draw_binload_popup();
         draw_binsave_popup();
@@ -4122,6 +4412,7 @@ int main(int /*argc*/, char ** /*argv*/)
     }
 
     if (g_heatmap_tex) { glDeleteTextures(1, &g_heatmap_tex); g_heatmap_tex = 0; }
+    if (g_vic_tex)     { glDeleteTextures(1, &g_vic_tex);     g_vic_tex     = 0; }
     sim_destroy(g_sim);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
