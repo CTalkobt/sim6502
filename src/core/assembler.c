@@ -156,7 +156,9 @@ int load_binary_to_mem(memory_t *mem, int addr, const char *filename) {
 }
 
 void handle_pseudo_op(const char *line, cpu_type_t *cpu_type, int *pc,
-                              memory_t *mem, symbol_table_t *symbols) {
+                              memory_t *mem, symbol_table_t *symbols,
+                              struct source_stack *ss) {
+    (void)ss;
 	while (*line && isspace(*line)) line++;
 	if (*line != '.') return;
 	line++;

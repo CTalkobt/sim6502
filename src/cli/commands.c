@@ -46,7 +46,7 @@ void run_asm_mode(memory_t *mem, symbol_table_t *symbols,
         if (!*p || *p == ';') continue;
         int base_pc = *asm_pc;
         if (*p == '.') {
-            handle_pseudo_op(p, &cpu_type, asm_pc, mem, symbols);
+            handle_pseudo_op(p, &cpu_type, asm_pc, mem, symbols, NULL);
             if (*asm_pc - base_pc > 0) {
                 printf("$%04X:", base_pc);
                 int show = (*asm_pc - base_pc) < 4 ? (*asm_pc - base_pc) : 4;
@@ -64,7 +64,7 @@ void run_asm_mode(memory_t *mem, symbol_table_t *symbols,
             symbol_add(symbols, lname, (unsigned short)*asm_pc, SYM_LABEL, "asm");
             printf("       %s = $%04X\n", lname, (unsigned int)*asm_pc);
             const char *after = colon + 1; while (*after && isspace((unsigned char)*after)) after++;
-            if (*after == '.') { handle_pseudo_op(after, &cpu_type, asm_pc, mem, symbols); continue; }
+            if (*after == '.') { handle_pseudo_op(after, &cpu_type, asm_pc, mem, symbols, NULL); continue; }
             if (!*after || *after == ';') continue;
         }
         instruction_t instr; parse_line(buf, &instr, symbols, *asm_pc);
@@ -103,7 +103,8 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
             printf("          mem <addr> [len], write <addr> <val>, reset,\n");
             printf("          processors, processor <type>, info <opcode>,\n");
             printf("          jump <addr>, set <reg> <val>, flag <flag> <0|1>,\n");
-            printf("          bload \"file\" <addr>, asm [addr], disasm [addr [count]], quit\n");
+            printf("          bload \"file\" [addr], bsave \"file\" <start> <end>,\n");
+            printf("          asm [addr], disasm [addr [count]], quit\n");
         } else if (strcmp(cmd, "break") == 0) {
             const char *p = line; SKIP_CMD(p); unsigned long addr;
             if (parse_mon_value(&p, &addr)) { while (*p && isspace((unsigned char)*p)) p++; breakpoint_add(breakpoints, (unsigned short)addr, *p ? p : NULL); }
@@ -176,6 +177,94 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
             const char *p = line; SKIP_CMD(p); unsigned long tmp; int steps = parse_mon_value(&p, &tmp) ? (int)tmp : 1;
             for (int i = 0; i < steps; i++) { int tr = handle_trap_local(symbols, cpu, mem); if (tr < 0) break; if (tr > 0) continue; unsigned char opc = mem_read(mem, cpu->pc); if (opc == 0x00) break; execute_from_mem(cpu, mem, dt, *p_cpu_type); }
             printf("STOP $%04X\n", cpu->pc);
+        } else if (strcmp(cmd, "bload") == 0) {
+            /* bload "file.bin" <addr>   -- raw binary, address required
+             * bload "file.prg" [addr]   -- PRG header used unless addr given */
+            const char *p = line; SKIP_CMD(p);
+            while (*p && isspace((unsigned char)*p)) p++;
+            if (*p != '"') { printf("Usage: bload \"file\" [addr]\n"); }
+            else {
+                p++;
+                char fname[512]; int fi = 0;
+                while (*p && *p != '"' && fi < 511) fname[fi++] = *p++;
+                fname[fi] = '\0';
+                if (*p == '"') p++;
+                while (*p && isspace((unsigned char)*p)) p++;
+                const char *ext = strrchr(fname, '.');
+                int is_prg = ext && (ext[1]=='p'||ext[1]=='P') &&
+                                    (ext[2]=='r'||ext[2]=='R') &&
+                                    (ext[3]=='g'||ext[3]=='G') && !ext[4];
+                if (is_prg) {
+                    unsigned long override_val = 0;
+                    int has_ovr = parse_mon_value(&p, &override_val);
+                    FILE *f = fopen(fname, "rb");
+                    if (!f) { printf("Error: cannot open '%s'\n", fname); }
+                    else {
+                        int lo = fgetc(f), hi = fgetc(f);
+                        if (lo == EOF || hi == EOF) { printf("Error: file too short\n"); fclose(f); }
+                        else {
+                            unsigned short load_addr = has_ovr
+                                ? (unsigned short)override_val
+                                : (unsigned short)((unsigned)lo | ((unsigned)hi << 8));
+                            int n = 0, c;
+                            while ((c = fgetc(f)) != EOF) {
+                                unsigned int dst = (unsigned int)load_addr + (unsigned int)n;
+                                if (dst < 65536) mem->mem[dst] = (unsigned char)c;
+                                n++;
+                            }
+                            fclose(f);
+                            cpu->pc = load_addr;
+                            printf("bload: %d bytes at $%04X (PRG)\n", n, (unsigned)load_addr);
+                        }
+                    }
+                } else {
+                    unsigned long addr = 0;
+                    if (!parse_mon_value(&p, &addr)) { printf("Usage: bload \"file.bin\" <addr>\n"); }
+                    else {
+                        int n = load_binary_to_mem(mem, (int)addr, fname);
+                        if (n < 0) printf("Error: cannot open '%s'\n", fname);
+                        else { cpu->pc = (unsigned short)addr; printf("bload: %d bytes at $%04X\n", n, (unsigned)addr); }
+                    }
+                }
+            }
+        } else if (strcmp(cmd, "bsave") == 0) {
+            /* bsave "file" <start> <end>  -- saves [start, end) as .bin or .prg */
+            const char *p = line; SKIP_CMD(p);
+            while (*p && isspace((unsigned char)*p)) p++;
+            if (*p != '"') { printf("Usage: bsave \"file\" <start> <end>\n"); }
+            else {
+                p++;
+                char fname[512]; int fi = 0;
+                while (*p && *p != '"' && fi < 511) fname[fi++] = *p++;
+                fname[fi] = '\0';
+                if (*p == '"') p++;
+                while (*p && isspace((unsigned char)*p)) p++;
+                unsigned long start_a = 0, end_a = 0;
+                if (!parse_mon_value(&p, &start_a) || !parse_mon_value(&p, &end_a)) {
+                    printf("Usage: bsave \"file\" <start> <end>\n");
+                } else if (end_a <= start_a || end_a > 0x10000) {
+                    printf("Error: invalid range $%04lX-$%04lX\n", start_a, end_a);
+                } else {
+                    const char *ext = strrchr(fname, '.');
+                    int is_prg = ext && (ext[1]=='p'||ext[1]=='P') &&
+                                        (ext[2]=='r'||ext[2]=='R') &&
+                                        (ext[3]=='g'||ext[3]=='G') && !ext[4];
+                    unsigned long count = end_a - start_a;
+                    FILE *f = fopen(fname, "wb");
+                    if (!f) { printf("Error: cannot write '%s'\n", fname); }
+                    else {
+                        if (is_prg) {
+                            fputc((int)(start_a & 0xFF),        f);
+                            fputc((int)((start_a >> 8) & 0xFF), f);
+                        }
+                        for (unsigned long i = start_a; i < end_a; i++)
+                            fputc(mem->mem[i], f);
+                        fclose(f);
+                        printf("bsave: %lu bytes at $%04lX saved to '%s'%s\n",
+                               count, start_a, fname, is_prg ? " (PRG)" : "");
+                    }
+                }
+            }
         }
 #undef SKIP_CMD
     }

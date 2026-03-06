@@ -77,6 +77,31 @@ The simulator includes a comprehensive IDE-style debugger built with **Dear ImGu
 - **Execution History**: A "time machine" that records past instructions, allowing you to step backwards and forwards through time to find bugs.
 - **Remote Hardware**: Connect the GUI to a real **MEGA65** or **VICE** instance to debug real hardware live.
 
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| F5 | Run |
+| F6 | Pause |
+| Esc | Pause (if running) |
+| F7 | Step into (1 instruction) |
+| F8 | Step over (executes the JSR body; single-steps otherwise) |
+| F9 | Toggle breakpoint at current PC |
+| Shift+F7 | Step back 1 instruction *(Phase 6 — not yet implemented)* |
+| Shift+F8 | Step forward in history *(Phase 6 — not yet implemented)* |
+| Ctrl+Shift+R | Reverse-continue to last breakpoint *(Phase 6 — not yet implemented)* |
+| Ctrl+R | Reset CPU |
+| Ctrl+L | Focus the filename bar / open load dialog |
+| Ctrl+G | Go to address (opens a hex-entry popup, scrolls disassembly) |
+| Ctrl+F | Focus search in the active pane |
+| Ctrl+Shift+F | Focus disassembly address bar |
+| Ctrl+Shift+E | Export current VIC frame as PNG *(Phase 6 — not yet implemented)* |
+| `` ` `` (backtick) | Focus the CLI console input |
+
+### GUI Console Commands
+
+The embedded CLI console supports the same commands as the interactive monitor (`-I` mode), including `bload` and `bsave` for binary file I/O.
+
 ---
 
 ## Building
@@ -288,7 +313,8 @@ All commands that take an address or numeric value accept `$hex`, `%binary`, or 
 | `regs` | Show all registers (A X Y Z B S P PC Cycles) |
 | `mem <addr> [len]` | Hex dump starting at address (default 16 bytes) |
 | `write <addr> <val>` | Write one byte to memory |
-| `bload "file" <addr>` | Load a raw binary file into memory at address |
+| `bload "file" [addr]` | Load a binary file into memory. **`.bin`**: `addr` is required. **`.prg`**: load address comes from the 2-byte LE header; optional `addr` overrides it. |
+| `bsave "file" <start> <end>` | Save memory `[start, end)` to a file. **`.prg`** extension adds a 2-byte LE load-address header; **`.bin`** writes raw bytes. |
 | `disasm [addr [count]]` | Disassemble `count` instructions from `addr` (defaults: current PC, 15). Unknown bytes shown as `.byte $XX`. Branch targets shown as resolved absolute addresses. |
 | `asm [addr]` | Enter inline assembler at `addr` (default: current PC); exit with `.` alone on a line |
 | `jump <addr>` | Set the Program Counter |
@@ -498,4 +524,4 @@ Every test file starts with an expectation comment:
 
 Proprietary — see `LICENSE`. Will move to open source at a future date.
 
-**Last Updated**: 2026-02-28
+**Last Updated**: 2026-03-05

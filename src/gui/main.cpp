@@ -122,6 +122,20 @@ static char     g_goto_buf[8]       = "";
 static bool     g_step_over_active  = false;
 static uint16_t g_step_over_bp      = 0;
 
+/* ---- Binary load dialog (toolbar: .bin / .prg) ---- */
+static bool     g_binload_open     = false;
+static char     g_binload_path[512] = "";
+static char     g_binload_addr[8]   = "0200";
+static bool     g_binload_is_prg   = false;
+static bool     g_binload_override = false;   /* PRG: use g_binload_addr instead of header */
+static uint16_t g_binload_header   = 0;       /* PRG: address read from file header */
+
+/* ---- Binary save dialog ---- */
+static bool     g_binsave_open      = false;
+static char     g_binsave_path[512] = "";
+static char     g_binsave_start[8]  = "0200";
+static char     g_binsave_count[8]  = "0100";
+
 /* ---- Instruction Reference ---- */
 static char g_iref_filter[32] = "";
 static int  g_iref_sel_idx    = -1;
@@ -429,6 +443,38 @@ static void setup_default_layout(ImGuiID dockspace_id, ImVec2 size)
  * -------------------------------------------------------------------------- */
 static void update_watches(void); /* forward declarations — defined before draw_toolbar */
 static void src_load(const char *path);
+
+/* Case-insensitive extension check: ext must include the leading '.'. */
+static bool ext_is(const char *path, const char *ext_lower)
+{
+    const char *e = strrchr(path, '.');
+    if (!e) return false;
+    for (const char *a = e, *b = ext_lower; *b; a++, b++)
+        if (tolower((unsigned char)*a) != (unsigned char)*b) return false;
+    return true;
+}
+
+/* Open the binary-load dialog for a .bin or .prg path. */
+static void open_binload_dialog(const char *path)
+{
+    strncpy(g_binload_path, path, sizeof(g_binload_path) - 1);
+    g_binload_is_prg   = ext_is(path, ".prg");
+    g_binload_override = false;
+    g_binload_header   = 0;
+    if (g_binload_is_prg) {
+        FILE *f = fopen(path, "rb");
+        if (f) {
+            int lo = fgetc(f), hi = fgetc(f);
+            fclose(f);
+            if (lo != EOF && hi != EOF)
+                g_binload_header = (uint16_t)((unsigned)lo | ((unsigned)hi << 8));
+        }
+        snprintf(g_binload_addr, sizeof(g_binload_addr), "%04X", (unsigned)g_binload_header);
+    } else {
+        snprintf(g_binload_addr, sizeof(g_binload_addr), "0200");
+    }
+    g_binload_open = true;
+}
 static void do_load(void)
 {
     if (g_filename_buf[0] == '\0') return;
@@ -559,18 +605,20 @@ static void con_exec(const char *cmd)
 
     if (strcmp(verb, "help") == 0) {
         con_add(CON_COL_NORMAL, "Commands:");
-        con_add(CON_COL_NORMAL, "  step [n]              step n instructions (default 1)");
-        con_add(CON_COL_NORMAL, "  run                   run continuously");
-        con_add(CON_COL_NORMAL, "  pause                 pause execution");
-        con_add(CON_COL_NORMAL, "  reset                 reset CPU to start address");
-        con_add(CON_COL_NORMAL, "  regs                  print CPU registers");
-        con_add(CON_COL_NORMAL, "  mem [addr] [n]        hex dump n bytes at addr");
-        con_add(CON_COL_NORMAL, "  disasm [addr] [n]     disassemble n instructions");
-        con_add(CON_COL_NORMAL, "  break <addr> [cond]   set breakpoint");
-        con_add(CON_COL_NORMAL, "  del <addr>            remove breakpoint");
-        con_add(CON_COL_NORMAL, "  breaks                list all breakpoints");
-        con_add(CON_COL_NORMAL, "  load <path>           assemble and load .asm file");
-        con_add(CON_COL_NORMAL, "  cls                   clear console output");
+        con_add(CON_COL_NORMAL, "  step [n]                     step n instructions (default 1)");
+        con_add(CON_COL_NORMAL, "  run                          run continuously");
+        con_add(CON_COL_NORMAL, "  pause                        pause execution");
+        con_add(CON_COL_NORMAL, "  reset                        reset CPU to start address");
+        con_add(CON_COL_NORMAL, "  regs                         print CPU registers");
+        con_add(CON_COL_NORMAL, "  mem [addr] [n]               hex dump n bytes at addr");
+        con_add(CON_COL_NORMAL, "  disasm [addr] [n]            disassemble n instructions");
+        con_add(CON_COL_NORMAL, "  break <addr> [cond]          set breakpoint");
+        con_add(CON_COL_NORMAL, "  del <addr>                   remove breakpoint");
+        con_add(CON_COL_NORMAL, "  breaks                       list all breakpoints");
+        con_add(CON_COL_NORMAL, "  load <path>                  assemble and load .asm file");
+        con_add(CON_COL_NORMAL, "  bload <path> [addr]          load .bin (addr req) or .prg");
+        con_add(CON_COL_NORMAL, "  bsave <path> <start> <end>   save memory range as .bin/.prg");
+        con_add(CON_COL_NORMAL, "  cls                          clear console output");
         return;
     }
 
@@ -765,6 +813,81 @@ static void con_exec(const char *cmd)
             con_add(CON_COL_OK, "Loaded: %s", path);
         else
             con_add(CON_COL_ERR, "Failed to load: %s", path);
+        return;
+    }
+
+    if (strcmp(verb, "bload") == 0) {
+        /* bload <path> [addr]  -- .bin requires addr; .prg uses header unless addr given */
+        const char *p = args_rest;
+        char path[512]; int pi = 0;
+        if (*p == '"') {
+            p++;
+            while (*p && *p != '"' && pi < 511) path[pi++] = *p++;
+            if (*p == '"') p++;
+        } else {
+            while (*p && !isspace((unsigned char)*p) && pi < 511) path[pi++] = *p++;
+        }
+        path[pi] = '\0';
+        while (*p == ' ' || *p == '\t') p++;
+        if (!path[0]) { con_add(CON_COL_ERR, "Usage: bload <path> [addr]"); return; }
+        bool is_prg = ext_is(path, ".prg");
+        g_running = false;
+        int ok;
+        if (is_prg) {
+            uint16_t override_addr = *p ? (uint16_t)strtol(p, nullptr, 16) : 0;
+            ok = sim_load_prg(g_sim, path, override_addr);
+        } else {
+            if (!*p) { con_add(CON_COL_ERR, "bload: address required for .bin"); return; }
+            uint16_t addr = (uint16_t)strtol(p, nullptr, 16);
+            ok = sim_load_bin(g_sim, path, addr);
+        }
+        if (ok == 0) {
+            g_prev_cpu_valid   = false;
+            g_last_write_count = 0;
+            for (int i = 0; i < g_watch_count; i++) g_watches[i].valid = false;
+            update_watches();
+            uint16_t laddr = 0, lsize = 0;
+            sim_get_load_info(g_sim, &laddr, &lsize);
+            con_add(CON_COL_OK, "bload: %u bytes at $%04X%s",
+                    (unsigned)lsize, (unsigned)laddr, is_prg ? " (PRG)" : "");
+            snprintf(g_filename_buf, sizeof(g_filename_buf), "%s", path);
+        } else {
+            con_add(CON_COL_ERR, "bload: failed to open '%s'", path);
+        }
+        return;
+    }
+
+    if (strcmp(verb, "bsave") == 0) {
+        /* bsave <path> <start> <end>  -- saves [start, end) as .bin or .prg */
+        const char *p = args_rest;
+        char path[512]; int pi = 0;
+        if (*p == '"') {
+            p++;
+            while (*p && *p != '"' && pi < 511) path[pi++] = *p++;
+            if (*p == '"') p++;
+        } else {
+            while (*p && !isspace((unsigned char)*p) && pi < 511) path[pi++] = *p++;
+        }
+        path[pi] = '\0';
+        while (*p == ' ' || *p == '\t') p++;
+        if (!path[0]) { con_add(CON_COL_ERR, "Usage: bsave <path> <start> <end>"); return; }
+        char *endp;
+        uint16_t start = (uint16_t)strtol(p, &endp, 16);
+        p = endp;
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p) { con_add(CON_COL_ERR, "Usage: bsave <path> <start> <end>"); return; }
+        uint16_t end_addr = (uint16_t)strtol(p, nullptr, 16);
+        if (end_addr <= start) { con_add(CON_COL_ERR, "bsave: end must be > start"); return; }
+        uint16_t count = (uint16_t)(end_addr - start);
+        bool is_prg = ext_is(path, ".prg");
+        int ok = is_prg
+            ? sim_save_prg(g_sim, path, start, count)
+            : sim_save_bin(g_sim, path, start, count);
+        if (ok == 0)
+            con_add(CON_COL_OK, "bsave: %u bytes at $%04X → '%s'%s",
+                    (unsigned)count, (unsigned)start, path, is_prg ? " (PRG)" : "");
+        else
+            con_add(CON_COL_ERR, "bsave: failed to write '%s'", path);
         return;
     }
 
@@ -2069,15 +2192,19 @@ static void draw_toolbar(void)
                                           sizeof(g_filename_buf),
                                           ImGuiInputTextFlags_EnterReturnsTrue);
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Path to .asm file (Ctrl+L to focus)");
+        ImGui::SetTooltip("Path to .asm / .bin / .prg file (Ctrl+L to focus)");
 
     ImGui::SameLine();
     if (ImGui::Button("Load") || enter_pressed) {
-        do_load();
-        if (sim_get_state(g_sim) != SIM_IDLE)
-            con_add(CON_COL_OK, "Loaded: %s", g_filename_buf);
-        else
-            con_add(CON_COL_ERR, "Failed to load: %s", g_filename_buf);
+        if (ext_is(g_filename_buf, ".bin") || ext_is(g_filename_buf, ".prg")) {
+            open_binload_dialog(g_filename_buf);
+        } else {
+            do_load();
+            if (sim_get_state(g_sim) != SIM_IDLE)
+                con_add(CON_COL_OK, "Loaded: %s", g_filename_buf);
+            else
+                con_add(CON_COL_ERR, "Failed to load: %s", g_filename_buf);
+        }
     }
 
     ImGui::SameLine();
@@ -2674,6 +2801,133 @@ static void draw_pane_console(void)
 }
 
 /* --------------------------------------------------------------------------
+ * Binary load popup (.bin / .prg)
+ * -------------------------------------------------------------------------- */
+static void draw_binload_popup(void)
+{
+    if (g_binload_open) {
+        ImGui::OpenPopup("Load Binary##binload");
+        g_binload_open = false;
+    }
+    if (ImGui::BeginPopupModal("Load Binary##binload", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("File: %s", g_binload_path);
+        ImGui::Separator();
+
+        if (g_binload_is_prg) {
+            ImGui::Text("PRG header address: $%04X", (unsigned)g_binload_header);
+            ImGui::Checkbox("Override load address", &g_binload_override);
+            if (!g_binload_override) ImGui::BeginDisabled();
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(70.0f);
+            ImGui::InputText("##prg_addr", g_binload_addr, sizeof(g_binload_addr),
+                ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_AutoSelectAll);
+            if (!g_binload_override) ImGui::EndDisabled();
+        } else {
+            ImGui::Text("Load address (hex):");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(70.0f);
+            ImGui::InputText("##bin_addr", g_binload_addr, sizeof(g_binload_addr),
+                ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_AutoSelectAll);
+        }
+
+        ImGui::Separator();
+        bool do_load_bin = ImGui::Button("Load");
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel"))
+            ImGui::CloseCurrentPopup();
+
+        if (do_load_bin) {
+            int ok;
+            if (g_binload_is_prg) {
+                uint16_t override_addr = g_binload_override
+                    ? (uint16_t)strtol(g_binload_addr, nullptr, 16)
+                    : 0;
+                ok = sim_load_prg(g_sim, g_binload_path, override_addr);
+            } else {
+                uint16_t addr = (uint16_t)strtol(g_binload_addr, nullptr, 16);
+                ok = sim_load_bin(g_sim, g_binload_path, addr);
+            }
+            if (ok == 0) {
+                g_prev_cpu_valid   = false;
+                g_last_write_count = 0;
+                for (int i = 0; i < g_watch_count; i++) g_watches[i].valid = false;
+                update_watches();
+                uint16_t laddr = 0, lsize = 0;
+                sim_get_load_info(g_sim, &laddr, &lsize);
+                con_add(CON_COL_OK, "bload: %u bytes at $%04X%s",
+                        (unsigned)lsize, (unsigned)laddr,
+                        g_binload_is_prg ? " (PRG)" : "");
+                snprintf(g_filename_buf, sizeof(g_filename_buf), "%s", g_binload_path);
+            } else {
+                con_add(CON_COL_ERR, "bload: failed to open '%s'", g_binload_path);
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+/* --------------------------------------------------------------------------
+ * Binary save popup (.bin / .prg)
+ * -------------------------------------------------------------------------- */
+static void draw_binsave_popup(void)
+{
+    if (g_binsave_open) {
+        ImGui::OpenPopup("Save Binary##binsave");
+        g_binsave_open = false;
+    }
+    if (ImGui::BeginPopupModal("Save Binary##binsave", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Output path (.prg = PRG header, .bin = raw):");
+        ImGui::SetNextItemWidth(320.0f);
+        ImGui::InputText("##savepath", g_binsave_path, sizeof(g_binsave_path));
+
+        ImGui::Text("Start (hex):");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(70.0f);
+        ImGui::InputText("##savestart", g_binsave_start, sizeof(g_binsave_start),
+            ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_AutoSelectAll);
+        ImGui::SameLine();
+        ImGui::Text("  Count (hex):");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(70.0f);
+        ImGui::InputText("##savecount", g_binsave_count, sizeof(g_binsave_count),
+            ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_AutoSelectAll);
+
+        uint16_t start = (uint16_t)strtol(g_binsave_start, nullptr, 16);
+        uint16_t count = (uint16_t)strtol(g_binsave_count, nullptr, 16);
+        bool is_prg = ext_is(g_binsave_path, ".prg");
+        ImGui::TextDisabled("Format: %s  |  End: $%04X",
+            is_prg ? "PRG (2-byte header + data)" : "raw binary",
+            (unsigned)((start + count) & 0xFFFF));
+
+        ImGui::Separator();
+        bool valid = (count > 0 && g_binsave_path[0] != '\0');
+        if (!valid) ImGui::BeginDisabled();
+        bool do_save = ImGui::Button("Save");
+        if (!valid) ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel"))
+            ImGui::CloseCurrentPopup();
+
+        if (do_save && valid) {
+            int ok = is_prg
+                ? sim_save_prg(g_sim, g_binsave_path, start, count)
+                : sim_save_bin(g_sim, g_binsave_path, start, count);
+            if (ok == 0)
+                con_add(CON_COL_OK, "bsave: %u bytes at $%04X → '%s'%s",
+                        (unsigned)count, (unsigned)start, g_binsave_path,
+                        is_prg ? " (PRG)" : "");
+            else
+                con_add(CON_COL_ERR, "bsave: failed to write '%s'", g_binsave_path);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+/* --------------------------------------------------------------------------
  * Go-to-address popup (Ctrl+G)
  * -------------------------------------------------------------------------- */
 static void draw_goto_popup(void)
@@ -3038,6 +3292,25 @@ int main(int /*argc*/, char ** /*argv*/)
                 if (ImGui::BeginMenu("File")) {
                     if (ImGui::MenuItem("Load...", "Ctrl+L")) g_focus_filename = true;
                     ImGui::Separator();
+                    if (ImGui::MenuItem("Save Binary/PRG...")) {
+                        /* Pre-populate from the currently loaded program */
+                        uint16_t laddr = 0, lsize = 0;
+                        sim_get_load_info(g_sim, &laddr, &lsize);
+                        snprintf(g_binsave_start, sizeof(g_binsave_start), "%04X", (unsigned)laddr);
+                        snprintf(g_binsave_count, sizeof(g_binsave_count), "%04X", (unsigned)(lsize ? lsize : 0x100));
+                        /* Derive save path from loaded filename (swap extension to .prg) */
+                        const char *fn = sim_get_filename(g_sim);
+                        if (fn && fn[0] && strcmp(fn, "(none)") != 0) {
+                            strncpy(g_binsave_path, fn, sizeof(g_binsave_path) - 5);
+                            char *dot = strrchr(g_binsave_path, '.');
+                            if (dot) strcpy(dot, ".prg");
+                            else strncat(g_binsave_path, ".prg", sizeof(g_binsave_path) - strlen(g_binsave_path) - 1);
+                        } else {
+                            strncpy(g_binsave_path, "output.prg", sizeof(g_binsave_path) - 1);
+                        }
+                        g_binsave_open = true;
+                    }
+                    ImGui::Separator();
                     if (ImGui::MenuItem("Quit", "Alt+F4")) running = false;
                     ImGui::EndMenu();
                 }
@@ -3179,6 +3452,8 @@ int main(int /*argc*/, char ** /*argv*/)
         draw_pane_profiler();
 
         /* Popups */
+        draw_binload_popup();
+        draw_binsave_popup();
         draw_goto_popup();
 
         /* Render */

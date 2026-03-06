@@ -7,6 +7,8 @@
 #include "opcodes.h"
 #include "symbols.h"
 
+struct source_stack;
+
 /* instruction_t: Represents a parsed instruction. */
 typedef struct {
 	char op[8];
@@ -23,9 +25,10 @@ typedef struct {
  * pc       — updated by .org / .byte / .word / .text / .align
  * mem      — if non-NULL (second pass) bytes are written; if NULL (first pass) only pc advances
  * symbols  — used in second pass to resolve label operands in .word/.byte; may be NULL
+ * ss       — optional source stack for macros/includes/loops
  */
 void handle_pseudo_op(const char *line, cpu_type_t *cpu_type, int *pc,
-                      memory_t *mem, symbol_table_t *symbols);
+                      memory_t *mem, symbol_table_t *symbols, struct source_stack *ss);
 
 /*
  * parse_line: parse a single line of assembly into an instruction_t.

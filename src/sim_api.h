@@ -65,6 +65,38 @@ void sim_destroy(sim_session_t *s);
  * On success, state transitions to SIM_READY.                              */
 int sim_load_asm(sim_session_t *s, const char *path);
 
+/* Load a raw binary file into memory at load_addr.
+ * Resets memory, symbols, and breakpoints.  PC is set to load_addr.
+ * Returns 0 on success, -1 on error (file not found, empty file).
+ * On success, state transitions to SIM_READY.                              */
+int sim_load_bin(sim_session_t *s, const char *path, uint16_t load_addr);
+
+/* Load a .prg file (Commodore-style 2-byte LE load address header + data).
+ * If override_addr != 0, use that instead of the embedded header address.
+ * Returns 0 on success, -1 on error (file not found, header too short).
+ * On success, state transitions to SIM_READY.                              */
+int sim_load_prg(sim_session_t *s, const char *path, uint16_t override_addr);
+
+/* --------------------------------------------------------------------------
+ * Binary save
+ * -------------------------------------------------------------------------- */
+
+/* Write memory[addr_start .. addr_start+count-1] to a raw binary file.
+ * Returns 0 on success, -1 on error.                                       */
+int sim_save_bin(sim_session_t *s, const char *path,
+                 uint16_t addr_start, uint16_t count);
+
+/* Write a .prg file: 2-byte LE load-address header followed by
+ * memory[addr_start .. addr_start+count-1].
+ * Returns 0 on success, -1 on error.                                       */
+int sim_save_prg(sim_session_t *s, const char *path,
+                 uint16_t addr_start, uint16_t count);
+
+/* Return the load address and byte count of the most recently loaded file.
+ * For sim_load_asm this reflects the assembled code range.
+ * Either pointer may be NULL.                                               */
+void sim_get_load_info(sim_session_t *s, uint16_t *addr_out, uint16_t *size_out);
+
 /* --------------------------------------------------------------------------
  * Execution control
  * -------------------------------------------------------------------------- */

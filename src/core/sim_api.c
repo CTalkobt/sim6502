@@ -24,6 +24,7 @@ struct sim_session {
     cpu_type_t        cpu_type;
     sim_state_t       state;
     unsigned short    start_addr;
+    unsigned short    load_size;   /* byte count of the loaded binary (best-effort) */
     instruction_t     session_rom[65536]; /* debug overlay (parallel to mem) */
     char              filename[512];
     sim_event_cb      event_cb;
@@ -131,7 +132,7 @@ int sim_load_asm(sim_session_t *s, const char *path) {
         char *ptr = line;
         while (*ptr && isspace(*ptr)) ptr++;
         if (!*ptr || *ptr == ';') continue;
-        if (*ptr == '.') { handle_pseudo_op(ptr, &cpu_type, &pc, NULL, NULL); continue; }
+        if (*ptr == '.') { handle_pseudo_op(ptr, &cpu_type, &pc, NULL, NULL, NULL); continue; }
         char *colon = strchr(ptr, ':');
         if (colon) {
             char label_name[64]; int len = (int)(colon - ptr); if (len >= 64) len = 63;
@@ -139,7 +140,7 @@ int sim_load_asm(sim_session_t *s, const char *path) {
             symbol_add(&s->symbols, label_name, (unsigned short)pc, SYM_LABEL, "Source");
             const char *after = colon + 1;
             while (*after && isspace(*after)) after++;
-            if (*after == '.') { handle_pseudo_op(after, &cpu_type, &pc, NULL, NULL); continue; }
+            if (*after == '.') { handle_pseudo_op(after, &cpu_type, &pc, NULL, NULL, NULL); continue; }
         }
         instruction_t instr; parse_line(line, &instr, NULL, pc);
         if (instr.op[0]) {
@@ -164,12 +165,12 @@ int sim_load_asm(sim_session_t *s, const char *path) {
         const char *ptr = line;
         while (*ptr && isspace(*ptr)) ptr++;
         if (!*ptr || *ptr == ';') continue;
-        if (*ptr == '.') { handle_pseudo_op(ptr, &s->cpu_type, &pc, &s->mem, &s->symbols); continue; }
+        if (*ptr == '.') { handle_pseudo_op(ptr, &s->cpu_type, &pc, &s->mem, &s->symbols, NULL); continue; }
         const char *colon = strchr(ptr, ':');
         if (colon) {
             const char *after = colon + 1;
             while (*after && isspace(*after)) after++;
-            if (*after == '.') { handle_pseudo_op(after, &s->cpu_type, &pc, &s->mem, &s->symbols); continue; }
+            if (*after == '.') { handle_pseudo_op(after, &s->cpu_type, &pc, &s->mem, &s->symbols, NULL); continue; }
         }
         instruction_t instr; parse_line(line, &instr, &s->symbols, pc);
         if (instr.op[0]) {
@@ -183,8 +184,112 @@ int sim_load_asm(sim_session_t *s, const char *path) {
     fclose(f);
     dispatch_build(&s->dt, s->handlers, s->num_handlers, s->cpu_type);
     strncpy(s->filename, path, sizeof(s->filename) - 1);
+    s->load_size = (unsigned short)(pc > s->start_addr ? pc - s->start_addr : 0);
     s->state = SIM_READY;
     return 0;
+}
+
+/* --------------------------------------------------------------------------
+ * Binary load/save
+ * -------------------------------------------------------------------------- */
+
+/* Shared setup for binary loads: reset session state, init CPU. */
+static void binary_load_common(sim_session_t *s, uint16_t load_addr, int byte_count)
+{
+    cpu_init(&s->cpu);
+    s->cpu.pc    = load_addr;
+    s->start_addr = load_addr;
+    s->load_size  = (unsigned short)(byte_count > 0xFFFF ? 0xFFFF : byte_count);
+    if (s->cpu_type == CPU_45GS02) set_flag(&s->cpu, FLAG_E, 1);
+    dispatch_build(&s->dt, s->handlers, s->num_handlers, s->cpu_type);
+    s->state = SIM_READY;
+}
+
+int sim_load_bin(sim_session_t *s, const char *path, uint16_t load_addr)
+{
+    if (!s || !path) return -1;
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    memset(&s->mem, 0, sizeof(s->mem));
+    memset(s->session_rom, 0, sizeof(s->session_rom));
+    symbol_table_init(&s->symbols, "Session");
+    breakpoint_init(&s->breakpoints);
+    int n = 0, c;
+    while ((c = fgetc(f)) != EOF) {
+        uint32_t dst = (uint32_t)load_addr + (uint32_t)n;
+        if (dst < 0x10000) s->mem.mem[dst] = (uint8_t)c;
+        n++;
+    }
+    fclose(f);
+    if (n == 0) return -1;
+    binary_load_common(s, load_addr, n);
+    strncpy(s->filename, path, sizeof(s->filename) - 1);
+    return 0;
+}
+
+int sim_load_prg(sim_session_t *s, const char *path, uint16_t override_addr)
+{
+    if (!s || !path) return -1;
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    int lo = fgetc(f), hi = fgetc(f);
+    if (lo == EOF || hi == EOF) { fclose(f); return -1; }
+    uint16_t load_addr = override_addr
+        ? override_addr
+        : (uint16_t)((unsigned)lo | ((unsigned)hi << 8));
+    memset(&s->mem, 0, sizeof(s->mem));
+    memset(s->session_rom, 0, sizeof(s->session_rom));
+    symbol_table_init(&s->symbols, "Session");
+    breakpoint_init(&s->breakpoints);
+    int n = 0, c;
+    while ((c = fgetc(f)) != EOF) {
+        uint32_t dst = (uint32_t)load_addr + (uint32_t)n;
+        if (dst < 0x10000) s->mem.mem[dst] = (uint8_t)c;
+        n++;
+    }
+    fclose(f);
+    binary_load_common(s, load_addr, n);
+    strncpy(s->filename, path, sizeof(s->filename) - 1);
+    return 0;
+}
+
+int sim_save_bin(sim_session_t *s, const char *path,
+                 uint16_t addr_start, uint16_t count)
+{
+    if (!s || !path || count == 0) return -1;
+    FILE *f = fopen(path, "wb");
+    if (!f) return -1;
+    for (uint32_t i = 0; i < (uint32_t)count; i++) {
+        if (fputc(s->mem.mem[(uint32_t)addr_start + i], f) == EOF) {
+            fclose(f); return -1;
+        }
+    }
+    fclose(f);
+    return 0;
+}
+
+int sim_save_prg(sim_session_t *s, const char *path,
+                 uint16_t addr_start, uint16_t count)
+{
+    if (!s || !path || count == 0) return -1;
+    FILE *f = fopen(path, "wb");
+    if (!f) return -1;
+    fputc((int)(addr_start & 0xFF),        f);
+    fputc((int)((addr_start >> 8) & 0xFF), f);
+    for (uint32_t i = 0; i < (uint32_t)count; i++) {
+        if (fputc(s->mem.mem[(uint32_t)addr_start + i], f) == EOF) {
+            fclose(f); return -1;
+        }
+    }
+    fclose(f);
+    return 0;
+}
+
+void sim_get_load_info(sim_session_t *s, uint16_t *addr_out, uint16_t *size_out)
+{
+    if (!s) return;
+    if (addr_out) *addr_out = s->start_addr;
+    if (size_out) *size_out = s->load_size;
 }
 
 int sim_step(sim_session_t *s, int count) {

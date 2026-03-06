@@ -1488,7 +1488,12 @@ REGS A=77 X=00 Y=00 S=FF P=80 PC=0200 Cycles=0
 0210: 42 00 00 00
 ```
 
-**`bload "file" <addr>`** — load a raw binary file into memory at `addr`:
+**`bload "file" [addr]`** — load a binary file into memory:
+
+- **`.bin`** files: `addr` is required and specifies the load address.
+- **`.prg`** files (Commodore-style): the first two bytes hold the load address in
+  little-endian order. `addr` is optional; when given it overrides the embedded header
+  address.
 
 ```
 > bload "tests/data/three_bytes.bin" $0200
@@ -1496,6 +1501,27 @@ Loaded 3 bytes at $0200
 > mem $0200 4
 
 0200: 42 AB FF 00
+
+> bload "mygame.prg"
+Loaded 8192 bytes at $0801
+
+> bload "mygame.prg" $C000
+Loaded 8192 bytes at $C000
+```
+
+**`bsave "file" <start> <end>`** — save memory from `start` up to (but not including)
+`end`:
+
+- **`.bin`** extension: writes raw bytes with no header.
+- **`.prg`** extension: prepends a 2-byte little-endian load address header (the value of
+  `start`) before the data, producing a standard Commodore `.prg` file.
+
+```
+> bsave "output.bin" $0200 $0203
+Saved 3 bytes to output.bin
+
+> bsave "snapshot.prg" $0801 $1801
+Saved 4096 bytes to snapshot.prg
 ```
 
 ### Inline Assembly and Disassembly
@@ -2113,7 +2139,8 @@ No terminal required on the user's side.
 | `jump <addr>` | Set PC |
 | `mem <addr> [len]` | Hex dump |
 | `write <addr> <val>` | Write one byte |
-| `bload "file" <addr>` | Load binary file |
+| `bload "file" [addr]` | Load `.bin` (addr required) or `.prg` (addr optional, overrides header) |
+| `bsave "file" <start> <end>` | Save memory `[start,end)` to `.bin` or `.prg` (adds LE load-address header) |
 | `break <addr>` | Set breakpoint |
 | `clear <addr>` | Remove breakpoint |
 | `list` | List all breakpoints |
@@ -2211,6 +2238,82 @@ is `6502` if `; PROCESSOR:` is absent.
 | Flat 28-bit memory | — | — | — | — | ✓ |
 | NEG/ASR | — | — | — | — | ✓ |
 | CLE/SEE | — | — | — | — | ✓ |
+
+---
+
+## Section 13 — The Graphical Debugger (GUI)
+
+Build the GUI with `make gui`. Launch it with:
+
+```bash
+./sim6502-gui
+```
+
+No command-line arguments are needed; everything is controlled interactively.
+
+### Key Panes
+
+| Pane | Description |
+|------|-------------|
+| **Registers** | Live view of all CPU registers (A, X, Y, Z, B, SP, PC) and status flags. |
+| **Disassembly** | Real-time disassembly around the PC, with breakpoint toggles and symbol annotations. |
+| **Memory** | Hex + ASCII dump of any region; "follow PC" mode tracks the program counter. |
+| **CLI Console** | Full interactive terminal mirroring the `-I` monitor mode — same commands, including `bload` and `bsave`. |
+| **VIC-II/IV Viewer** | Graphical render of C64/MEGA65 video memory (character modes, bitmaps, sprites). |
+| **Execution History** | Ring-buffer trace of recent instructions; used by step-back (Phase 6). |
+| **Breakpoints** | List of active breakpoints with enable/disable toggles. |
+| **Symbols** | Symbol table browser — view, add, or remove symbols. |
+| **Profiler** | Per-address execution count and cycle totals. |
+| **Opcode Browser** | Searchable list of every opcode in the active processor's table. |
+
+### Loading Files
+
+**Toolbar Load button / Ctrl+L**
+
+- Typing a `.asm` filename in the toolbar and pressing Enter (or clicking Load) assembles and loads the source file.
+- Typing a `.bin` or `.prg` filename opens the **Binary Load** dialog:
+  - For `.bin`: enter the required load address.
+  - For `.prg`: the embedded 2-byte header address is shown; check *Override* and enter an address to ignore the header.
+
+**File → Save Binary/PRG…**
+
+Opens the **Binary Save** dialog pre-populated with the last load address and byte count. Change the output path, start address, and byte count as needed. A `.prg` extension adds the 2-byte LE header automatically.
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| F5 | Run |
+| F6 | Pause |
+| Esc | Pause (if running) |
+| F7 | Step into (1 instruction) |
+| F8 | Step over — runs the JSR body and stops on return; single-steps if the current instruction is not JSR |
+| F9 | Toggle breakpoint at the current PC |
+| Shift+F7 | Step back 1 instruction *(Phase 6 — stub)* |
+| Shift+F8 | Step forward in history *(Phase 6 — stub)* |
+| Ctrl+Shift+R | Reverse-continue to last breakpoint *(Phase 6 — stub)* |
+| Ctrl+R | Reset CPU |
+| Ctrl+L | Focus the filename bar / open load dialog |
+| Ctrl+G | Go to address — opens a hex-entry popup and scrolls the disassembly view |
+| Ctrl+F | Focus search in the active pane |
+| Ctrl+Shift+F | Focus the disassembly address bar |
+| Ctrl+Shift+E | Export current VIC frame as PNG *(Phase 6 — stub)* |
+| `` ` `` (backtick) | Focus the CLI console input |
+
+### GUI Console — Binary File Commands
+
+The embedded console accepts the same `bload` / `bsave` commands as the CLI monitor:
+
+```
+bload "program.prg"              ; load .prg using embedded header address
+bload "program.prg" $C000        ; load .prg but override load address to $C000
+bload "raw.bin" $0200            ; load raw binary at $0200
+
+bsave "out.bin" $0200 $0300      ; save 256 bytes as raw binary
+bsave "out.prg" $0801 $1801      ; save 4096 bytes as .prg (with header)
+```
+
+After a successful `bload`, the disassembly view tracks the new PC and the register panel reflects the reset state.
 
 ---
 
