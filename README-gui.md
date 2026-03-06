@@ -49,6 +49,20 @@ The GUI is designed with a flexible docking system, allowing you to rearrange, s
 - **Symbol Browser**: Search, inspect, and navigate to any loaded label or variable.
 - **Watch List**: Pin specific addresses to monitor their values as the program runs.
 
+## Breakpoint Conditions
+
+The GUI and CLI both support complex conditional breakpoints using standard assembler expression syntax.
+
+**Supported Operators**:
+- **Arithmetic**: `<<, >>, &, |, ^, ~`
+- **Logical**: `&&, ||, !, ==, !=, <, >, <=, >=`
+- **Parentheses**: `( )` for grouping and precedence.
+
+**Example Conditions**:
+- `(A & $80) != 0` — Stop if bit 7 of A is set.
+- `X > $10 && .Z == 1` — Stop if X > 16 and the Zero flag is set.
+- `PC >= $C000 && PC <= $CFFF` — Stop if execution is within a specific range.
+
 ---
 
 ## Keyboard Shortcuts

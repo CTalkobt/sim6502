@@ -794,9 +794,9 @@ Users can save the current docking layout + open panes as a named preset (e.g., 
 22. [x] <SKIPPED>
 
 ### Phase 6 — Graphics & Time Travel
-23. Execution History ring buffer infrastructure (`history.h`, `sim_history_*` API)
-24. History pane: timeline slider, step-back/step-forward, history table, history enable/disable / clear. 
-25. CLI `stepback` / `stepfwd` commands
+23. [x] Execution History ring buffer infrastructure (`sim_history_*` API in `sim_api.c/.h`)
+24. [~] History pane: step-back/step-forward buttons in execution bar, history depth indicator ✓; timeline slider, history table, history enable/disable/clear not yet implemented
+25. [x] CLI `stepback` / `stepfwd` commands
 26. VIC-II renderer: character mode, bitmap mode, sprites (software rasteriser into pixel buffer → OpenGL texture)
 27. VIC Viewer pane: Screen, Sprites, Char Set, Color RAM, Registers sub-panes
 27a. VIC Viewer pane: Screen
@@ -805,8 +805,8 @@ Users can save the current docking layout + open panes as a named preset (e.g., 
 27d. VIC Viewer pane: Color RAM
 27e. VIC Viewer pane: Registers sub-panes
 28. PNG export for frames, sprites, and char sheets (`stb_image_write.h`)
-28a. VIC Viewer pane: Standard Screen bitmap. 
-28b. VIC Viewer pane: Standard text screen w/ character set rendered. 
+28a. VIC Viewer pane: Standard Screen bitmap.
+28b. VIC Viewer pane: Standard text screen w/ character set rendered.
 29. VIC-III mode extensions
 30. VIC-IV mode extensions (MEGA65 full-colour mode, extended sprites)
 

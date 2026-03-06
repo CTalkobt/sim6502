@@ -289,6 +289,18 @@ Enter the monitor with `-I`. Pressing Enter on a blank line executes a single st
 | `help` | Show command summary |
 | `quit` / `exit` | Exit the simulator |
 
+### Breakpoint Conditions
+
+Breakpoints can be made conditional using standard assembler expression syntax. Supported operators (in order of precedence):
+1. Parentheses: `( )`
+2. Unary: `~` (bitwise NOT)
+3. Shifts: `<<, >>`
+4. Bitwise: `&` (AND), `^` (XOR), `|` (OR)
+5. Comparisons: `==, !=, <, >, <=, >=`
+6. Logical: `&&` (AND), `||` (OR)
+
+Example: `break $C000 (A & $40) != 0 && .Z == 1`
+
 ---
 
 ## Symbol Tables
