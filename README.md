@@ -34,48 +34,57 @@ Help with this development by contributing and buy me coffee at: https://kodecof
 | `6502-undoc` | NMOS 6502 | Includes undocumented/illegal opcodes |
 | `65c02` | CMOS 65C02 | WDC extensions (BIT imm, STZ, TRB, TSB, …) |
 | `65ce02` | CSG 65CE02 | Adds Z register, B register, 16-bit branches, word ops |
-| `45gs02` | MEGA65 45GS02 | Full 32-bit quad instructions via `$42 $42` prefix, MAP, flat addressing |
-| `GUI` | Graphical IDE | Dear ImGui-based multi-pane debugger with VIC-II/IV support |
+| `45gs02` | MEGA65 45GS02 | Full 32-bit quad instructions, MAP translation, 28-bit flat addressing |
+
+### 45GS02 Advanced Features
+
+- **Quad Instructions**: 32-bit operations (LDQ, STQ, ADDQ, etc.) via the `$42 $42` prefix.
+- **Flat Addressing**: Access up to 256MB of memory using 28-bit physical addresses.
+- **MAP Translation**: 8KB virtual memory blocks can be mapped to any 20-bit physical offset.
+- **Extended Registers**: 8-bit Z and B registers, and a 16-bit Stack Pointer (SP).
+- **New Addressing Modes**: Stack-relative indirect indexed `(d,SP),Y` and flat indirect `[d]` or `[d],Z`.
 
 ### Assembler
 
-The simulator includes a two-pass assembler that runs before execution:
+The simulator includes an integrated assembler that runs before execution:
 
-- **Forward label references** resolved in the second pass
-- **All literal formats**: `$FF` hex, `%10101010` binary, `'A'` character, `123` decimal
-- **Pseudo-ops**: `.processor`, `.org`, `.byte`, `.word`, `.text`, `.align`, `.bin`
+- **Forward label references** resolved in the second pass.
+- **All literal formats**: `$FF` hex, `%10101010` binary, `'A'` character, `123` decimal.
+- **Detailed Pseudo-ops**: `.processor`, `.org`, `.byte`, `.word`, `.text`, `.align`, `.bin`.
 
 ### Debugger / Monitor
 
-- Up to 16 simultaneous breakpoints
-- Execution trace to stdout or file (every instruction, address, cycle count)
-- Interactive monitor: step, run, inspect/modify registers and memory
-- Interactive mode can be entered **without a source file** (useful for hand-entry or `bload`)
-- ROM **TRAP** intercept: simulate Kernal/ROM calls without loading real ROM
+- **History / Time Machine**: Step backwards and forwards through execution history. The simulator records register states and memory deltas.
+- **Up to 16 simultaneous breakpoints**: Supports complex conditions (e.g., `PC == $1234 && A == $00 && .Z == 1`).
+- **Execution trace**: Detailed logs of every instruction, address, register state, and cycle count.
+- **Interactive monitor**: Full-featured CLI for inspecting/modifying registers and memory.
+- **ROM TRAP intercept**: Simulate Kernal/ROM calls (e.g., CHROUT) without loading real ROM files.
 
-### Symbol Tables
+### Memory Model
 
-- Custom `.sym` files (address, name, type, comment)
-- Built-in presets: **C64**, **C128**, **MEGA65**, **Commander X16**
-- Symbol types: `LABEL`, `VAR`, `CONST`, `FUNC`, `IO`, `REGION`, `TRAP`
+- **Sparse 28-bit Space**: Supports up to 256MB of physical memory, allocated on demand in 4KB pages.
+- **MAP Translation**: Full implementation of the C65/MEGA65 MAP register logic for virtual-to-physical address mapping.
+- **Write Logging**: Tracks memory writes for history undo/redo and GUI highlighting.
 
 ---
 
 ## Graphical Debugger (GUI)
 
-Note: The GUI is currently in active development and likely does not support all the functionalities of the full interactive mode at the moment. 
-
 The simulator includes a comprehensive IDE-style debugger built with **Dear ImGui**. It provides a real-time, multi-pane view of the processor state and allows for interactive development.
 
 ### Key GUI Panes
 
-- **Register Display**: Live view of all CPU registers (A, X, Y, Z, B, SP, PC) and status flags.
-- **Disassembly View**: Real-time disassembly of memory around the program counter, with breakpoint toggles and source-code interleaving.
-- **Memory View**: Hex + ASCII dump of any 64KB (or 28-bit) memory region with "follow PC" mode.
-- **CLI Console**: A full-featured interactive terminal mirroring the `-I` monitor mode.
-- **VIC-II/IV Viewer**: Graphical rendering of C64/MEGA65 video memory, including character modes, bitmaps, and hardware sprites.
-- **Execution History**: A "time machine" that records past instructions, allowing you to step backwards and forwards through time to find bugs.
-- **Remote Hardware**: Connect the GUI to a real **MEGA65** or **VICE** instance to debug real hardware live.
+- **Register Display**: Live view of all CPU registers (A, X, Y, Z, B, SP, PC) and status flags with diff highlighting.
+- **Disassembly View**: Real-time disassembly with breakpoint toggles, cycle counts, and symbol integration.
+- **Memory View**: Hex + ASCII dump with "follow PC/SP" modes and highlighting of last-written bytes.
+- **CLI Console**: A full-featured interactive terminal mirroring the CLI monitor mode with command history.
+- **Source Viewer**: View the original assembly source code alongside the disassembly.
+- **Profiler / Heatmap**: Visualise execution frequency and cycle consumption across the entire 64KB memory map.
+- **Watch List**: Monitor specific memory addresses and their values in real-time.
+- **Instruction Reference**: Built-in searchable database of all opcodes, addressing modes, and cycle counts for the active processor.
+- **Symbol Browser**: Search and inspect all loaded labels, variables, and constants.
+- **Stack Inspector**: Human-readable view of the hardware stack and annotated frames.
+- **Trace Log**: Rolling ring-buffer of recently executed instructions and CPU states.
 
 ### Keyboard Shortcuts
 
@@ -87,20 +96,14 @@ The simulator includes a comprehensive IDE-style debugger built with **Dear ImGu
 | F7 | Step into (1 instruction) |
 | F8 | Step over (executes the JSR body; single-steps otherwise) |
 | F9 | Toggle breakpoint at current PC |
-| Shift+F7 | Step back 1 instruction *(Phase 6 — not yet implemented)* |
-| Shift+F8 | Step forward in history *(Phase 6 — not yet implemented)* |
-| Ctrl+Shift+R | Reverse-continue to last breakpoint *(Phase 6 — not yet implemented)* |
+| Shift+F7 | Step back 1 instruction in history |
+| Shift+F8 | Step forward in history |
 | Ctrl+R | Reset CPU |
 | Ctrl+L | Focus the filename bar / open load dialog |
 | Ctrl+G | Go to address (opens a hex-entry popup, scrolls disassembly) |
-| Ctrl+F | Focus search in the active pane |
+| Ctrl+F | Focus search in the active pane (Source / Symbol Browser) |
 | Ctrl+Shift+F | Focus disassembly address bar |
-| Ctrl+Shift+E | Export current VIC frame as PNG *(Phase 6 — not yet implemented)* |
 | `` ` `` (backtick) | Focus the CLI console input |
-
-### GUI Console Commands
-
-The embedded CLI console supports the same commands as the interactive monitor (`-I` mode), including `bload` and `bsave` for binary file I/O.
 
 ---
 
@@ -208,161 +211,82 @@ LDA #255        ; decimal
 
 All four formats work everywhere a value is expected: immediate operands, addresses, and pseudo-op arguments.
 
-### Labels
-
-```asm
-loop:
-    DEX
-    BNE loop        ; backward and forward references both work
-
-    JSR my_routine
-
-my_routine:
-    RTS
-```
-
-Labels followed by a colon may also appear on the same line as a pseudo-op:
-
-```asm
-data: .byte 1, 2, 3
-```
-
 ### Pseudo-ops
 
 #### `.processor <variant>`
-Select the processor before assembly begins.
+Select the processor before assembly begins. This may appear anywhere in the file and takes effect immediately.
 ```asm
 .processor 45gs02
 ```
 Accepted values: `6502`, `6502 undoc`, `65c02`, `65ce02`, `45gs02`.
 
 #### `.org <addr>`
-Set the program counter to an absolute address.
+Set the program counter to an absolute address for following code or data.
 ```asm
 .org $C000
 ```
 
 #### `.byte <val>[, <val>…]`
-Emit one byte per value. Accepts all literal formats and label names (emits the low byte of the label address).
+Emit one or more bytes. Accepts all literal formats and label names (emits the low byte of the label address).
 ```asm
-.byte $48, 'e', 108, %01101100, 'o'   ; H e l l o
+.byte $48, 'e', 108, %01101100, 'o'   ; "Hello"
 ```
 
 #### `.word <val>[, <val>…]`
-Emit 16-bit little-endian words. Accepts all literal formats and label names.
+Emit 16-bit little-endian words. Useful for vectors and jump tables.
 ```asm
 vectors:
     .word reset_handler, irq_handler
 ```
 
 #### `.text "string"`
-Emit raw string bytes. No implicit null terminator. Supports escape sequences `\n \r \t \0 \\ \"`.
+Emit raw string bytes. No implicit null terminator is added. Supports escape sequences `\n \r \t \0 \\ \"`.
 ```asm
 message: .text "Hello, World!\n"
 ```
 
 #### `.align <n>`
-Advance the PC to the next multiple of `n`, padding with zero bytes.
+Advance the PC to the next multiple of `n`, padding with zero bytes. Useful for page alignment.
 ```asm
 .align 256      ; align to a page boundary
 ```
 
 #### `.bin "filename"`
-Include a raw binary file at the current PC. The file is opened relative to the working directory. The assembler reads the file in both passes so that the PC is advanced correctly for forward-reference resolution.
+Include a raw binary file at the current PC. The file is read in both passes to ensure labels following the binary are correctly resolved.
 ```asm
 sprite_data: .bin "assets/sprite.bin"
-```
-
-### Processor Directive
-
-`.processor` may appear anywhere in the file and takes effect immediately during assembly. It is most useful on the first line:
-
-```asm
-.processor 45gs02
-.org $2000
-
-    LDQ $10         ; 45GS02 quad load
-    BRK
 ```
 
 ---
 
 ## Interactive Monitor
 
-Enter the monitor with `-I`. A source file is optional — you can start from blank memory and use `bload` or `write` to load code manually.
-
-```bash
-./sim6502 -I                        # blank memory
-./sim6502 -I program.asm            # pre-load and assemble a file
-./sim6502 -I -p 45gs02 --preset mega65   # processor + symbols, no file
-```
-
-**Pressing Enter on a blank line executes a single step** (equivalent to `step`).
+Enter the monitor with `-I`. Pressing Enter on a blank line executes a single step.
 
 ### Commands
 
-All commands that take an address or numeric value accept `$hex`, `%binary`, or plain decimal.
-
 | Command | Description |
 |---------|-------------|
-| `step [n]` | Execute `n` instructions (default 1). Blank line also steps once. |
+| `step [n]` | Execute `n` instructions (default 1). |
+| `stepback` / `sb` | Step backward 1 instruction in history. |
+| `stepfwd` / `sf` | Step forward (re-execute) in history. |
 | `run` | Run until BRK, STP, or a breakpoint |
-| `break <addr> [cond]` | Set a breakpoint with an optional condition (e.g., `PC == $1234 && A == $00 && .Z == 1`) |
+| `break <addr> [cond]` | Set a breakpoint with an optional condition (e.g., `A == $00 && .Z == 1`) |
 | `clear <addr>` | Remove a breakpoint |
 | `list` | List all breakpoints |
-| `regs` | Show all registers (A X Y Z B S P PC Cycles) |
-| `mem <addr> [len]` | Hex dump starting at address (default 16 bytes) |
+| `regs` | Show all registers |
+| `mem <addr> [len]` | Hex dump memory |
 | `write <addr> <val>` | Write one byte to memory |
-| `bload "file" [addr]` | Load a binary file into memory. **`.bin`**: `addr` is required. **`.prg`**: load address comes from the 2-byte LE header; optional `addr` overrides it. |
-| `bsave "file" <start> <end>` | Save memory `[start, end)` to a file. **`.prg`** extension adds a 2-byte LE load-address header; **`.bin`** writes raw bytes. |
-| `disasm [addr [count]]` | Disassemble `count` instructions from `addr` (defaults: current PC, 15). Unknown bytes shown as `.byte $XX`. Branch targets shown as resolved absolute addresses. |
-| `asm [addr]` | Enter inline assembler at `addr` (default: current PC); exit with `.` alone on a line |
+| `bload "file" [addr]` | Load binary or `.prg` (C64 format) file. |
+| `bsave "file" <start> <end>` | Save memory to binary or `.prg` file. |
+| `disasm [addr [count]]` | Disassemble memory |
+| `asm [addr]` | Enter inline assembler at `addr` |
 | `jump <addr>` | Set the Program Counter |
 | `set <reg> <val>` | Set a register (A X Y Z B S P PC) |
-| `flag <flag> <val>` | Set a flag (N V B D I Z C) |
-| `reset` | Reset CPU to program start address |
-| `processor <type>` | Switch active processor type |
-| `processors` | List all processor types |
-| `info <mnemonic>` | Show addressing modes and cycles for an opcode |
+| `flag <flag> <val>` | Set a status flag (N V B D I Z C) |
+| `reset` | Reset CPU |
 | `help` | Show command summary |
 | `quit` / `exit` | Exit the simulator |
-
-### Breakpoint Conditions
-
-Conditions use the syntax `REG OP VAL` or `REG OP REG`, joined by `&&`.
-- **Registers**: `A, X, Y, Z, B, S (or SP), P, PC`
-- **Flags**: `.C, .Z, .I, .D, .B, .V, .N` (return 1 if set, 0 if clear)
-- **Operators**: `==, !=, <, >, <=, >=`
-- **Values**: `$hex`, `%binary`, or decimal.
-
-Example: `break $C000 A == $00 && .Z == 1`
-
-### Example Session
-
-```
-$ ./sim6502 -I
-6502 Simulator Interactive Mode
-Type 'help' for commands.
-> bload "tests/data/three_bytes.bin" $0200
-Loaded 3 bytes at $0200
-> regs
-REGS A=00 X=00 Y=00 S=FF P=00 PC=0200 Cycles=0
-> disasm
-$0200: 42                    .byte $42
-$0201: AB                    .byte $AB
-$0202: FF                    .byte $FF
-$0203: 00                 BRK
-...
->              <- blank line: single step
-STOP $0201
->              <- another step
-STOP $0202
-> regs
-REGS A=00 X=00 Y=00 S=FF P=00 PC=0202 Cycles=0
-> mem $0200 4
-0200: 42 AB FF 00
-> quit
-```
 
 ---
 
@@ -370,153 +294,41 @@ REGS A=00 X=00 Y=00 S=FF P=00 PC=0202 Cycles=0
 
 ### Preset Architectures
 
-Load with `--preset <name>`:
-
-| Preset | Coverage |
-|--------|----------|
-| `c64` | VIC-II, SID, CIA 1/2, full Kernal jump table (as TRAPs) |
-| `c128` | All C64 symbols plus MMU, VDC, second SID, extended Kernal |
-| `mega65` | 45GS02, Hypervisor, HyperRAM, MEGA65 I/O |
-| `x16` | VERA, PSG, SPI, RTC, GPIO, Commander X16 Kernal |
-
-### Custom Symbol Files
-
-```
-; Format: ADDRESS  NAME  TYPE  [COMMENT]
-; Types: LABEL VAR CONST FUNC IO REGION TRAP
-
-0200  main        LABEL  Program entry point
-1000  data_buf    VAR    256-byte scratch buffer
-d000  vic_base    IO     VIC-II register base
-ffd2  CHROUT      TRAP   Output char in A to current channel
-ffe4  GETIN       TRAP   Get char from keyboard -> A
-```
-
-Load with `--symbols myfile.sym`.
+Load with `--preset <name>`: `c64`, `c128`, `mega65`, `x16`.
 
 ### TRAP Symbols
 
-When the CPU executes `JSR` to a TRAP address the simulator:
-
-1. Prints the register state at the moment of the call
-2. Simulates `RTS` (pops the JSR return address from the stack)
-3. Adds 6 cycles
-
-This lets you test programs that call Kernal/ROM routines without loading actual ROM. If a TRAP address is reached by `JMP` or fall-through instead of `JSR`, the simulator halts with a diagnostic.
-
-```
-[TRAP] CHROUT               $FFD2  A=48 X=00 Y=00 S=FD P=00  ; Output char A to current channel
-[TRAP] CHROUT               $FFD2  A=65 X=00 Y=00 S=FD P=00  ; Output char A to current channel
-```
+TRAPs simulate Kernal/ROM routines without requiring the actual ROM to be loaded. When a `JSR` to a TRAP address is encountered:
+1. Register state is logged.
+2. The routine is skipped (return address popped).
+3. CPU cycles are updated (standard 6 cycle overhead).
 
 ---
 
 ## MCP Server
 
-`plugin-gemini/server.js` is a Node.js MCP server that exposes the simulator to LLMs.
-
-### Setup
-
-```bash
-make                        # build sim6502 first
-cd plugin-gemini
-npm install
-node server.js
-```
-
-### Claude Code Integration
-
-```bash
-# Add via CLI
-claude mcp add 6502-simulator node /path/to/plugin-gemini/server.js
-```
-
-Or add to `~/.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "6502-simulator": {
-      "command": "node",
-      "args": ["/path/to/6502-simulator/plugin-gemini/server.js"]
-    }
-  }
-}
-```
-
-### Available MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `load_program(code)` | Assemble and load a source string |
-| `step_instruction(count)` | Execute `count` instructions |
-| `read_registers()` | Return all registers |
-| `read_memory(address, length)` | Hex dump |
-| `write_memory(address, value)` | Write one byte |
-| `reset_cpu()` | Reset to initial state |
-| `run_program()` | Run until BRK / STP / breakpoint |
-| `assemble(code, address?)` | Inline-assemble source lines into memory at `address` (default: PC); returns per-line byte output |
-| `disassemble(address?, count?)` | Disassemble `count` instructions from `address` (defaults: PC, 15) |
-| `set_breakpoint(address)` | Add a breakpoint |
-| `clear_breakpoint(address)` | Remove a breakpoint |
-| `list_breakpoints()` | List all breakpoints |
-| `list_processors()` | List processor variants |
-| `set_processor(type)` | Switch processor |
-| `get_opcode_info(mnemonic)` | Addressing modes and cycle counts |
+`plugin-gemini/server.js` is a Node.js MCP server that exposes the simulator to LLMs, allowing AI assistants to write, debug, and execute 6502 assembly code directly.
 
 ---
 
 ## File Structure
 
-```
-6502-simulator/
-├── src/
-│   ├── cli/                    Command-line interface (main.c, commands.c)
-│   ├── core/                   Simulator engine and common components
-│   │   ├── assembler.c         Single-pass assembler
-│   │   ├── cpu_engine.c        CPU execution loop
-│   │   ├── disassembler.c      Instruction decoder
-│   │   ├── memory.h            Sparse memory and MMU/MAP logic
-│   │   ├── sim_api.c           Core API for frontend/IDE integration
-│   │   └── opcodes/             Processor-specific opcode tables
-│   │       ├── 6502.c          Standard NMOS 6502
-│   │       ├── 65c02.c         CMOS 65C02
-│   │       ├── 65ce02.c        CSG 65CE02
-│   │       └── 45gs02.c        MEGA65 45GS02
-│   └── gui/                    Dear ImGui-based debugger source
-├── doc/                        Tutorials and development plans
-├── ref/                        Reference documentation and PDF manuals
-├── symbols/                    Preset architecture symbol tables (.sym)
-├── examples/                   Sample assembly programs
-├── tests/                      Regression tests (.asm + expectation)
-├── tools/                      Test runner and utility scripts
-├── plugin-gemini/              MCP server for LLM integration (Node.js)
-├── Makefile
-└── README.md
-```
-
----
-
-## Test Format
-
-Every test file starts with an expectation comment:
-
-```asm
-; EXPECT: A=42 X=10 Y=20 S=FF PC=0206
-; PROCESSOR: 45gs02        <- optional, defaults to 6502
-```
-
-`make test` runs `tools/run_tests.py`, which compares the `Registers:` line from the simulator's stdout against the expectation.
+- `src/core/`: The simulator engine (CPU, memory, assembler, disassembler).
+- `src/cli/`: Command-line interface and interactive monitor.
+- `src/gui/`: Dear ImGui-based graphical debugger.
+- `plugin-gemini/`: MCP server for LLM integration.
+- `tests/`: Regression test suite.
+- `examples/`: Sample assembly programs.
 
 ---
 
 ## Known Limitations
 
-- Assembler syntax is simple (no macros, no expressions, no local labels)
-- Only the low byte of a label address is emitted by `.byte label`
-- Cycle counts are not accurate for all addressing modes and all processor variants
-- The 64 KB `memory_t` struct is stack-allocated; very deep call stacks may be an issue on some platforms
-- Decimal mode (BCD) flag behaviour matches correct output but does not emulate NMOS undefined N/V/Z quirks
+- **Assembler**: Simple syntax with no macro support (yet), no complex expressions, and no local labels.
+- **Label Resolution**: Only the low byte of a label address is emitted by the `.byte label` pseudo-op.
+- **Cycle Counts**: While provided, counts may not be 100% cycle-accurate for all addressing modes and page-crossing penalties in all variants.
+- **Memory Allocation**: The 64 KB `memory_t` virtual space is stack-allocated; deep call stacks in the simulator itself may cause issues on resource-constrained platforms.
+- **Decimal Mode**: BCD flag behavior matches correct arithmetic output but does not currently emulate NMOS-specific undefined N/V/Z flag quirks.
 
 ---
 
@@ -524,4 +336,4 @@ Every test file starts with an expectation comment:
 
 Proprietary — see `LICENSE`. Will move to open source at a future date.
 
-**Last Updated**: 2026-03-05
+**Last Updated**: 2026-03-06

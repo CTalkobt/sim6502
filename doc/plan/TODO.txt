@@ -106,3 +106,10 @@ This document outlines suggested next steps, feature enhancements, and technical
     *   [ ] Implement a proper cleanup function for `memory_t` to `free()` sparse memory pages allocated via `calloc`.
 *   [ ] **Error Handling**: Improve error reporting during assembly parsing, providing line numbers and specific error messages for invalid syntax.
 
+9. Current Bugs
+----------------
+*   [ ] Add ability to Register display to edit values, perhaps double click on the values to edit? 
+*   [ ] THe step-over, until end of program and then reset does not go back to beginning of program. 
+*   [ ] Adjust gemini-plugin to be less specific and more overall MDC focused. Perhaps have a seperate gemini documentation within. 
+*   [ ] Add bit testing on conditional breakpoints. (TBD: Expression syntax). 
+
