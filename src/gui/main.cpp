@@ -541,6 +541,34 @@ static void do_step_over(void)
 }
 
 /* --------------------------------------------------------------------------
+ * Consolidated execution helpers — called from toolbar, keyboard, menu
+ * -------------------------------------------------------------------------- */
+
+/* Step one instruction into (records history, updates write-log / watches). */
+static void do_step_into(void)
+{
+    g_running = false;
+    sim_state_t st = sim_get_state(g_sim);
+    if (st != SIM_READY && st != SIM_PAUSED) return;
+    cpu_t *cpu = sim_get_cpu(g_sim);
+    if (cpu) { g_prev_cpu = *cpu; g_prev_cpu_valid = true; }
+    sim_step(g_sim, 1);
+    g_last_write_count = sim_get_last_writes(g_sim, g_last_writes, 256);
+    update_watches();
+}
+
+/* Reset CPU to start address; clear write-log and watches. */
+static void do_reset(void)
+{
+    g_running = false;
+    sim_reset(g_sim);
+    g_prev_cpu_valid   = false;
+    g_last_write_count = 0;
+    for (int i = 0; i < g_watch_count; i++) g_watches[i].valid = false;
+    update_watches();
+}
+
+/* --------------------------------------------------------------------------
  * Console helpers
  * -------------------------------------------------------------------------- */
 static void con_add(ImVec4 color, const char *fmt, ...)
@@ -585,6 +613,36 @@ static int con_input_cb(ImGuiInputTextCallbackData *data)
     return 0;
 }
 
+/* Step back one instruction in execution history. */
+static void do_step_back(void)
+{
+    g_running = false;
+    if (sim_get_state(g_sim) == SIM_IDLE) return;
+    cpu_t *cpu = sim_get_cpu(g_sim);
+    if (cpu) { g_prev_cpu = *cpu; g_prev_cpu_valid = true; }
+    if (!sim_history_step_back(g_sim)) {
+        con_add(CON_COL_WARN, "No history to step back into.");
+        return;
+    }
+    g_last_write_count = 0;   /* writes were undone, not applied */
+    update_watches();
+}
+
+/* Step forward one instruction in history (re-execute the undone instruction). */
+static void do_step_fwd(void)
+{
+    g_running = false;
+    if (sim_get_state(g_sim) == SIM_IDLE) return;
+    cpu_t *cpu = sim_get_cpu(g_sim);
+    if (cpu) { g_prev_cpu = *cpu; g_prev_cpu_valid = true; }
+    if (!sim_history_step_fwd(g_sim)) {
+        con_add(CON_COL_WARN, "Already at the present.");
+        return;
+    }
+    g_last_write_count = sim_get_last_writes(g_sim, g_last_writes, 256);
+    update_watches();
+}
+
 /* Command interpreter */
 static void con_exec(const char *cmd)
 {
@@ -625,6 +683,8 @@ static void con_exec(const char *cmd)
     if (strcmp(verb, "help") == 0) {
         con_add(CON_COL_NORMAL, "Commands:");
         con_add(CON_COL_NORMAL, "  step [n]                     step n instructions (default 1)");
+        con_add(CON_COL_NORMAL, "  stepback / sb                step back one instruction in history");
+        con_add(CON_COL_NORMAL, "  stepfwd  / sf                step forward one instruction in history");
         con_add(CON_COL_NORMAL, "  run                          run continuously");
         con_add(CON_COL_NORMAL, "  pause                        pause execution");
         con_add(CON_COL_NORMAL, "  reset                        reset CPU to start address");
@@ -643,6 +703,20 @@ static void con_exec(const char *cmd)
 
     if (strcmp(verb, "cls") == 0) {
         g_con_line_count = 0;
+        return;
+    }
+
+    if (strcmp(verb, "stepback") == 0 || strcmp(verb, "sb") == 0) {
+        do_step_back();
+        cpu_t *cpu = sim_get_cpu(g_sim);
+        if (cpu) con_add(CON_COL_NORMAL, "BACK  PC=%04X", cpu->pc);
+        return;
+    }
+
+    if (strcmp(verb, "stepfwd") == 0 || strcmp(verb, "sf") == 0) {
+        do_step_fwd();
+        cpu_t *cpu = sim_get_cpu(g_sim);
+        if (cpu) con_add(CON_COL_NORMAL, "FWD   PC=%04X", cpu->pc);
         return;
     }
 
@@ -692,12 +766,7 @@ static void con_exec(const char *cmd)
     }
 
     if (strcmp(verb, "reset") == 0) {
-        g_running = false;
-        sim_reset(g_sim);
-        g_prev_cpu_valid   = false;
-        g_last_write_count = 0;
-        for (int i = 0; i < g_watch_count; i++) g_watches[i].valid = false;
-        update_watches();
+        do_reset();
         con_add(CON_COL_OK, "CPU reset. State: %s", sim_state_name(sim_get_state(g_sim)));
         return;
     }
@@ -2250,6 +2319,242 @@ static void draw_pane_profiler(void)
 }
 
 /* --------------------------------------------------------------------------
+ * Execution icon drawing functions + icon_button helper
+ * -------------------------------------------------------------------------- */
+
+/* All icon functions draw into dl, centered at c, with "radius" r, color col.
+ * Angle convention follows ImGui/screen-space: 0 = right, PI/2 = down. */
+
+static void draw_icon_play(ImDrawList *dl, ImVec2 c, float r, ImU32 col)
+{
+    dl->AddTriangleFilled(
+        ImVec2(c.x + r*0.80f, c.y),
+        ImVec2(c.x - r*0.55f, c.y - r*0.80f),
+        ImVec2(c.x - r*0.55f, c.y + r*0.80f), col);
+}
+
+static void draw_icon_pause(ImDrawList *dl, ImVec2 c, float r, ImU32 col)
+{
+    float w = r*0.28f, h = r*0.80f, gap = r*0.22f;
+    dl->AddRectFilled(ImVec2(c.x-gap-w, c.y-h), ImVec2(c.x-gap,   c.y+h), col);
+    dl->AddRectFilled(ImVec2(c.x+gap,   c.y-h), ImVec2(c.x+gap+w, c.y+h), col);
+}
+
+/* ↓ Step Into — vertical stem + downward arrowhead */
+static void draw_icon_step_into(ImDrawList *dl, ImVec2 c, float r, ImU32 col)
+{
+    float sw = r*0.20f;
+    dl->AddRectFilled(ImVec2(c.x-sw, c.y-r*0.75f), ImVec2(c.x+sw, c.y+r*0.05f), col);
+    dl->AddTriangleFilled(
+        ImVec2(c.x,        c.y + r*0.85f),
+        ImVec2(c.x - r*0.60f, c.y + r*0.05f),
+        ImVec2(c.x + r*0.60f, c.y + r*0.05f), col);
+}
+
+/* ⤵ Step Over — top-arc with downward arrowhead at right end */
+static void draw_icon_step_over(ImDrawList *dl, ImVec2 c, float r, ImU32 col)
+{
+    float ar = r*0.50f;
+    ImVec2 ac = ImVec2(c.x, c.y - r*0.10f);
+    /* Arc from PI (left) to 2PI (right) goes left→top→right (top half). */
+    dl->PathArcTo(ac, ar, IM_PI, IM_PI*2.0f, 10);
+    dl->PathStroke(col, false, r*0.18f);
+    /* Arrowhead at right end (angle 0), tangent is downward */
+    ImVec2 tip = ImVec2(ac.x + ar, ac.y);
+    float  as  = r*0.40f;
+    dl->AddTriangleFilled(
+        ImVec2(tip.x,          tip.y + as),
+        ImVec2(tip.x - as*0.55f, tip.y - as*0.30f),
+        ImVec2(tip.x + as*0.55f, tip.y - as*0.30f), col);
+}
+
+/* ↺ Reset — 3/4 circle arc (right→bottom→left→top) + arrowhead at top end */
+static void draw_icon_reset(ImDrawList *dl, ImVec2 c, float r, ImU32 col)
+{
+    float ar = r*0.65f;
+    dl->PathArcTo(c, ar, 0.0f, IM_PI*1.5f, 18);
+    dl->PathStroke(col, false, r*0.20f);
+    /* Arc ends at angle PI*1.5 = top.  Tangent there (CCW) = rightward. */
+    ImVec2 tip = ImVec2(c.x, c.y - ar);
+    float  as  = r*0.42f;
+    dl->AddTriangleFilled(
+        ImVec2(tip.x + as,        tip.y),
+        ImVec2(tip.x - as*0.30f,  tip.y - as*0.60f),
+        ImVec2(tip.x - as*0.30f,  tip.y + as*0.60f), col);
+}
+
+/* ◀| History step back — left-pointing triangle + right vertical bar */
+static void draw_icon_hist_back(ImDrawList *dl, ImVec2 c, float r, ImU32 col)
+{
+    float off = r*0.12f;
+    dl->AddTriangleFilled(
+        ImVec2(c.x - r*0.72f - off, c.y),
+        ImVec2(c.x + r*0.12f - off, c.y - r*0.75f),
+        ImVec2(c.x + r*0.12f - off, c.y + r*0.75f), col);
+    float bw = r*0.20f;
+    dl->AddRectFilled(
+        ImVec2(c.x + r*0.55f, c.y - r*0.75f),
+        ImVec2(c.x + r*0.55f + bw, c.y + r*0.75f), col);
+}
+
+/* |▶ History step forward — left vertical bar + right-pointing triangle */
+static void draw_icon_hist_fwd(ImDrawList *dl, ImVec2 c, float r, ImU32 col)
+{
+    float bw  = r*0.20f;
+    float off = r*0.12f;
+    dl->AddRectFilled(
+        ImVec2(c.x - r*0.55f - bw, c.y - r*0.75f),
+        ImVec2(c.x - r*0.55f,      c.y + r*0.75f), col);
+    dl->AddTriangleFilled(
+        ImVec2(c.x + r*0.72f + off, c.y),
+        ImVec2(c.x - r*0.12f + off, c.y - r*0.75f),
+        ImVec2(c.x - r*0.12f + off, c.y + r*0.75f), col);
+}
+
+/* --------------------------------------------------------------------------
+ * icon_button — InvisibleButton + hover/active bg fill + icon draw.
+ * Returns true on the frame the button is clicked (same semantics as
+ * ImGui::Button).  When disabled=true the icon is dimmed and clicks are
+ * suppressed without using BeginDisabled (to keep draw-list rendering clean).
+ * -------------------------------------------------------------------------- */
+typedef void (*IconFn)(ImDrawList*, ImVec2, float, ImU32);
+
+static bool icon_button(const char *str_id, IconFn fn, float btn_sz,
+                        ImVec4 icon_col, bool disabled = false,
+                        const char *tooltip = nullptr)
+{
+    ImGui::InvisibleButton(str_id, ImVec2(btn_sz, btn_sz));
+    bool hovered = ImGui::IsItemHovered();
+    bool active  = !disabled && ImGui::IsItemActive();
+    bool clicked = !disabled && ImGui::IsItemClicked();
+
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    ImVec2 p  = ImGui::GetItemRectMin();
+    ImVec2 sz = ImGui::GetItemRectSize();
+    ImVec2 center = ImVec2(p.x + sz.x*0.5f, p.y + sz.y*0.5f);
+    float  rad    = sz.x * 0.38f;
+
+    if (!disabled) {
+        if (active)
+            dl->AddRectFilled(p, ImVec2(p.x+sz.x, p.y+sz.y),
+                              ImGui::GetColorU32(ImGuiCol_ButtonActive), 4.0f);
+        else if (hovered)
+            dl->AddRectFilled(p, ImVec2(p.x+sz.x, p.y+sz.y),
+                              ImGui::GetColorU32(ImGuiCol_ButtonHovered), 4.0f);
+    }
+
+    ImU32 col = disabled
+        ? ImGui::ColorConvertFloat4ToU32(
+              ImVec4(icon_col.x*0.35f, icon_col.y*0.35f,
+                     icon_col.z*0.35f, 0.40f))
+        : ImGui::ColorConvertFloat4ToU32(icon_col);
+    fn(dl, center, rad, col);
+
+    if (tooltip && hovered && !disabled) ImGui::SetTooltip("%s", tooltip);
+    return clicked;
+}
+
+/* --------------------------------------------------------------------------
+ * Execution bar — second toolbar row with icon buttons for all run controls
+ * plus history step-back / step-forward.
+ * Layout: [◀|]  |  [↓] [⤵] [▶/‖]  |  [↺]  hist-indicator  |  [|▶]
+ * -------------------------------------------------------------------------- */
+static void draw_execution_bar(void)
+{
+    const float btn_sz = floorf(ImGui::GetFrameHeight() * 1.40f);
+
+    sim_state_t state    = sim_get_state(g_sim);
+    bool        has_prog = (state != SIM_IDLE);
+    bool        can_step = (state == SIM_READY || state == SIM_PAUSED);
+    bool        can_run  = can_step || g_running;
+    int         hist_pos = sim_history_position(g_sim);
+    int         hist_cnt = sim_history_count(g_sim);
+    bool        has_back = has_prog && (hist_pos < hist_cnt);
+    bool        has_fwd  = has_prog && (hist_pos > 0);
+
+    static const ImVec4 COL_AMBER = { 1.00f, 0.78f, 0.20f, 1.0f };
+    static const ImVec4 COL_GREEN = { 0.30f, 0.90f, 0.45f, 1.0f };
+    static const ImVec4 COL_PAUSE = { 1.00f, 0.88f, 0.30f, 1.0f };
+    static const ImVec4 COL_RESET = { 0.90f, 0.30f, 0.30f, 1.0f };
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, 2.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,  ImVec2(4.0f, 2.0f));
+
+    /* [◀|] History step back */
+    if (icon_button("##hback", draw_icon_hist_back, btn_sz, COL_AMBER, !has_back,
+                    "Step Back in History  (Shift+F7)"))
+        do_step_back();
+
+    ImGui::SameLine();
+    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine();
+
+    /* [↓] Step Into */
+    if (icon_button("##into", draw_icon_step_into, btn_sz, COL_GREEN, !can_step,
+                    "Step Into  (F7)"))
+        do_step_into();
+    ImGui::SameLine();
+
+    /* [⤵] Step Over */
+    if (icon_button("##over", draw_icon_step_over, btn_sz, COL_GREEN, !can_step,
+                    "Step Over  (F8)"))
+        do_step_over();
+    ImGui::SameLine();
+
+    /* [▶] Run / [‖] Pause toggle */
+    if (g_running) {
+        if (icon_button("##pause", draw_icon_pause, btn_sz, COL_PAUSE, false,
+                        "Pause execution  (F6 / Esc)"))
+            g_running = false;
+    } else {
+        if (icon_button("##run", draw_icon_play, btn_sz, COL_GREEN, !can_run,
+                        "Run continuously  (F5)"))
+            g_running = true;
+    }
+
+    ImGui::SameLine();
+    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine();
+
+    /* [↺] Reset */
+    if (icon_button("##reset", draw_icon_reset, btn_sz, COL_RESET, !has_prog,
+                    "Reset CPU  (Ctrl+R)"))
+        do_reset();
+
+    /* History depth indicator */
+    ImGui::SameLine(0.0f, 10.0f);
+    if (hist_pos > 0) {
+        ImGui::TextColored(COL_AMBER, "<- %d / %d", hist_pos, hist_cnt);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Rewound %d step(s)  (%d entries in history)", hist_pos, hist_cnt);
+    } else if (hist_cnt > 0) {
+        ImGui::TextDisabled("hist: %d", hist_cnt);
+    } else {
+        ImGui::TextDisabled("hist");
+    }
+
+    /* Push [|▶] history-forward button to the right edge */
+    ImGui::SameLine();
+    {
+        float avail  = ImGui::GetContentRegionAvail().x;
+        float needed = btn_sz + ImGui::GetStyle().ItemSpacing.x + 10.0f;
+        float fill   = avail - needed;
+        if (fill > 0.0f) ImGui::Dummy(ImVec2(fill, 1.0f));
+    }
+    ImGui::SameLine();
+    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine();
+
+    /* [|▶] History step forward */
+    if (icon_button("##hfwd", draw_icon_hist_fwd, btn_sz, COL_AMBER, !has_fwd,
+                    "Step Forward in History  (Shift+F8)"))
+        do_step_fwd();
+
+    ImGui::PopStyleVar(2);
+    ImGui::Separator();
+}
+
+/* --------------------------------------------------------------------------
  * Toolbar
  * -------------------------------------------------------------------------- */
 static void draw_toolbar(void)
@@ -2259,8 +2564,10 @@ static void draw_toolbar(void)
     float btn_w   = 60.0f;
     float combo_w = 110.0f;
     float avail   = ImGui::GetContentRegionAvail().x;
-    float input_w = avail - combo_w - btn_w * 5.0f
-                  - ImGui::GetStyle().ItemSpacing.x * 8.0f - 12.0f;
+    /* Only Load button + separator + Processor combo remain in this row;
+     * execution controls moved to draw_execution_bar(). */
+    float input_w = avail - combo_w - btn_w
+                  - ImGui::GetStyle().ItemSpacing.x * 4.0f - 12.0f;
     if (input_w < 80.0f) input_w = 80.0f;
 
     if (g_focus_filename) {
@@ -2287,55 +2594,6 @@ static void draw_toolbar(void)
                 con_add(CON_COL_ERR, "Failed to load: %s", g_filename_buf);
         }
     }
-
-    ImGui::SameLine();
-    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-    ImGui::SameLine();
-
-    /* Step (F7) */
-    bool can_step = (sim_get_state(g_sim) == SIM_READY ||
-                     sim_get_state(g_sim) == SIM_PAUSED);
-    if (!can_step) ImGui::BeginDisabled();
-    if (ImGui::Button("Step")) {
-        cpu_t *cpu = sim_get_cpu(g_sim);
-        if (cpu) { g_prev_cpu = *cpu; g_prev_cpu_valid = true; }
-        sim_step(g_sim, 1);
-        g_last_write_count = sim_get_last_writes(g_sim, g_last_writes, 256);
-        update_watches();
-    }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Step into 1 instruction (F7) / Step over: F8");
-    if (!can_step) ImGui::EndDisabled();
-
-    ImGui::SameLine();
-
-    /* Run / Pause toggle (F5 / F6) */
-    bool can_run = (sim_get_state(g_sim) == SIM_READY ||
-                    sim_get_state(g_sim) == SIM_PAUSED || g_running);
-    if (!can_run) ImGui::BeginDisabled();
-    if (g_running) {
-        if (ImGui::Button("Pause")) g_running = false;
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pause execution (F6 / Esc)");
-    } else {
-        if (ImGui::Button(" Run ")) g_running = true;
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Run continuously (F5)");
-    }
-    if (!can_run) ImGui::EndDisabled();
-
-    ImGui::SameLine();
-
-    /* Reset (Ctrl+R) */
-    bool can_reset = (sim_get_state(g_sim) != SIM_IDLE);
-    if (!can_reset) ImGui::BeginDisabled();
-    if (ImGui::Button("Reset")) {
-        g_running = false;
-        sim_reset(g_sim);
-        g_prev_cpu_valid   = false;
-        g_last_write_count = 0;
-        for (int i = 0; i < g_watch_count; i++) g_watches[i].valid = false;
-        update_watches();
-    }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Reset CPU (Ctrl+R)");
-    if (!can_reset) ImGui::EndDisabled();
 
     ImGui::SameLine();
     ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
@@ -2378,6 +2636,15 @@ static void draw_statusbar(void)
         if      (state == SIM_IDLE)     ImGui::TextDisabled("%s", sname);
         else if (state == SIM_FINISHED) ImGui::TextColored(g_col.text_warn_orange, "%s", sname);
         else                            ImGui::Text("%s", sname);
+    }
+
+    /* History position indicator */
+    if (state != SIM_IDLE) {
+        int hpos = sim_history_position(g_sim);
+        if (hpos > 0) {
+            ImGui::SameLine(0, 8);
+            ImGui::TextColored(ImVec4(1.0f, 0.78f, 0.2f, 1.0f), "<- %d", hpos);
+        }
     }
 
     ImGui::SameLine(0, 20);
@@ -3351,27 +3618,18 @@ int main(int /*argc*/, char ** /*argv*/)
                 ImGui::IsKeyPressed(ImGuiKey_Escape))
                 g_running = false;
 
-            /* Shift+F7: Step back (Phase 6) / F7: Step into */
+            /* Shift+F7: Step back in history / F7: Step into */
             if (ImGui::IsKeyPressed(ImGuiKey_F7)) {
-                if (shift) {
-                    con_add(CON_COL_WARN, "Step-back not yet available (Phase 6).");
-                } else {
-                    g_running = false;
-                    if (sim_get_state(g_sim) == SIM_READY ||
-                        sim_get_state(g_sim) == SIM_PAUSED) {
-                        cpu_t *cpu = sim_get_cpu(g_sim);
-                        if (cpu) { g_prev_cpu = *cpu; g_prev_cpu_valid = true; }
-                        sim_step(g_sim, 1);
-                        g_last_write_count = sim_get_last_writes(g_sim, g_last_writes, 256);
-                        update_watches();
-                    }
-                }
+                if (shift)
+                    do_step_back();
+                else
+                    do_step_into();
             }
 
-            /* Shift+F8: Step forward (Phase 6) / F8: Step over */
+            /* Shift+F8: Step forward in history / F8: Step over */
             if (ImGui::IsKeyPressed(ImGuiKey_F8)) {
                 if (shift)
-                    con_add(CON_COL_WARN, "Step-forward not yet available (Phase 6).");
+                    do_step_fwd();
                 else
                     do_step_over();
             }
@@ -3388,18 +3646,12 @@ int main(int /*argc*/, char ** /*argv*/)
             }
 
             if (ctrl) {
-                /* Ctrl+Shift+R: Reverse-continue (Phase 6) / Ctrl+R: Reset */
+                /* Ctrl+Shift+R: Reverse-continue (not yet impl) / Ctrl+R: Reset */
                 if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-                    if (shift) {
-                        con_add(CON_COL_WARN, "Reverse-continue not yet available (Phase 6).");
-                    } else {
-                        g_running = false;
-                        sim_reset(g_sim);
-                        g_prev_cpu_valid   = false;
-                        g_last_write_count = 0;
-                        for (int i = 0; i < g_watch_count; i++) g_watches[i].valid = false;
-                        update_watches();
-                    }
+                    if (shift)
+                        con_add(CON_COL_WARN, "Reverse-continue not yet available.");
+                    else
+                        do_reset();
                 }
 
                 /* Ctrl+L: Focus load filename field */
@@ -3525,26 +3777,11 @@ int main(int /*argc*/, char ** /*argv*/)
                     ImGui::EndMenu();
                 }
                 if (ImGui::BeginMenu("Run")) {
-                    if (ImGui::MenuItem("Step Into",  "F7")) {
-                        g_running = false;
-                        cpu_t *cpu = sim_get_cpu(g_sim);
-                        if (cpu) { g_prev_cpu = *cpu; g_prev_cpu_valid = true; }
-                        sim_step(g_sim, 1);
-                        g_last_write_count = sim_get_last_writes(g_sim, g_last_writes, 256);
-                        update_watches();
-                    }
-                    if (ImGui::MenuItem("Step Over", "F8"))
-                        do_step_over();
-                    if (ImGui::MenuItem("Run",   "F5"))  g_running = true;
-                    if (ImGui::MenuItem("Pause", "F6"))  g_running = false;
-                    if (ImGui::MenuItem("Reset", "Ctrl+R")) {
-                        g_running = false;
-                        sim_reset(g_sim);
-                        g_prev_cpu_valid   = false;
-                        g_last_write_count = 0;
-                        for (int i = 0; i < g_watch_count; i++) g_watches[i].valid = false;
-                        update_watches();
-                    }
+                    if (ImGui::MenuItem("Step Into",  "F7"))   do_step_into();
+                    if (ImGui::MenuItem("Step Over",  "F8"))   do_step_over();
+                    if (ImGui::MenuItem("Run",        "F5"))   g_running = true;
+                    if (ImGui::MenuItem("Pause",      "F6"))   g_running = false;
+                    if (ImGui::MenuItem("Reset",      "Ctrl+R")) do_reset();
                     ImGui::Separator();
                     if (ImGui::MenuItem("Toggle Breakpoint", "F9")) {
                         cpu_t *cpu = sim_get_cpu(g_sim);
@@ -3556,12 +3793,10 @@ int main(int /*argc*/, char ** /*argv*/)
                         }
                     }
                     ImGui::Separator();
-                    if (ImGui::MenuItem("Step Back",        "Shift+F7"))
-                        con_add(CON_COL_WARN, "Step-back not yet available (Phase 6).");
-                    if (ImGui::MenuItem("Step Forward",     "Shift+F8"))
-                        con_add(CON_COL_WARN, "Step-forward not yet available (Phase 6).");
+                    if (ImGui::MenuItem("Step Back",        "Shift+F7")) do_step_back();
+                    if (ImGui::MenuItem("Step Forward",     "Shift+F8")) do_step_fwd();
                     if (ImGui::MenuItem("Reverse Continue", "Ctrl+Shift+R"))
-                        con_add(CON_COL_WARN, "Reverse-continue not yet available (Phase 6).");
+                        con_add(CON_COL_WARN, "Reverse-continue not yet available.");
                     ImGui::EndMenu();
                 }
                 if (ImGui::BeginMenu("View")) {
@@ -3674,8 +3909,11 @@ int main(int /*argc*/, char ** /*argv*/)
                 ImGui::EndMenuBar();
             }
 
-            /* Toolbar */
+            /* Toolbar (file load + processor selector) */
             draw_toolbar();
+
+            /* Execution bar (icon buttons for run/step/history controls) */
+            draw_execution_bar();
 
             /* Reserve height for status bar */
             float sb_h = ImGui::GetFrameHeight()

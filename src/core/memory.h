@@ -11,7 +11,8 @@ typedef struct {
 	unsigned char mem[0x10000];
 	int mem_writes;
 	unsigned short mem_addr[256];
-	unsigned char mem_val[256];
+	unsigned char mem_val[256];     /* value AFTER write  */
+	unsigned char mem_old_val[256]; /* value BEFORE write */
 	unsigned char *far_pages[FAR_NUM_PAGES];	/* sparse 28-bit page table */
 	unsigned int map_offset[8];		/* MAP: per-8KB-block physical offset added to virtual addr; 0 = passthrough */
 } memory_t;
@@ -53,20 +54,21 @@ static inline unsigned char mem_read(memory_t *mem, unsigned short addr) {
 }
 
 /* Virtual memory write — applies MAP offset for the 8KB block if non-zero.
- * Always logs the virtual address in the write trace. */
+ * Logs the virtual address and both the old and new values before writing. */
 static inline void mem_write(memory_t *mem, unsigned short addr, unsigned char val) {
 	unsigned int block = (unsigned int)addr >> 13;
+	if (mem->mem_writes < 256) {
+		mem->mem_addr[mem->mem_writes]    = addr;
+		mem->mem_old_val[mem->mem_writes] = mem_read(mem, addr); /* capture old value */
+		mem->mem_val[mem->mem_writes]     = val;
+	}
+	mem->mem_writes++;
 	if (mem->map_offset[block]) {
 		unsigned int phys = ((unsigned int)addr + mem->map_offset[block]) & 0xFFFFF;
 		mem_write_phys(mem, phys, val);
 	} else {
 		mem->mem[addr] = val;
 	}
-	if (mem->mem_writes < 256) {
-		mem->mem_addr[mem->mem_writes] = addr;
-		mem->mem_val[mem->mem_writes] = val;
-	}
-	mem->mem_writes++;
 }
 
 /* Read from the full 28-bit address space (flat/EOM-prefix mode).
@@ -79,14 +81,15 @@ static inline unsigned char far_mem_read(memory_t *m, unsigned int addr) {
  * Physical addresses — MAP is NOT applied.
  * Maintains the write log for addresses in the 16-bit range. */
 static inline void far_mem_write(memory_t *m, unsigned int addr, unsigned char val) {
-	mem_write_phys(m, addr, val);
 	if (addr < 0x10000) {
 		if (m->mem_writes < 256) {
-			m->mem_addr[m->mem_writes] = (unsigned short)addr;
-			m->mem_val[m->mem_writes] = val;
+			m->mem_addr[m->mem_writes]    = (unsigned short)addr;
+			m->mem_old_val[m->mem_writes] = far_mem_read(m, addr); /* capture old value */
+			m->mem_val[m->mem_writes]     = val;
 		}
 		m->mem_writes++;
 	}
+	mem_write_phys(m, addr, val);
 }
 
 #endif

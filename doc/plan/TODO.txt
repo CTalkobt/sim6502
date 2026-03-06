@@ -41,16 +41,17 @@ This document outlines suggested next steps, feature enhancements, and technical
 *   [X] Support standard pseudo-ops: `.org`, `.byte`, `.word`, `.text`, `.align`.
 *   [X] Add support for numeric constants in decimal (`123`) and binary (`%10101010`). Also support character contants such as 'a'. 
 *   [X] Allow psuedo-op to include a binary at the current PC. (.bin "filename")). Also allow Interactive command "bload" to perform the same function using 'bload "filename" $addr'  where addr is the address to start loading at. 
-*   [ ] Allow binary file saving of mem (eg: BSave "filename" START END ) will save the filename at address range.
-*   [ ] Allow disassembly of memory (eg: D or Disasm START END) if just D then use PC. 
+*   [X] Allow binary file saving of mem (eg: BSave "filename" START END ) will save the filename at address range.
+*   [ ] Allow disassembly of memory (eg: D or Disasm START END) if just D then use PC.
 *   [ ] Improved Trace Formatting: Make trace output more readable and include register changes (e.g., "A: 00 -> 01").
 *   [X] Conditional Breakpoints: Support breakpoints that trigger only when a condition is met (e.g., "PC == $1234 && A == $00").
-*   [ ] Reverse Debugging / Execution History: Implement full forward/backward time-travel by recording a delta log after every instruction:
-    *   [ ] History entry format: full cpu_t snapshot (~32 bytes) + sparse memory delta ({addr, old_value} pairs from the write log).
-    *   [ ] Ring buffer with configurable depth (e.g. 1M entries); automatic eviction of oldest entry when full.
-    *   [ ] `sim_history_push()` API call made automatically by sim_step(); `sim_history_step_back()` restores the previous cpu_t and re-applies inverse memory writes.
+*   [X] Reverse Debugging / Execution History: Full forward/backward time-travel via delta-log ring buffer.
+    *   [X] History entry format: full cpu_t snapshot + sparse memory delta (up to 16 {addr, old_value} pairs per instruction from the write log in memory_t).
+    *   [X] Ring buffer with large default depth (131072 entries, ~10 MB); automatic eviction of oldest entry when full. Capacity defined as SIM_HIST_DEFAULT_DEPTH in sim_api.h.
+    *   [X] `sim_history_step_back()` / `sim_history_step_fwd()` API in sim_api.h; history pushed automatically inside sim_step() per instruction. All execution paths (step and run) record to history.
+    *   [X] CLI commands: `stepback` / `sb` (step back one instruction) and `stepfwd` / `sf` (step forward); local 4096-entry ring buffer in commands.c mirrors the API design.
+    *   [X] MCP tools: `step_back` and `step_forward` added to plugin-gemini/server.js.
     *   [ ] GUI time-machine pane: timeline slider, step-back/step-forward buttons, "rewind to breakpoint" (reverse-continue until a condition is true).
-    *   [ ] CLI command: `stepback [n]` / `sb [n]` to step backwards N instructions.
 *   [ ] Stack Visualization: Add a dedicated view for the current stack contents and depth.
 *   [ ] Disassembler Integration: Improve the trace and memory viewer to show disassembled instructions alongside hex values.
 
@@ -70,7 +71,7 @@ This document outlines suggested next steps, feature enhancements, and technical
 *   [ ] Web-based UI: Use the existing plugin-gemini structure or similar to create a visual representation of the CPU state and memory.
 *   [ ] Configuration Files: Support for .ini or .json files to specify CPU type, memory maps, and pre-loaded binaries.
 *   [ ] GUI — VIC Viewer pane: Live rendered video output derived from current VIC-II/III/IV register state and memory contents; sprite inspector, character set browser, bitmap viewer, color RAM editor. Export frames and sprites as PNG.
-*   [ ] GUI — Execution History / Time Machine pane: Timeline slider over the delta-log ring buffer; step-back/step-forward buttons; table of historical register states; "rewind to breakpoint" reverse-continue.
+*   [ ] GUI — Execution History / Time Machine pane: Timeline slider over the delta-log ring buffer; step-back/step-forward buttons wired to sim_history_step_back()/sim_history_step_fwd(); table of historical register states; "rewind to breakpoint" reverse-continue.
 *   [ ] GUI — Remote Hardware Integration:
     *   [ ] VICE remote monitor protocol (TCP, default port 6510): connect/disconnect UI; forward step/run/pause/memory-read/write/breakpoint commands to a live VICE instance; all display panes driven from remote state when connected.
     *   [ ] M65dbg serial protocol: connect to MEGA65 via USB serial (typically 2 Mbps); send debug commands to read/write 28-bit address space, set breakpoints, single-step; device path + baud rate configurable.
@@ -87,6 +88,7 @@ This document outlines suggested next steps, feature enhancements, and technical
 *   [ ] **MCP Missing Features:**
     *   Symbol Table Support: No tools to load custom symbol files or use presets (e.g., C64, Mega65).
     *   [X] Breakpoints: Implemented `set_breakpoint`, `clear_breakpoint`, `list_breakpoints`, and `run_program` tools.
+    *   [X] Execution History: `step_back` and `step_forward` tools added.
     *   Memory Statistics: No equivalent to the `-s` flag.
     *   Trace: No tool to enable/disable execution tracing or set a trace file.
     *   Interrupts: No tools to trigger IRQ or NMI.

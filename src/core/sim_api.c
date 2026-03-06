@@ -38,6 +38,14 @@ struct sim_session {
     uint32_t          prof_exec[65536];
     uint32_t          prof_cycles[65536];
     int               prof_enabled;
+    /* Execution history ring buffer */
+    sim_history_entry_t *hist_buf;
+    int                  hist_cap;     /* ring buffer capacity (power of two)    */
+    int                  hist_mask;    /* = hist_cap - 1                         */
+    int                  hist_write;   /* index of next write slot               */
+    int                  hist_count;   /* entries stored (0 .. hist_cap)         */
+    int                  hist_enabled; /* 1 = recording active                   */
+    int                  hist_pos;     /* 0 = present, N = N steps back          */
 };
 
 /* --- Internal Helpers --- */
@@ -63,6 +71,12 @@ static int handle_trap(const symbol_table_t *st, cpu_t *cpu, memory_t *mem) {
 		return 1;
 	}
 	return 0;
+}
+
+static void api_history_clear(sim_session_t *s) {
+    s->hist_write = 0;
+    s->hist_count = 0;
+    s->hist_pos   = 0;
 }
 
 static void api_select_handlers(sim_session_t *s) {
@@ -105,6 +119,11 @@ sim_session_t *sim_create(const char *processor) {
     breakpoint_init(&s->breakpoints);
     s->state = SIM_IDLE;
     s->start_addr = 0x0200;
+    /* History ring buffer */
+    s->hist_cap     = SIM_HIST_DEFAULT_DEPTH;
+    s->hist_mask    = s->hist_cap - 1;
+    s->hist_buf     = (sim_history_entry_t *)calloc((size_t)s->hist_cap, sizeof(sim_history_entry_t));
+    s->hist_enabled = (s->hist_buf != NULL);
     return s;
 }
 
@@ -113,6 +132,7 @@ void sim_destroy(sim_session_t *s) {
     for (int i = 0; i < FAR_NUM_PAGES; i++) {
         if (s->mem.far_pages[i]) { free(s->mem.far_pages[i]); s->mem.far_pages[i] = NULL; }
     }
+    free(s->hist_buf);
     free(s);
 }
 
@@ -124,6 +144,7 @@ int sim_load_asm(sim_session_t *s, const char *path) {
     memset(s->session_rom, 0, sizeof(s->session_rom));
     symbol_table_init(&s->symbols, "Session");
     breakpoint_init(&s->breakpoints);
+    api_history_clear(s);
     cpu_type_t cpu_type = s->cpu_type;
     api_select_handlers(s);
     char line[512];
@@ -214,6 +235,7 @@ int sim_load_bin(sim_session_t *s, const char *path, uint16_t load_addr)
     memset(s->session_rom, 0, sizeof(s->session_rom));
     symbol_table_init(&s->symbols, "Session");
     breakpoint_init(&s->breakpoints);
+    api_history_clear(s);
     int n = 0, c;
     while ((c = fgetc(f)) != EOF) {
         uint32_t dst = (uint32_t)load_addr + (uint32_t)n;
@@ -241,6 +263,7 @@ int sim_load_prg(sim_session_t *s, const char *path, uint16_t override_addr)
     memset(s->session_rom, 0, sizeof(s->session_rom));
     symbol_table_init(&s->symbols, "Session");
     breakpoint_init(&s->breakpoints);
+    api_history_clear(s);
     int n = 0, c;
     while ((c = fgetc(f)) != EOF) {
         uint32_t dst = (uint32_t)load_addr + (uint32_t)n;
@@ -294,8 +317,8 @@ void sim_get_load_info(sim_session_t *s, uint16_t *addr_out, uint16_t *size_out)
 
 int sim_step(sim_session_t *s, int count) {
     if (!s || s->state == SIM_IDLE || s->state == SIM_FINISHED) return -1;
-    s->mem.mem_writes = 0;
     for (int i = 0; i < count; i++) {
+        s->mem.mem_writes = 0;
         int tr = handle_trap(&s->symbols, &s->cpu, &s->mem);
         if (tr < 0) { s->state = SIM_FINISHED; if (s->event_cb) s->event_cb(s, SIM_EVENT_BRK, s->event_userdata); return SIM_EVENT_BRK; }
         if (tr > 0) continue;
@@ -315,7 +338,29 @@ int sim_step(sim_session_t *s, int count) {
         }
         uint16_t pre_pc = s->cpu.pc;
         unsigned long pre_cycles = s->cpu.cycles;
+        cpu_t pre_cpu = s->cpu;
         execute_from_mem(&s->cpu, &s->mem, &s->dt, s->cpu_type);
+        /* Push history entry */
+        if (s->hist_enabled && s->hist_buf) {
+            if (s->hist_pos > 0) {
+                /* Branched off history: truncate "future" entries */
+                s->hist_write = (s->hist_write - s->hist_pos + s->hist_cap * 2) % s->hist_cap;
+                s->hist_count -= s->hist_pos;
+                if (s->hist_count < 0) s->hist_count = 0;
+                s->hist_pos = 0;
+            }
+            sim_history_entry_t *he = &s->hist_buf[s->hist_write];
+            he->pre_cpu = pre_cpu;
+            he->pc      = pre_pc;
+            int dc = s->mem.mem_writes < 16 ? s->mem.mem_writes : 16;
+            he->delta_count = (uint8_t)dc;
+            for (int d = 0; d < dc; d++) {
+                he->delta_addr[d] = s->mem.mem_addr[d];
+                he->delta_old[d]  = s->mem.mem_old_val[d];
+            }
+            s->hist_write = (s->hist_write + 1) & s->hist_mask;
+            if (s->hist_count < s->hist_cap) s->hist_count++;
+        }
         if (s->trace_enabled) {
             sim_trace_entry_t *tr = &s->trace_buf[s->trace_head];
             tr->pc = pre_pc; tr->cpu = s->cpu; tr->cycles_delta = (int)(s->cpu.cycles - pre_cycles);
@@ -389,7 +434,13 @@ int sim_get_opcode_cycles(sim_session_t *s, uint16_t addr) {
     const dispatch_entry_t *e = peek_dispatch(&s->cpu, &s->mem, &s->dt, s->cpu_type);
     return e ? e->cycles : 0;
 }
-int sim_get_last_writes(sim_session_t *s, uint16_t *addrs, int max_count) { (void)s; (void)addrs; (void)max_count; return 0; }
+int sim_get_last_writes(sim_session_t *s, uint16_t *addrs, int max_count) {
+    if (!s || !addrs || max_count <= 0) return 0;
+    int n = s->mem.mem_writes < 256 ? s->mem.mem_writes : 256;
+    if (n > max_count) n = max_count;
+    for (int i = 0; i < n; i++) addrs[i] = s->mem.mem_addr[i];
+    return n;
+}
 void sim_set_pc(sim_session_t *s, uint16_t pc) { if (s) s->cpu.pc = pc; }
 void sim_set_reg_byte(sim_session_t *s, const char *name, uint8_t val) {
     if (!s || !name) return;
@@ -453,6 +504,53 @@ int sim_sym_add(sim_session_t *s, uint16_t addr, const char *name, const char *t
     return symbol_add(&s->symbols, name, addr, type, "API");
 }
 int sim_sym_load_file(sim_session_t *s, const char *path) { return s ? symbol_load_file(&s->symbols, path) : 0; }
+/* --- Execution History --- */
+
+void sim_history_enable(sim_session_t *s, int enable) { if (s) s->hist_enabled = enable; }
+int  sim_history_is_enabled(sim_session_t *s)         { return s ? s->hist_enabled : 0; }
+void sim_history_clear(sim_session_t *s)               { if (s) api_history_clear(s); }
+int  sim_history_depth(sim_session_t *s)               { return s ? s->hist_cap   : 0; }
+int  sim_history_count(sim_session_t *s)               { return s ? s->hist_count : 0; }
+int  sim_history_position(sim_session_t *s)            { return s ? s->hist_pos   : 0; }
+
+int sim_history_step_back(sim_session_t *s) {
+    if (!s || !s->hist_buf || s->hist_pos >= s->hist_count) return 0;
+    /* Index of the entry to undo (most recent unvisited) */
+    unsigned idx = ((unsigned)s->hist_write - 1u - (unsigned)s->hist_pos) & (unsigned)s->hist_mask;
+    sim_history_entry_t *he = &s->hist_buf[idx];
+    /* Restore CPU */
+    s->cpu = he->pre_cpu;
+    /* Restore memory: write old values directly (no write-log side effect) */
+    for (int d = 0; d < he->delta_count; d++)
+        s->mem.mem[he->delta_addr[d]] = he->delta_old[d];
+    s->hist_pos++;
+    s->state = SIM_PAUSED;
+    return 1;
+}
+
+int sim_history_step_fwd(sim_session_t *s) {
+    if (!s || !s->hist_buf || s->hist_pos == 0) return 0;
+    /* Index of the entry to re-execute */
+    unsigned idx = ((unsigned)s->hist_write - (unsigned)s->hist_pos) & (unsigned)s->hist_mask;
+    sim_history_entry_t *he = &s->hist_buf[idx];
+    /* Restore CPU to pre-execution state, then re-execute */
+    s->cpu = he->pre_cpu;
+    s->mem.mem_writes = 0;
+    execute_from_mem(&s->cpu, &s->mem, &s->dt, s->cpu_type);
+    s->hist_pos--;
+    s->state = SIM_PAUSED;
+    return 1;
+}
+
+int sim_history_get(sim_session_t *s, int slot, sim_history_entry_t *entry) {
+    if (!s || !s->hist_buf || !entry || slot < 0 || slot >= s->hist_count) return 0;
+    unsigned idx = ((unsigned)s->hist_write - 1u - (unsigned)slot) & (unsigned)s->hist_mask;
+    *entry = s->hist_buf[idx];
+    return 1;
+}
+
+/* --- Profiler --- */
+
 void sim_profiler_enable(sim_session_t *s, int enable) { if (s) s->prof_enabled = enable; }
 int sim_profiler_is_enabled(sim_session_t *s) { return s ? s->prof_enabled : 0; }
 void sim_profiler_clear(sim_session_t *s) { if (s) { memset(s->prof_exec, 0, sizeof(s->prof_exec)); memset(s->prof_cycles, 0, sizeof(s->prof_cycles)); } }

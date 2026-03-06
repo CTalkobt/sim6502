@@ -298,6 +298,50 @@ int sim_sym_add(sim_session_t *s, uint16_t addr,
  * Returns the count of symbols successfully added.                          */
 int sim_sym_load_file(sim_session_t *s, const char *path);
 
+/* ---- Execution History ---- */
+
+#define SIM_HIST_DEFAULT_DEPTH (1 << 17)   /* 131072 entries (~10 MB)       */
+
+/* One history entry: pre-execution CPU snapshot + sparse memory deltas.    */
+typedef struct {
+    cpu_t    pre_cpu;           /* CPU state BEFORE executing the instruction */
+    uint16_t pc;                /* PC before execution (== pre_cpu.pc)        */
+    uint8_t  delta_count;       /* number of memory writes recorded (≤ 16)    */
+    uint16_t delta_addr[16];    /* virtual addresses written                  */
+    uint8_t  delta_old[16];     /* byte values BEFORE each write              */
+} sim_history_entry_t;
+
+/* Enable (1) or disable (0) history recording.
+ * Disabling does not erase existing entries.                                */
+void sim_history_enable(sim_session_t *s, int enable);
+
+/* Return 1 if history recording is enabled, 0 otherwise.                   */
+int sim_history_is_enabled(sim_session_t *s);
+
+/* Clear all history entries; reset position to 0.                          */
+void sim_history_clear(sim_session_t *s);
+
+/* Return the ring buffer capacity (maximum entries storable).               */
+int sim_history_depth(sim_session_t *s);
+
+/* Return the number of entries currently stored (0 .. depth).               */
+int sim_history_count(sim_session_t *s);
+
+/* Return the current step-back position (0 = present, N = N steps back).   */
+int sim_history_position(sim_session_t *s);
+
+/* Step back one instruction: restore CPU and memory to the pre-execute state.
+ * Returns 1 on success, 0 if no history remains.                           */
+int sim_history_step_back(sim_session_t *s);
+
+/* Step forward one instruction: re-execute the instruction that was undone.
+ * Returns 1 on success, 0 if already at the present.                       */
+int sim_history_step_fwd(sim_session_t *s);
+
+/* Fill *entry for the slot-th history entry (0 = most recent).
+ * Returns 1 on success, 0 if slot is out of range.                         */
+int sim_history_get(sim_session_t *s, int slot, sim_history_entry_t *entry);
+
 /* ---- Profiler ---- */
 
 /* Enable (1) or disable (0) per-instruction profiling.                      */

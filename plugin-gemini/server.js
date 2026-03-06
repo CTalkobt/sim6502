@@ -278,6 +278,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "step_back",
+        description: "Steps back one instruction in execution history, restoring CPU and memory to the pre-execute state.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      {
+        name: "step_forward",
+        description: "Steps forward one instruction (re-executes the next instruction in history). Only valid after one or more step_back calls.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      {
         name: "disassemble",
         description: "Disassembles instructions from memory. Unknown bytes are shown as .byte directives. Branch targets are shown as resolved absolute addresses.",
         inputSchema: {
@@ -391,6 +407,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     } else if (name === "run_program") {
       const output = await sendCommand(`run`);
+      return {
+        content: [{ type: "text", text: output }],
+      };
+    } else if (name === "step_back") {
+      const output = await sendCommand(`sb`);
+      return {
+        content: [{ type: "text", text: output }],
+      };
+    } else if (name === "step_forward") {
+      const output = await sendCommand(`sf`);
       return {
         content: [{ type: "text", text: output }],
       };

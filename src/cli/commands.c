@@ -7,6 +7,65 @@
 #include <ctype.h>
 #include <unistd.h>
 
+/* --------------------------------------------------------------------------
+ * CLI execution history (local ring buffer, 4096 entries)
+ * -------------------------------------------------------------------------- */
+#define CLI_HIST_CAP 4096
+
+typedef struct {
+    cpu_t    pre_cpu;
+    uint8_t  delta_count;
+    uint16_t delta_addr[16];
+    uint8_t  delta_old[16];
+} cli_hist_entry_t;
+
+static cli_hist_entry_t s_cli_hist[CLI_HIST_CAP];
+static int              s_cli_hist_write = 0;
+static int              s_cli_hist_count = 0;
+static int              s_cli_hist_pos   = 0;
+
+static void cli_hist_push(const cpu_t *pre, const memory_t *mem) {
+    if (s_cli_hist_pos > 0) {
+        /* Branched off: truncate "future" entries */
+        s_cli_hist_write = ((s_cli_hist_write - s_cli_hist_pos) % CLI_HIST_CAP + CLI_HIST_CAP) % CLI_HIST_CAP;
+        s_cli_hist_count -= s_cli_hist_pos;
+        if (s_cli_hist_count < 0) s_cli_hist_count = 0;
+        s_cli_hist_pos = 0;
+    }
+    cli_hist_entry_t *e = &s_cli_hist[s_cli_hist_write % CLI_HIST_CAP];
+    e->pre_cpu = *pre;
+    int dc = mem->mem_writes < 16 ? mem->mem_writes : 16;
+    e->delta_count = (uint8_t)dc;
+    for (int i = 0; i < dc; i++) {
+        e->delta_addr[i] = mem->mem_addr[i];
+        e->delta_old[i]  = mem->mem_old_val[i];
+    }
+    s_cli_hist_write = (s_cli_hist_write + 1) % CLI_HIST_CAP;
+    if (s_cli_hist_count < CLI_HIST_CAP) s_cli_hist_count++;
+}
+
+static int cli_hist_step_back(cpu_t *cpu, memory_t *mem) {
+    if (s_cli_hist_pos >= s_cli_hist_count) return 0;
+    int idx = ((s_cli_hist_write - 1 - s_cli_hist_pos) % CLI_HIST_CAP + CLI_HIST_CAP) % CLI_HIST_CAP;
+    cli_hist_entry_t *e = &s_cli_hist[idx];
+    *cpu = e->pre_cpu;
+    for (int i = 0; i < e->delta_count; i++)
+        mem->mem[e->delta_addr[i]] = e->delta_old[i];
+    s_cli_hist_pos++;
+    return 1;
+}
+
+static int cli_hist_step_fwd(cpu_t *cpu, memory_t *mem, dispatch_table_t *dt, cpu_type_t cpu_type) {
+    if (s_cli_hist_pos == 0) return 0;
+    int idx = ((s_cli_hist_write - s_cli_hist_pos) % CLI_HIST_CAP + CLI_HIST_CAP) % CLI_HIST_CAP;
+    cli_hist_entry_t *e = &s_cli_hist[idx];
+    *cpu = e->pre_cpu;
+    mem->mem_writes = 0;
+    execute_from_mem(cpu, mem, dt, cpu_type);
+    s_cli_hist_pos--;
+    return 1;
+}
+
 static int handle_trap_local(const symbol_table_t *st, cpu_t *cpu, memory_t *mem) {
     for (int i = 0; i < st->count; i++) {
         if (st->symbols[i].type != SYM_TRAP) continue;
@@ -99,7 +158,8 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
 #define SKIP_CMD(lp) do { while (*(lp) && !isspace((unsigned char)*(lp))) (lp)++; } while (0)
         if (strcmp(cmd, "quit") == 0 || strcmp(cmd, "exit") == 0) break;
         else if (strcmp(cmd, "help") == 0) {
-            printf("Commands: step [n], run, break <addr>, clear <addr>, list, regs,\n");
+            printf("Commands: step [n], run, stepback (sb), stepfwd (sf),\n");
+            printf("          break <addr>, clear <addr>, list, regs,\n");
             printf("          mem <addr> [len], write <addr> <val>, reset,\n");
             printf("          processors, processor <type>, info <opcode>,\n");
             printf("          jump <addr>, set <reg> <val>, flag <flag> <0|1>,\n");
@@ -135,12 +195,15 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
             }
         } else if (strcmp(cmd, "run") == 0) {
             while (1) {
+                mem->mem_writes = 0;
                 int tr = handle_trap_local(symbols, cpu, mem); if (tr < 0) break; if (tr > 0) continue;
                 unsigned char opc = mem_read(mem, cpu->pc); if (opc == 0x00) break;
                 const dispatch_entry_t *te = peek_dispatch(cpu, mem, dt, *p_cpu_type);
                 if (te->mnemonic && strcmp(te->mnemonic, "STP") == 0) break;
                 if (breakpoint_hit(breakpoints, cpu)) break;
+                cpu_t pre = *cpu;
                 execute_from_mem(cpu, mem, dt, *p_cpu_type);
+                cli_hist_push(&pre, mem);
             }
             printf("STOP at $%04X\n", cpu->pc);
         } else if (strcmp(cmd, "processors") == 0) list_processors();
@@ -175,8 +238,21 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
             cpu_init(cpu); cpu->pc = start_addr; if (*p_cpu_type == CPU_45GS02) set_flag(cpu, FLAG_E, 1);
         } else if (strcmp(cmd, "step") == 0) {
             const char *p = line; SKIP_CMD(p); unsigned long tmp; int steps = parse_mon_value(&p, &tmp) ? (int)tmp : 1;
-            for (int i = 0; i < steps; i++) { int tr = handle_trap_local(symbols, cpu, mem); if (tr < 0) break; if (tr > 0) continue; unsigned char opc = mem_read(mem, cpu->pc); if (opc == 0x00) break; execute_from_mem(cpu, mem, dt, *p_cpu_type); }
+            for (int i = 0; i < steps; i++) {
+                mem->mem_writes = 0;
+                int tr = handle_trap_local(symbols, cpu, mem); if (tr < 0) break; if (tr > 0) continue;
+                unsigned char opc = mem_read(mem, cpu->pc); if (opc == 0x00) break;
+                cpu_t pre = *cpu;
+                execute_from_mem(cpu, mem, dt, *p_cpu_type);
+                cli_hist_push(&pre, mem);
+            }
             printf("STOP $%04X\n", cpu->pc);
+        } else if (strcmp(cmd, "stepback") == 0 || strcmp(cmd, "sb") == 0) {
+            if (cli_hist_step_back(cpu, mem)) printf("BACK $%04X\n", cpu->pc);
+            else printf("No history to step back into.\n");
+        } else if (strcmp(cmd, "stepfwd") == 0 || strcmp(cmd, "sf") == 0) {
+            if (cli_hist_step_fwd(cpu, mem, dt, *p_cpu_type)) printf("FWD $%04X\n", cpu->pc);
+            else printf("Already at the present.\n");
         } else if (strcmp(cmd, "bload") == 0) {
             /* bload "file.bin" <addr>   -- raw binary, address required
              * bload "file.prg" [addr]   -- PRG header used unless addr given */

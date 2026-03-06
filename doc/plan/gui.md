@@ -791,7 +791,7 @@ Users can save the current docking layout + open panes as a named preset (e.g., 
 19. [x] Layout presets (save/load)
 20. [x] Multi-instance panes (additional memory views)
 21. [x] Drag-and-drop file loading
-22. <SKIPPED>
+22. [x] <SKIPPED>
 
 ### Phase 6 — Graphics & Time Travel
 23. Execution History ring buffer infrastructure (`history.h`, `sim_history_*` API)
