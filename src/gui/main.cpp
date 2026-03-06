@@ -3151,6 +3151,7 @@ int main(int /*argc*/, char ** /*argv*/)
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
+    SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
     const int display_index = 0;
     const float ui_scale    = detect_ui_scale(display_index);
@@ -3308,6 +3309,29 @@ int main(int /*argc*/, char ** /*argv*/)
             if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_F4
                     && (ev.key.keysym.mod & KMOD_ALT))
                 running = false;
+            if (ev.type == SDL_DROPFILE && ev.drop.file) {
+                const char *dropped = ev.drop.file;
+                if (ext_is(dropped, ".asm")) {
+                    snprintf(g_filename_buf, sizeof(g_filename_buf), "%s", dropped);
+                    do_load();
+                    con_add(CON_COL_OK, "Dropped: %s", dropped);
+                } else if (ext_is(dropped, ".bin") || ext_is(dropped, ".prg")) {
+                    open_binload_dialog(dropped);
+                } else if (ext_is(dropped, ".sym")) {
+                    int added = sim_sym_load_file(g_sim, dropped);
+                    if (added > 0)
+                        con_add(ImVec4(0.4f,1.0f,0.4f,1.0f),
+                                "Loaded %d symbol(s) from %s", added, dropped);
+                    else
+                        con_add(CON_COL_ERR, "Could not load symbols: %s", dropped);
+                } else {
+                    /* Unknown extension — attempt as assembly */
+                    snprintf(g_filename_buf, sizeof(g_filename_buf), "%s", dropped);
+                    do_load();
+                    con_add(CON_COL_OK, "Dropped: %s", dropped);
+                }
+                SDL_free(ev.drop.file);
+            }
         }
 
         /* ---- Keyboard shortcuts (when ImGui is not capturing keyboard) ---- */

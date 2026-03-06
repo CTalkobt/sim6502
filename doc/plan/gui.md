@@ -790,7 +790,7 @@ Users can save the current docking layout + open panes as a named preset (e.g., 
 18. [x] Keyboard shortcuts
 19. [x] Layout presets (save/load)
 20. [x] Multi-instance panes (additional memory views)
-21. Drag-and-drop file loading
+21. [x] Drag-and-drop file loading
 22. <SKIPPED>
 
 ### Phase 6 — Graphics & Time Travel
