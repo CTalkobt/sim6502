@@ -805,7 +805,7 @@ Users can save the current docking layout + open panes as a named preset (e.g., 
 27c. VIC Viewer pane: Char Set
 27c2. For VIC Char Sets add editor capability. 
 27d. VIC Viewer pane: Color RAM
-27e. VIC Viewer pane: Registers sub-panes
+27e. [x] VIC Viewer pane: Registers sub-panes
 28. PNG export for frames, sprites, and char sheets (`stb_image_write.h`)
 28a. VIC Viewer pane: Standard Screen bitmap.
 28b. VIC Viewer pane: Standard text screen w/ character set rendered.

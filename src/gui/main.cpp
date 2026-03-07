@@ -141,6 +141,7 @@ static bool show_profiler = false;
 /* ---- Phase 6 pane visibility ---- */
 static bool show_vic_screen   = false;
 static bool show_vic_sprites  = false;
+static bool show_vic_regs     = false;
 
 /* ---- Phase 5: keyboard shortcut state ---- */
 static bool     g_focus_console     = false;  /* `: focus console input              */
@@ -1380,6 +1381,199 @@ static void draw_pane_vic_sprites(void)
     uint8_t d025 = sim_mem_read_byte(g_sim, 0xD025) & 0xF;
     uint8_t d026 = sim_mem_read_byte(g_sim, 0xD026) & 0xF;
     ImGui::Text("D025 MC0:%X  D026 MC1:%X  D015 En:%02X", d025, d026, d015);
+
+    ImGui::End();
+}
+
+/* --------------------------------------------------------------------------
+ * Pane: VIC-II Registers (Phase 6 / 27e)
+ *
+ * Shows all key VIC-II control registers with decoded fields, computed video
+ * addresses (screen RAM, char gen, bitmap base), colour swatches for border
+ * and background registers, and the current raster position.
+ * -------------------------------------------------------------------------- */
+static void draw_pane_vic_regs(void)
+{
+    if (!show_vic_regs) return;
+    ImGui::Begin("VIC-II Registers", &show_vic_regs);
+
+    sim_state_t state = sim_get_state(g_sim);
+    if (state == SIM_IDLE) {
+        ImGui::TextDisabled("(no program loaded)");
+        ImGui::End();
+        return;
+    }
+
+    /* Read all relevant VIC-II registers */
+    uint8_t ctrl1    = sim_mem_read_byte(g_sim, 0xD011);
+    uint8_t ctrl2    = sim_mem_read_byte(g_sim, 0xD016);
+    uint8_t memsetup = sim_mem_read_byte(g_sim, 0xD018);
+    uint8_t raster   = sim_mem_read_byte(g_sim, 0xD012);
+    uint8_t border   = sim_mem_read_byte(g_sim, 0xD020) & 0xF;
+    uint8_t bg0      = sim_mem_read_byte(g_sim, 0xD021) & 0xF;
+    uint8_t bg1      = sim_mem_read_byte(g_sim, 0xD022) & 0xF;
+    uint8_t bg2      = sim_mem_read_byte(g_sim, 0xD023) & 0xF;
+    uint8_t bg3      = sim_mem_read_byte(g_sim, 0xD024) & 0xF;
+    uint8_t d019     = sim_mem_read_byte(g_sim, 0xD019);
+    uint8_t d01a     = sim_mem_read_byte(g_sim, 0xD01A);
+    uint8_t cia2a    = sim_mem_read_byte(g_sim, 0xDD00);
+
+    int ecm     = (ctrl1 >> 6) & 1;
+    int bmm     = (ctrl1 >> 5) & 1;
+    int den     = (ctrl1 >> 4) & 1;
+    int rsel    = (ctrl1 >> 3) & 1;
+    int rst8    = (ctrl1 >> 7) & 1;
+    int yscroll = ctrl1 & 7;
+    int mcm     = (ctrl2 >> 4) & 1;
+    int csel    = (ctrl2 >> 3) & 1;
+    int xscroll = ctrl2 & 7;
+    int bank    = (~cia2a) & 3;
+
+    uint32_t vic_bank    = (uint32_t)bank * 0x4000u;
+    uint32_t screen_addr = vic_bank + (uint32_t)((memsetup >> 4) & 0xF) * 1024u;
+    uint32_t cg_addr     = vic_bank + (uint32_t)((memsetup >> 1) & 0x7) * 2048u;
+    uint32_t bm_addr     = vic_bank + (uint32_t)(((memsetup >> 3) & 1) * 0x2000u);
+    uint16_t raster_line = (uint16_t)(raster | (rst8 << 8));
+
+    const char *mode;
+    if      (!den)               mode = "Display Off";
+    else if (!bmm&&!ecm&&!mcm)  mode = "Standard Char";
+    else if (!bmm&&!ecm&& mcm)  mode = "Multicolour Char";
+    else if (!bmm&& ecm&&!mcm)  mode = "Extended Colour";
+    else if ( bmm&&!ecm&&!mcm)  mode = "Standard Bitmap";
+    else if ( bmm&&!ecm&& mcm)  mode = "Multicolour Bitmap";
+    else                         mode = "Invalid";
+
+    /* Colour swatch helper */
+    auto colour_swatch = [](const char *id, int ci) {
+        ci &= 0xF;
+        ImVec4 col(vic2_palette[ci][0] / 255.0f,
+                   vic2_palette[ci][1] / 255.0f,
+                   vic2_palette[ci][2] / 255.0f, 1.0f);
+        ImGui::ColorButton(id, col,
+                           ImGuiColorEditFlags_NoPicker |
+                           ImGuiColorEditFlags_NoTooltip,
+                           ImVec2(14, 14));
+    };
+
+    /* ---- Mode summary ---- */
+    ImGui::TextColored(den ? ImVec4(0.4f, 1.0f, 0.4f, 1.0f)
+                           : ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
+                       "Mode: %s", mode);
+    ImGui::SameLine();
+    ImGui::TextDisabled("  Raster: %d ($%03X)", raster_line, raster_line);
+
+    ImGui::Separator();
+
+    /* ---- Register table ---- */
+    if (ImGui::BeginTable("vicreg", 3,
+            ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit |
+            ImGuiTableFlags_BordersInnerV)) {
+        ImGui::TableSetupColumn("Reg",     ImGuiTableColumnFlags_WidthFixed,   55);
+        ImGui::TableSetupColumn("Hex",     ImGuiTableColumnFlags_WidthFixed,   38);
+        ImGui::TableSetupColumn("Decoded", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+
+        char buf[96];
+
+        snprintf(buf, sizeof(buf),
+                 "ECM=%d BMM=%d DEN=%d RSEL=%d RST8=%d yscrl=%d",
+                 ecm, bmm, den, rsel, rst8, yscroll);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("D011");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("$%02X", ctrl1);
+        ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(buf);
+
+        snprintf(buf, sizeof(buf), "MCM=%d CSEL=%d xscrl=%d", mcm, csel, xscroll);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("D016");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("$%02X", ctrl2);
+        ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(buf);
+
+        snprintf(buf, sizeof(buf), "scr=bits[7:4]  chr/bm=bits[3:1]");
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("D018");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("$%02X", memsetup);
+        ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(buf);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("D012");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("$%02X", raster);
+        ImGui::TableSetColumnIndex(2);
+        ImGui::Text("Raster line low byte  (full: %d)", raster_line);
+
+        snprintf(buf, sizeof(buf), "IRQ=%d  RST=%d MBC=%d MMC=%d LP=%d",
+                 (d019 >> 7) & 1, d019 & 1,
+                 (d019 >> 1) & 1, (d019 >> 2) & 1, (d019 >> 3) & 1);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("D019");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("$%02X", d019);
+        ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(buf);
+
+        snprintf(buf, sizeof(buf), "ERST=%d EMBC=%d EMMC=%d ELP=%d",
+                 d01a & 1, (d01a >> 1) & 1, (d01a >> 2) & 1, (d01a >> 3) & 1);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("D01A");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("$%02X", d01a);
+        ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(buf);
+
+        ImGui::EndTable();
+    }
+
+    ImGui::Separator();
+
+    /* ---- Video addresses ---- */
+    if (ImGui::BeginTable("vicaddr", 2,
+            ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV)) {
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 93);
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
+
+        char buf[40];
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("VIC Bank");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::Text("%d  ($%04X-$%04X)", bank,
+                    (unsigned)vic_bank, (unsigned)(vic_bank + 0x3FFF));
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("Screen RAM");
+        ImGui::TableSetColumnIndex(1);
+        snprintf(buf, sizeof(buf), "$%04X", (unsigned)screen_addr);
+        ImGui::TextUnformatted(buf);
+
+        ImGui::TableNextRow();
+        if (bmm) {
+            ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("Bitmap Base");
+            ImGui::TableSetColumnIndex(1);
+            snprintf(buf, sizeof(buf), "$%04X", (unsigned)bm_addr);
+        } else {
+            ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("Char Gen");
+            ImGui::TableSetColumnIndex(1);
+            snprintf(buf, sizeof(buf), "$%04X", (unsigned)cg_addr);
+        }
+        ImGui::TextUnformatted(buf);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("Colour RAM");
+        ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted("$D800");
+
+        ImGui::EndTable();
+    }
+
+    ImGui::Separator();
+
+    /* ---- Colour registers with swatches ---- */
+    struct ColReg { const char *label; int ci; };
+    ColReg col_regs[] = {
+        { "Border", border }, { "BG0", bg0 },
+        { "BG1", bg1 },       { "BG2", bg2 }, { "BG3", bg3 },
+    };
+    for (auto &c : col_regs) {
+        colour_swatch(c.label, c.ci);
+        ImGui::SameLine();
+        ImGui::Text("%-7s  %X  %s", c.label, c.ci, vic2_color_names[c.ci]);
+    }
 
     ImGui::End();
 }
@@ -4389,8 +4583,9 @@ int main(int /*argc*/, char ** /*argv*/)
                     ImGui::MenuItem("Source",      nullptr, &show_source);
                     ImGui::MenuItem("Profiler",    nullptr, &show_profiler);
                     ImGui::Separator();
-                    ImGui::MenuItem("VIC-II Screen",  nullptr, &show_vic_screen);
-                    ImGui::MenuItem("VIC-II Sprites", nullptr, &show_vic_sprites);
+                    ImGui::MenuItem("VIC-II Screen",    nullptr, &show_vic_screen);
+                    ImGui::MenuItem("VIC-II Sprites",   nullptr, &show_vic_sprites);
+                    ImGui::MenuItem("VIC-II Registers", nullptr, &show_vic_regs);
                     ImGui::Separator();
                     if (ImGui::BeginMenu("Font Size")) {
                         static const int sizes[] = { 10, 11, 12, 13, 14, 15, 16, 18, 20, 24 };
@@ -4506,6 +4701,7 @@ int main(int /*argc*/, char ** /*argv*/)
         /* Phase 6 panes */
         draw_pane_vic_screen();
         draw_pane_vic_sprites();
+        draw_pane_vic_regs();
 
         /* Popups */
         draw_binload_popup();
