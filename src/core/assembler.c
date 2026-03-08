@@ -320,12 +320,16 @@ void parse_line(const char *line, instruction_t *instr, symbol_table_t *symbols,
 	while (*line && isspace(*line)) line++;
 	instr->mode = MODE_IMPLIED;
 	instr->arg = 0;
+	instr->arg_overflow = 0;
 	int is_branch = is_branch_opcode(instr->op);
 	if (*line == '#') {
 		if (strcmp(instr->op, "PHW") == 0) instr->mode = MODE_IMMEDIATE_WORD;
 		else instr->mode = MODE_IMMEDIATE;
 		line++;
 		instr->arg = parse_value(line, NULL);
+		/* immediate: value must fit in one byte (or two bytes for PHW) */
+		if (instr->mode == MODE_IMMEDIATE && instr->arg > 0xFF)
+			instr->arg_overflow = 1;
 	} else if (*line == '$' || *line == '%' || *line == '\'' || isdigit(*line)) {
 		int digits;
 		instr->arg = parse_value(line, &digits);
@@ -343,6 +347,14 @@ void parse_line(const char *line, instruction_t *instr, symbol_table_t *symbols,
 				instr->arg = (unsigned short)(target - (pc + 2));
 			}
 		} else instr->mode = (digits <= 2) ? MODE_ZP : MODE_ABSOLUTE;
+		/* hex literals only: >4 digits means value exceeds 16-bit address space */
+		switch (instr->mode) {
+		case MODE_ABSOLUTE: case MODE_ABSOLUTE_X: case MODE_ABSOLUTE_Y:
+			if (digits > 4) instr->arg_overflow = 1;
+			break;
+		default:
+			break;
+		}
 	} else if (*line == '(') {
 		line++;
 		if (*line == '$' || *line == '%' || *line == '\'' || isdigit(*line)) {
@@ -431,6 +443,7 @@ int encode_to_mem(memory_t *mem, int pc_base,
 		const instruction_t *instr,
 		const opcode_handler_t *handlers, int n,
 		cpu_type_t cpu_type) {
+	if (instr->arg_overflow) return -1;
 	if (strcmp(instr->op, "BRK") == 0) {
 		mem->mem[pc_base] = 0x00;
 		if (cpu_type != CPU_45GS02) {

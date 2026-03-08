@@ -48,4 +48,10 @@ void vic2_print_regs(const memory_t *mem);
 /* Print all 8 sprite states (position, colour, flags, data address) to stdout. */
 void vic2_print_sprites(const memory_t *mem);
 
+/* JSON output variants — print a single-line JSON object to stdout.
+   Intended for use with the -J (JSON mode) interactive CLI flag. */
+void vic2_json_info(const memory_t *mem);
+void vic2_json_regs(const memory_t *mem);
+void vic2_json_sprites(const memory_t *mem);
+
 #endif /* VIC2_H */

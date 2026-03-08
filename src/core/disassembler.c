@@ -130,3 +130,129 @@ int disasm_one(const memory_t *mem, const dispatch_table_t *dt,
     snprintf(buf, bufsz, "$%04X: %-18s %-6s %s", addr, hexbuf, e->mnemonic, opstr);
     return total_len;
 }
+
+int disasm_one_entry(const memory_t *mem, const dispatch_table_t *dt,
+                     cpu_type_t cpu_type, unsigned short addr,
+                     disasm_entry_t *out) {
+    unsigned char b0 = mem->mem[addr];
+    const dispatch_entry_t *e = NULL;
+    int prefix_len = 0;
+    if (cpu_type == CPU_45GS02 && b0 == 0x42) {
+        unsigned char b1 = mem->mem[(unsigned short)(addr + 1)];
+        if (b1 == 0x42) {
+            unsigned char b2 = mem->mem[(unsigned short)(addr + 2)];
+            if (b2 == 0xEA) {
+                unsigned char b3 = mem->mem[(unsigned short)(addr + 3)];
+                if (dt->quad_eom[b3].fn) { e = &dt->quad_eom[b3]; prefix_len = 3; }
+            }
+            if (!e && dt->quad[b2].fn) { e = &dt->quad[b2]; prefix_len = 2; }
+        }
+    }
+    if (!e) {
+        const dispatch_entry_t *be = &dt->base[b0];
+        if (be->fn) e = be;
+    }
+
+    out->address = addr;
+    out->cycles  = e ? e->cycles : 0;
+
+    if (!e) {
+        snprintf(out->bytes,    sizeof(out->bytes),    "%02X", b0);
+        snprintf(out->mnemonic, sizeof(out->mnemonic), ".byte");
+        snprintf(out->operand,  sizeof(out->operand),  "$%02X", b0);
+        out->size = 1;
+        return 1;
+    }
+
+    int instr_len = get_instruction_length(e->mode);
+    int total_len = prefix_len + instr_len;
+    out->size = total_len;
+
+    /* Build hex byte string */
+    int hpos = 0;
+    for (int i = 0; i < total_len && hpos < (int)sizeof(out->bytes) - 3; i++) {
+        if (i > 0) out->bytes[hpos++] = ' ';
+        hpos += snprintf(out->bytes + hpos, sizeof(out->bytes) - (size_t)hpos,
+                         "%02X", mem->mem[(unsigned short)(addr + i)]);
+    }
+
+    snprintf(out->mnemonic, sizeof(out->mnemonic), "%s", e->mnemonic);
+
+    unsigned char op1 = (instr_len >= 2) ? mem->mem[(unsigned short)(addr + prefix_len + 1)] : 0;
+    unsigned char op2 = (instr_len >= 3) ? mem->mem[(unsigned short)(addr + prefix_len + 2)] : 0;
+    unsigned short operand = (unsigned short)(op1 | (op2 << 8));
+
+    switch (e->mode) {
+    case MODE_IMPLIED:
+        out->operand[0] = '\0';
+        break;
+    case MODE_IMMEDIATE:
+        snprintf(out->operand, sizeof(out->operand), "#$%02X", op1);
+        break;
+    case MODE_IMMEDIATE_WORD:
+        snprintf(out->operand, sizeof(out->operand), "#$%04X", operand);
+        break;
+    case MODE_ZP:
+        snprintf(out->operand, sizeof(out->operand), "$%02X", op1);
+        break;
+    case MODE_ZP_X:
+        snprintf(out->operand, sizeof(out->operand), "$%02X,X", op1);
+        break;
+    case MODE_ZP_Y:
+        snprintf(out->operand, sizeof(out->operand), "$%02X,Y", op1);
+        break;
+    case MODE_ABSOLUTE:
+        snprintf(out->operand, sizeof(out->operand), "$%04X", operand);
+        break;
+    case MODE_ABSOLUTE_X:
+        snprintf(out->operand, sizeof(out->operand), "$%04X,X", operand);
+        break;
+    case MODE_ABSOLUTE_Y:
+        snprintf(out->operand, sizeof(out->operand), "$%04X,Y", operand);
+        break;
+    case MODE_INDIRECT:
+        snprintf(out->operand, sizeof(out->operand), "($%04X)", operand);
+        break;
+    case MODE_INDIRECT_X:
+        snprintf(out->operand, sizeof(out->operand), "($%02X,X)", op1);
+        break;
+    case MODE_INDIRECT_Y:
+        snprintf(out->operand, sizeof(out->operand), "($%02X),Y", op1);
+        break;
+    case MODE_ZP_INDIRECT:
+        snprintf(out->operand, sizeof(out->operand), "($%02X)", op1);
+        break;
+    case MODE_ABS_INDIRECT_Y:
+        snprintf(out->operand, sizeof(out->operand), "($%04X),Y", operand);
+        break;
+    case MODE_ZP_INDIRECT_Z:
+        snprintf(out->operand, sizeof(out->operand), "($%02X),Z", op1);
+        break;
+    case MODE_SP_INDIRECT_Y:
+        snprintf(out->operand, sizeof(out->operand), "($%02X,SP),Y", op1);
+        break;
+    case MODE_ABS_INDIRECT_X:
+        snprintf(out->operand, sizeof(out->operand), "($%04X,X)", operand);
+        break;
+    case MODE_ZP_INDIRECT_FLAT:
+        snprintf(out->operand, sizeof(out->operand), "[$%02X]", op1);
+        break;
+    case MODE_ZP_INDIRECT_Z_FLAT:
+        snprintf(out->operand, sizeof(out->operand), "[$%02X],Z", op1);
+        break;
+    case MODE_RELATIVE: {
+        int target = (int)(addr + prefix_len) + instr_len + (signed char)op1;
+        snprintf(out->operand, sizeof(out->operand), "$%04X", (unsigned short)target);
+        break;
+    }
+    case MODE_RELATIVE_LONG: {
+        int target = (int)(addr + prefix_len) + instr_len + (short)operand;
+        snprintf(out->operand, sizeof(out->operand), "$%04X", (unsigned short)target);
+        break;
+    }
+    default:
+        snprintf(out->operand, sizeof(out->operand), "?");
+        break;
+    }
+    return total_len;
+}

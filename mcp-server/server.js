@@ -15,31 +15,20 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Determine simulator path
 const SIMULATOR_PATH = path.resolve(__dirname, '..', 'sim6502');
+const TEMP_ASM_FILE  = path.join(os.tmpdir(), '6502_mcp_prog.asm');
 
-// Temp file for ASM code
-const TEMP_ASM_FILE = path.join(os.tmpdir(), 'gemini_6502_prog.asm');
-
-// Simulator process handle
 let simulatorProcess = null;
-let simulatorBuffer = '';
+let simulatorBuffer  = '';
 let simulatorResolve = null;
 
-// Initialize MCP Server
 const server = new Server(
-  {
-    name: "gemini-6502-simulator",
-    version: "1.0.0",
-  },
-  {
-    capabilities: {
-      tools: {},
-    },
-  }
+  { name: "6502-simulator", version: "1.0.0" },
+  { capabilities: { tools: {} } }
 );
 
-// Helper: Start Simulator
+// ── Simulator process management ──────────────────────────────────────────────
+
 function startSimulator(asmCode) {
   if (simulatorProcess) {
     simulatorProcess.kill();
@@ -48,26 +37,22 @@ function startSimulator(asmCode) {
 
   fs.writeFileSync(TEMP_ASM_FILE, asmCode);
 
-  simulatorProcess = spawn(SIMULATOR_PATH, ['-I', TEMP_ASM_FILE]);
-  simulatorBuffer = '';
+  // -I = interactive mode, -J = JSON output for all commands
+  simulatorProcess = spawn(SIMULATOR_PATH, ['-I', '-J', TEMP_ASM_FILE]);
+  simulatorBuffer  = '';
 
   simulatorProcess.stdout.on('data', (data) => {
-    const chunk = data.toString();
-    simulatorBuffer += chunk;
-    
-    // Check for prompt
-    if (simulatorBuffer.includes('> ')) {
-      if (simulatorResolve) {
-        const output = simulatorBuffer.replace(/> $/, '').trim();
-        simulatorResolve(output);
-        simulatorResolve = null;
-        simulatorBuffer = '';
-      }
+    simulatorBuffer += data.toString();
+    if (simulatorBuffer.includes('> ') && simulatorResolve) {
+      const output = simulatorBuffer.replace(/>\s*$/, '').trim();
+      simulatorResolve(output);
+      simulatorResolve  = null;
+      simulatorBuffer   = '';
     }
   });
 
   simulatorProcess.stderr.on('data', (data) => {
-    console.error(`Simulator Error: ${data}`);
+    console.error(`Simulator: ${data}`);
   });
 
   simulatorProcess.on('exit', (code) => {
@@ -78,455 +63,432 @@ function startSimulator(asmCode) {
     simulatorProcess = null;
   });
 
-  // Wait for initial prompt
-  return new Promise((resolve) => {
-    simulatorResolve = resolve;
-  });
+  return new Promise((resolve) => { simulatorResolve = resolve; });
 }
 
-// Helper: Send Command
 function sendCommand(cmd) {
-  if (!simulatorProcess) {
-    throw new Error("Simulator not running. Load a program first.");
-  }
-  
+  if (!simulatorProcess)
+    throw new Error("Simulator not running. Use load_program first.");
   return new Promise((resolve) => {
     simulatorResolve = resolve;
     simulatorProcess.stdin.write(cmd + '\n');
   });
 }
 
-// Register Tools
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [
-      {
-        name: "load_program",
-        description: "Compiles and loads 6502 assembly code into the simulator.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            code: {
-              type: "string",
-              description: "The assembly code to load (e.g., LDA #$00...)",
-            },
-          },
-          required: ["code"],
-        },
-      },
-      {
-        name: "step_instruction",
-        description: "Executes N instructions.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            count: {
-              type: "number",
-              description: "Number of instructions to execute (default 1)",
-            },
-          },
-        },
-      },
-      {
-        name: "read_registers",
-        description: "Reads current CPU registers (A, X, Y, SP, PC, Flags).",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "read_memory",
-        description: "Reads a range of memory.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            address: {
-              type: "number",
-              description: "Start address (decimal or hex)",
-            },
-            length: {
-              type: "number",
-              description: "Number of bytes to read (default 16)",
-            },
-          },
-          required: ["address"],
-        },
-      },
-      {
-        name: "write_memory",
-        description: "Writes a byte to memory.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            address: {
-              type: "number",
-              description: "Address to write to",
-            },
-            value: {
-              type: "number",
-              description: "Value to write (0-255)",
-            },
-          },
-          required: ["address", "value"],
-        },
-      },
-      {
-        name: "reset_cpu",
-        description: "Resets the CPU to initial state.",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "list_processors",
-        description: "Lists all supported processor types.",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "set_processor",
-        description: "Sets the processor architecture.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            type: {
-              type: "string",
-              description: "Processor type (e.g., '6502', '65c02', '45gs02')",
-            },
-          },
-          required: ["type"],
-        },
-      },
-      {
-        name: "get_opcode_info",
-        description: "Gets information about a specific opcode.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            mnemonic: {
-              type: "string",
-              description: "Opcode mnemonic (e.g., 'LDA', 'RTS')",
-            },
-          },
-          required: ["mnemonic"],
-        },
-      },
-      {
-        name: "set_breakpoint",
-        description: "Sets a breakpoint at a specific address.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            address: {
-              type: "number",
-              description: "Address to set breakpoint at (decimal or hex)",
-            },
-          },
-          required: ["address"],
-        },
-      },
-      {
-        name: "clear_breakpoint",
-        description: "Clears a breakpoint at a specific address.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            address: {
-              type: "number",
-              description: "Address to clear breakpoint from (decimal or hex)",
-            },
-          },
-          required: ["address"],
-        },
-      },
-      {
-        name: "list_breakpoints",
-        description: "Lists all currently set breakpoints.",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "run_program",
-        description: "Runs the program until a breakpoint, BRK, or STP is encountered.",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "assemble",
-        description: "Inline-assembles code into memory starting at the given address (default: current PC). Accepts the same syntax as the interactive asm command, including pseudo-ops (.org, .byte, .word, .text, .align). Returns assembled byte output for each line.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            code: {
-              type: "string",
-              description: "Assembly source lines (one instruction or pseudo-op per line)",
-            },
-            address: {
-              type: "number",
-              description: "Start address (decimal). Defaults to current PC if omitted.",
-            },
-          },
-          required: ["code"],
-        },
-      },
-      {
-        name: "step_back",
-        description: "Steps back one instruction in execution history, restoring CPU and memory to the pre-execute state.",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "step_forward",
-        description: "Steps forward one instruction (re-executes the next instruction in history). Only valid after one or more step_back calls.",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "disassemble",
-        description: "Disassembles instructions from memory. Unknown bytes are shown as .byte directives. Branch targets are shown as resolved absolute addresses.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            address: {
-              type: "number",
-              description: "Start address (decimal). Defaults to current PC if omitted.",
-            },
-            count: {
-              type: "number",
-              description: "Number of instructions to disassemble (default 15)",
-            },
-          },
-        },
-      },
-      {
-        name: "vic2_info",
-        description: "Prints a summary of the VIC-II video chip state: mode, D011/D016/D018 registers, active bank, screen/charset/bitmap base addresses, and border/background colours.",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "vic2_regs",
-        description: "Prints the complete VIC-II register dump: mode string, D011/D016/D018 with every decoded field (ECM/BMM/DEN/RSEL/RST8/yscroll, MCM/CSEL/xscroll), D012 raster line (9-bit), D019 interrupt status (IRQ/RST/MBC/MMC/LP), D01A interrupt enable, video bank and address range, Screen RAM / CharGen / Bitmap Base addresses, Colour RAM, and all five colour registers (D020 border, D021-D024 BG0-BG3) with colour names.",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "vic2_sprites",
-        description: "Prints the state of all 8 VIC-II hardware sprites: enabled flag, X/Y position, colour, multicolour/expand flags, and sprite data address.",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "speed",
-        description: "Get or set the run speed throttle. scale=1.0 means C64 PAL speed (~985 kHz), 0.0 means unlimited (as fast as possible). Values >1 run faster than a real C64.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            scale: {
-              type: "number",
-              description: "Speed scale factor (0.0 = unlimited, 1.0 = C64, 2.0 = 2× C64). Omit to query current setting.",
-            },
-          },
-        },
-      },
-      {
-        name: "vic2_savescreen",
-        description: "Renders the current VIC-II output to a PPM image file and returns the saved file path. The PPM is 384×272 pixels (full PAL frame including border).",
-        inputSchema: {
-          type: "object",
-          properties: {
-            path: {
-              type: "string",
-              description: "Output file path (default: /tmp/vic2screen.ppm)",
-            },
-          },
-        },
-      },
-      {
-        name: "vic2_savebitmap",
-        description: "Renders the 320×200 active display area (no border; sprites are included and clipped to the active area) to a PPM image file. The output adapts to the current VIC-II mode (Standard Char, Multicolour Char, ECM, Standard Bitmap, or Multicolour Bitmap) as selected by the D011/D016 registers.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            path: {
-              type: "string",
-              description: "Output file path (default: /tmp/vic2bitmap.ppm)",
-            },
-          },
-        },
-      },
-    ],
-  };
-});
+// ── JSON response parser ───────────────────────────────────────────────────────
 
-// Handle Tool Calls
+/**
+ * Parse a JSON envelope {"cmd":...,"ok":...,"data":...} from the simulator.
+ * Returns { ok, data } on success, or throws with the error message.
+ * Falls back to returning { ok: true, data: raw } if not parseable JSON.
+ */
+function parseResult(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed.ok === false) throw new Error(parsed.error || 'command failed');
+    return parsed.data;
+  } catch (e) {
+    if (e.message && e.message !== 'command failed' && !raw.startsWith('{'))
+      return raw;   // plain text fallback (e.g. initial banner)
+    throw e;
+  }
+}
+
+/** Format a register data object as a readable string */
+function fmtRegs(d) {
+  const h2 = n => n.toString(16).toUpperCase().padStart(2, '0');
+  const h4 = n => n.toString(16).toUpperCase().padStart(4, '0');
+  const f  = d.flags;
+  return `A=$${h2(d.a)} X=$${h2(d.x)} Y=$${h2(d.y)} Z=$${h2(d.z)} B=$${h2(d.b)} ` +
+         `SP=$${h2(d.sp)} PC=$${h4(d.pc)} P=$${h2(d.p)} Cycles=${d.cycles}\n` +
+         `Flags: N=${f.N} V=${f.V} U=${f.U} B=${f.B} D=${f.D} I=${f.I} Z=${f.Z} C=${f.C}`;
+}
+
+/** Format an exec-stop data object (stop_reason + registers) */
+function fmtStop(d) {
+  return `Stopped: ${d.stop_reason} at $${d.pc.toString(16).toUpperCase().padStart(4,'0')}\n` +
+         fmtRegs(d);
+}
+
+/** Format a memory data object as a hex dump */
+function fmtMem(d) {
+  const lines = [];
+  const bytes = d.bytes;
+  for (let i = 0; i < bytes.length; i += 16) {
+    const addr = (d.address + i).toString(16).toUpperCase().padStart(4, '0');
+    const hex  = bytes.slice(i, i + 16).map(b => b.toString(16).toUpperCase().padStart(2,'0')).join(' ');
+    lines.push(`$${addr}: ${hex}`);
+  }
+  return lines.join('\n');
+}
+
+/** Format a disasm instructions array as a listing */
+function fmtDisasm(d) {
+  return d.instructions.map(i => {
+    const addr = i.address.toString(16).toUpperCase().padStart(4, '0');
+    const bytes = i.bytes.padEnd(12);
+    const mnem  = i.mnemonic.padEnd(6);
+    return `$${addr}  ${bytes}  ${mnem} ${i.operand}`;
+  }).join('\n');
+}
+
+/** Format an info/opcode data object */
+function fmtInfo(d) {
+  const lines = [`${d.mnemonic}:`, '  Mode                 Syntax            Cyc(6502/65c02/65ce02/45gs02)  Opcode  Size'];
+  for (const m of d.modes) {
+    lines.push(`  ${m.mode.padEnd(22)}${m.syntax.padEnd(18)}` +
+               `${m.cycles_6502}/${m.cycles_65c02}/${m.cycles_65ce02}/${m.cycles_45gs02}`.padEnd(29) +
+               `  ${m.opcode.padEnd(8)}${m.size}`);
+  }
+  return lines.join('\n');
+}
+
+/** Format a breakpoint list */
+function fmtBreakpoints(d) {
+  if (d.breakpoints.length === 0) return 'No breakpoints set.';
+  return d.breakpoints.map(b =>
+    `  ${b.index}: $${b.address.toString(16).toUpperCase().padStart(4,'0')} ` +
+    `[${b.enabled ? 'enabled' : 'disabled'}]` +
+    (b.condition ? ` if ${b.condition}` : '')
+  ).join('\n');
+}
+
+// ── Tool Registry ─────────────────────────────────────────────────────────────
+
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: [
+    {
+      name: "load_program",
+      description: "Assemble and load 6502/65xx assembly code into the simulator.",
+      inputSchema: { type: "object", properties: {
+        code: { type: "string", description: "Assembly source code" }
+      }, required: ["code"] }
+    },
+    {
+      name: "run_program",
+      description: "Run until BRK, STP, or a breakpoint. Returns stop reason and final registers.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "step_instruction",
+      description: "Execute N instructions. Returns stop reason and registers after stepping.",
+      inputSchema: { type: "object", properties: {
+        count: { type: "number", description: "Number of instructions (default 1)" }
+      }}
+    },
+    {
+      name: "step_back",
+      description: "Undo one instruction (restore pre-execute CPU and memory state).",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "step_forward",
+      description: "Re-execute one instruction from history. Only valid after step_back.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "read_registers",
+      description: "Read all CPU registers and flags.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "read_memory",
+      description: "Read a range of memory bytes.",
+      inputSchema: { type: "object", properties: {
+        address: { type: "number", description: "Start address" },
+        length:  { type: "number", description: "Byte count (default 16)" }
+      }, required: ["address"] }
+    },
+    {
+      name: "write_memory",
+      description: "Write a single byte to memory.",
+      inputSchema: { type: "object", properties: {
+        address: { type: "number", description: "Target address" },
+        value:   { type: "number", description: "Byte value (0–255)" }
+      }, required: ["address", "value"] }
+    },
+    {
+      name: "disassemble",
+      description: "Disassemble instructions from memory. Returns address, bytes, mnemonic, operand, and cycle count for each instruction.",
+      inputSchema: { type: "object", properties: {
+        address: { type: "number", description: "Start address (default: current PC)" },
+        count:   { type: "number", description: "Number of instructions (default 15)" }
+      }}
+    },
+    {
+      name: "assemble",
+      description: "Inline-assemble code into running memory. Accepts pseudo-ops (.org, .byte, .word, .text, .align).",
+      inputSchema: { type: "object", properties: {
+        code:    { type: "string", description: "Assembly source (one instruction per line)" },
+        address: { type: "number", description: "Start address (default: current PC)" }
+      }, required: ["code"] }
+    },
+    {
+      name: "reset_cpu",
+      description: "Reset the CPU to its initial state.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "set_breakpoint",
+      description: "Set a breakpoint at an address.",
+      inputSchema: { type: "object", properties: {
+        address: { type: "number", description: "Breakpoint address" }
+      }, required: ["address"] }
+    },
+    {
+      name: "clear_breakpoint",
+      description: "Remove a breakpoint.",
+      inputSchema: { type: "object", properties: {
+        address: { type: "number", description: "Breakpoint address to remove" }
+      }, required: ["address"] }
+    },
+    {
+      name: "list_breakpoints",
+      description: "List all set breakpoints.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "list_processors",
+      description: "List supported processor variants.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "set_processor",
+      description: "Switch the active processor (6502, 65c02, 65ce02, 45gs02).",
+      inputSchema: { type: "object", properties: {
+        type: { type: "string", description: "Processor name" }
+      }, required: ["type"] }
+    },
+    {
+      name: "get_opcode_info",
+      description: "Get addressing modes, cycle counts, opcodes, and syntax for a mnemonic across all supported processors.",
+      inputSchema: { type: "object", properties: {
+        mnemonic: { type: "string", description: "Instruction mnemonic (e.g. LDA, ADC)" }
+      }, required: ["mnemonic"] }
+    },
+    {
+      name: "speed",
+      description: "Get or set run speed. scale=1.0 = C64 PAL speed, 0.0 = unlimited.",
+      inputSchema: { type: "object", properties: {
+        scale: { type: "number", description: "Speed multiplier (omit to query)" }
+      }}
+    },
+    {
+      name: "vic2_info",
+      description: "VIC-II state summary: mode, key addresses, colours.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "vic2_regs",
+      description: "Full VIC-II register dump with all decoded fields.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "vic2_sprites",
+      description: "All 8 VIC-II sprite states.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "vic2_savescreen",
+      description: "Render full VIC-II frame (384×272) to a PPM file.",
+      inputSchema: { type: "object", properties: {
+        path: { type: "string", description: "Output file path (default: /tmp/vic2screen.ppm)" }
+      }}
+    },
+    {
+      name: "vic2_savebitmap",
+      description: "Render 320×200 active display area to a PPM file.",
+      inputSchema: { type: "object", properties: {
+        path: { type: "string", description: "Output file path (default: /tmp/vic2bitmap.ppm)" }
+      }}
+    }
+  ]
+}));
+
+// ── Tool Handlers ─────────────────────────────────────────────────────────────
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
+  const text = (t) => ({ content: [{ type: "text", text: String(t) }] });
+  const err  = (e) => ({ content: [{ type: "text", text: `Error: ${e}` }], isError: true });
+
   try {
-    if (name === "load_program") {
-      await startSimulator(args.code);
-      return {
-        content: [{ type: "text", text: "Program loaded successfully." }],
-      };
-    } else if (name === "step_instruction") {
-      const count = args.count || 1;
-      const output = await sendCommand(`step ${count}`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "read_registers") {
-      const output = await sendCommand("regs");
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "read_memory") {
-      const addr = args.address;
-      const len = args.length || 16;
-      const output = await sendCommand(`mem $${addr.toString(16)} ${len}`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "write_memory") {
-      const addr = `$${args.address.toString(16)}`;
-      const val = `$${args.value.toString(16)}`;
-      const output = await sendCommand(`write ${addr} ${val}`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "reset_cpu") {
-      const output = await sendCommand("reset");
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "list_processors") {
-      const output = await sendCommand("processors");
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "set_processor") {
-      const output = await sendCommand(`processor ${args.type}`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "get_opcode_info") {
-      const output = await sendCommand(`info ${args.mnemonic}`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "assemble") {
-      const addrPart = args.address !== undefined ? ` $${args.address.toString(16)}` : '';
-      const lines = (args.code || '').split('\n').filter(l => l.trim());
-      const parts = [];
-      parts.push(await sendCommand(`asm${addrPart}`));
-      for (const line of lines) {
-        parts.push(await sendCommand(line));
+    switch (name) {
+
+      case "load_program": {
+        await startSimulator(args.code);
+        return text("Program loaded successfully.");
       }
-      parts.push(await sendCommand('.'));
-      return {
-        content: [{ type: "text", text: parts.filter(Boolean).join('\n') }],
-      };
-    } else if (name === "disassemble") {
-      const count = args.count || 15;
-      const addrPart = args.address !== undefined ? ` $${args.address.toString(16)}` : '';
-      const output = await sendCommand(`disasm${addrPart} ${count}`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "set_breakpoint") {
-      const addr = `$${args.address.toString(16)}`;
-      const output = await sendCommand(`break ${addr}`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "clear_breakpoint") {
-      const addr = `$${args.address.toString(16)}`;
-      const output = await sendCommand(`clear ${addr}`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "list_breakpoints") {
-      const output = await sendCommand(`list`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "run_program") {
-      const output = await sendCommand(`run`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "step_back") {
-      const output = await sendCommand(`sb`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "step_forward") {
-      const output = await sendCommand(`sf`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "vic2_info") {
-      const output = await sendCommand("vic2.info");
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "vic2_regs") {
-      const output = await sendCommand("vic2.regs");
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "vic2_sprites") {
-      const output = await sendCommand("vic2.sprites");
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "speed") {
-      const cmd = (args.scale !== undefined) ? `speed ${args.scale}` : "speed";
-      const output = await sendCommand(cmd);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "vic2_savescreen") {
-      const filePath = (args.path && args.path.trim()) || '/tmp/vic2screen.ppm';
-      const output = await sendCommand(`vic2.savescreen ${filePath}`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else if (name === "vic2_savebitmap") {
-      const filePath = (args.path && args.path.trim()) || '/tmp/vic2bitmap.ppm';
-      const output = await sendCommand(`vic2.savebitmap ${filePath}`);
-      return {
-        content: [{ type: "text", text: output }],
-      };
-    } else {
-      throw new Error(`Unknown tool: ${name}`);
+
+      case "run_program": {
+        const raw = await sendCommand("run");
+        return text(fmtStop(parseResult(raw)));
+      }
+
+      case "step_instruction": {
+        const count = args.count || 1;
+        const raw = await sendCommand(`step ${count}`);
+        return text(fmtStop(parseResult(raw)));
+      }
+
+      case "step_back": {
+        const raw = await sendCommand("sb");
+        const d = parseResult(raw);
+        return text(fmtStop(d));
+      }
+
+      case "step_forward": {
+        const raw = await sendCommand("sf");
+        const d = parseResult(raw);
+        return text(fmtStop(d));
+      }
+
+      case "read_registers": {
+        const raw = await sendCommand("regs");
+        return text(fmtRegs(parseResult(raw)));
+      }
+
+      case "read_memory": {
+        const addr = args.address;
+        const len  = args.length || 16;
+        const raw  = await sendCommand(`mem $${addr.toString(16)} ${len}`);
+        return text(fmtMem(parseResult(raw)));
+      }
+
+      case "write_memory": {
+        const addr = `$${args.address.toString(16)}`;
+        const val  = `$${args.value.toString(16)}`;
+        const raw  = await sendCommand(`write ${addr} ${val}`);
+        parseResult(raw); // throws on error
+        return text(`Written $${args.value.toString(16).toUpperCase().padStart(2,'0')} to $${args.address.toString(16).toUpperCase().padStart(4,'0')}`);
+      }
+
+      case "disassemble": {
+        const count    = args.count || 15;
+        const addrPart = args.address !== undefined ? ` $${args.address.toString(16)}` : '';
+        const raw = await sendCommand(`disasm${addrPart} ${count}`);
+        return text(fmtDisasm(parseResult(raw)));
+      }
+
+      case "assemble": {
+        // Assembly mode uses interactive prompts — runs in text mode regardless of -J
+        const addrPart = args.address !== undefined ? ` $${args.address.toString(16)}` : '';
+        const lines = (args.code || '').split('\n').filter(l => l.trim());
+        const parts = [];
+        parts.push(await sendCommand(`asm${addrPart}`));
+        let hasErrors = false;
+        for (let i = 0; i < lines.length; i++) {
+          const response = await sendCommand(lines[i]);
+          if (response && response.includes('error:')) {
+            hasErrors = true;
+            // Prefix with line number and original source so the error is unambiguous
+            parts.push(`Line ${i + 1}: ${lines[i]}\n${response}`);
+          } else {
+            parts.push(response);
+          }
+        }
+        parts.push(await sendCommand('.'));
+        const out = parts.filter(Boolean).join('\n');
+        return text(hasErrors ? `Assembly completed with errors:\n${out}` : out);
+      }
+
+      case "reset_cpu": {
+        const raw = await sendCommand("reset");
+        parseResult(raw);
+        return text("CPU reset.");
+      }
+
+      case "set_breakpoint": {
+        const addr = `$${args.address.toString(16)}`;
+        const raw  = await sendCommand(`break ${addr}`);
+        parseResult(raw);
+        return text(`Breakpoint set at $${args.address.toString(16).toUpperCase().padStart(4,'0')}`);
+      }
+
+      case "clear_breakpoint": {
+        const addr = `$${args.address.toString(16)}`;
+        const raw  = await sendCommand(`clear ${addr}`);
+        parseResult(raw);
+        return text(`Breakpoint cleared at $${args.address.toString(16).toUpperCase().padStart(4,'0')}`);
+      }
+
+      case "list_breakpoints": {
+        const raw = await sendCommand("list");
+        return text(fmtBreakpoints(parseResult(raw)));
+      }
+
+      case "list_processors": {
+        const raw = await sendCommand("processors");
+        const d   = parseResult(raw);
+        return text(`Supported processors: ${d.processors.join(', ')}`);
+      }
+
+      case "set_processor": {
+        const raw = await sendCommand(`processor ${args.type}`);
+        parseResult(raw);
+        return text(`Processor set to ${args.type}`);
+      }
+
+      case "get_opcode_info": {
+        const raw = await sendCommand(`info ${args.mnemonic}`);
+        return text(fmtInfo(parseResult(raw)));
+      }
+
+      case "speed": {
+        const cmd = args.scale !== undefined ? `speed ${args.scale}` : "speed";
+        const raw = await sendCommand(cmd);
+        const d   = parseResult(raw);
+        return text(d.unlimited ? "Speed: unlimited" : `Speed: ${d.scale}× C64 (${d.hz.toFixed(0)} Hz)`);
+      }
+
+      case "vic2_info": {
+        const raw = await sendCommand("vic2.info");
+        return text(JSON.stringify(parseResult(raw), null, 2));
+      }
+
+      case "vic2_regs": {
+        const raw = await sendCommand("vic2.regs");
+        return text(JSON.stringify(parseResult(raw), null, 2));
+      }
+
+      case "vic2_sprites": {
+        const raw = await sendCommand("vic2.sprites");
+        const d   = parseResult(raw);
+        const lines = [`MC0: ${d.mc0} (${d.mc0_name})  MC1: ${d.mc1} (${d.mc1_name})`];
+        for (const s of d.sprites) {
+          lines.push(`  #${s.index} ${s.enabled ? 'on ' : 'off'} ` +
+            `X=${String(s.x).padStart(3)} Y=${String(s.y).padStart(3)} ` +
+            `col=${s.color}(${s.color_name}) ` +
+            `mcm=${s.multicolor} xexp=${s.expand_x} yexp=${s.expand_y} ` +
+            `bg=${s.behind_bg} data=$${s.data_addr.toString(16).toUpperCase().padStart(4,'0')}`);
+        }
+        return text(lines.join('\n'));
+      }
+
+      case "vic2_savescreen": {
+        const filePath = (args.path && args.path.trim()) || '/tmp/vic2screen.ppm';
+        const raw = await sendCommand(`vic2.savescreen ${filePath}`);
+        const d   = parseResult(raw);
+        return text(`Saved ${d.width}×${d.height} PPM to '${d.path}'`);
+      }
+
+      case "vic2_savebitmap": {
+        const filePath = (args.path && args.path.trim()) || '/tmp/vic2bitmap.ppm';
+        const raw = await sendCommand(`vic2.savebitmap ${filePath}`);
+        const d   = parseResult(raw);
+        return text(`Saved ${d.width}×${d.height} active-area PPM to '${d.path}'`);
+      }
+
+      default:
+        throw new Error(`Unknown tool: ${name}`);
     }
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: `Error: ${error.message}` }],
-      isError: true,
-    };
+  } catch (e) {
+    return err(e.message);
   }
 });
 
-// Start Server
+// ── Start ─────────────────────────────────────────────────────────────────────
+
 const transport = new StdioServerTransport();
 await server.connect(transport);

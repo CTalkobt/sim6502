@@ -70,6 +70,7 @@ int main(int argc, char *argv[]) {
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) { print_help(argv[0]); return 0; }
 		else if (strcmp(argv[i], "-I") == 0 || strcmp(argv[i], "--interactive") == 0) interactive_mode = 1;
+		else if (strcmp(argv[i], "-J") == 0 || strcmp(argv[i], "--json") == 0) cli_set_json_mode(1);
 		else if (strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "--list") == 0) { list_processors(); return 0; }
 		else if (strcmp(argv[i], "-b") == 0 || strcmp(argv[i], "--break") == 0) { 
 			if (i + 1 < argc) {

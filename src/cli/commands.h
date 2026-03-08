@@ -11,6 +11,9 @@
 
 /* --- CLI Utilities --- */
 
+/* Enable JSON output mode for all interactive commands (0=text, 1=JSON) */
+void cli_set_json_mode(int v);
+
 /* --- Interactive Modes --- */
 
 void run_interactive_mode(cpu_t *cpu, memory_t *mem, 

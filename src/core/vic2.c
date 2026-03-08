@@ -589,3 +589,180 @@ void vic2_print_sprites(const memory_t *mem)
                (unsigned)saddr);
     }
 }
+
+/* -------------------------------------------------------------------------
+ * JSON output functions
+ * ------------------------------------------------------------------------- */
+
+void vic2_json_info(const memory_t *mem)
+{
+    uint8_t ctrl1    = mem->mem[0xD011];
+    uint8_t ctrl2    = mem->mem[0xD016];
+    uint8_t memsetup = mem->mem[0xD018];
+    uint8_t border   = mem->mem[0xD020] & 0xF;
+    uint8_t bg0      = mem->mem[0xD021] & 0xF;
+    uint8_t bg1      = mem->mem[0xD022] & 0xF;
+    uint8_t bg2      = mem->mem[0xD023] & 0xF;
+    uint8_t bg3      = mem->mem[0xD024] & 0xF;
+    uint8_t cia2a    = mem->mem[0xDD00];
+
+    int ecm  = (ctrl1 >> 6) & 1;
+    int bmm  = (ctrl1 >> 5) & 1;
+    int den  = (ctrl1 >> 4) & 1;
+    int rsel = (ctrl1 >> 3) & 1;
+    int mcm  = (ctrl2 >> 4) & 1;
+    int csel = (ctrl2 >> 3) & 1;
+    int bank = (~cia2a) & 3;
+
+    const char *mode;
+    if      (!den)              mode = "Display Off";
+    else if (!bmm&&!ecm&&!mcm) mode = "Standard Char";
+    else if (!bmm&&!ecm&& mcm) mode = "Multicolour Char";
+    else if (!bmm&& ecm&&!mcm) mode = "Extended Colour";
+    else if ( bmm&&!ecm&&!mcm) mode = "Standard Bitmap";
+    else if ( bmm&&!ecm&& mcm) mode = "Multicolour Bitmap";
+    else                        mode = "Invalid";
+
+    uint32_t vic_bank    = (uint32_t)bank * 0x4000u;
+    uint32_t screen_addr = vic_bank + (uint32_t)((memsetup >> 4) & 0xF) * 1024u;
+    uint32_t cg_addr     = vic_bank + (uint32_t)((memsetup >> 1) & 0x7) * 2048u;
+    uint32_t bm_addr     = vic_bank + (uint32_t)(((memsetup >> 3) & 1) * 0x2000u);
+
+    printf("{\"mode\":\"%s\","
+           "\"d011\":%d,\"d016\":%d,\"d018\":%d,"
+           "\"ecm\":%d,\"bmm\":%d,\"den\":%d,\"mcm\":%d,"
+           "\"rsel\":%d,\"csel\":%d,"
+           "\"yscroll\":%d,\"xscroll\":%d,"
+           "\"bank\":%d,\"vic_bank_start\":%u,"
+           "\"screen_addr\":%u,\"chargen_addr\":%u,\"bitmap_addr\":%u,"
+           "\"border_color\":%d,\"border_name\":\"%s\","
+           "\"bg0\":%d,\"bg0_name\":\"%s\","
+           "\"bg1\":%d,\"bg1_name\":\"%s\","
+           "\"bg2\":%d,\"bg2_name\":\"%s\","
+           "\"bg3\":%d,\"bg3_name\":\"%s\","
+           "\"frame_w\":%d,\"frame_h\":%d}",
+           mode,
+           ctrl1, ctrl2, memsetup,
+           ecm, bmm, den, mcm,
+           rsel, csel,
+           ctrl1 & 7, ctrl2 & 7,
+           bank, (unsigned)vic_bank,
+           (unsigned)screen_addr, (unsigned)cg_addr, (unsigned)bm_addr,
+           border, vic2_color_names[border],
+           bg0, vic2_color_names[bg0],
+           bg1, vic2_color_names[bg1],
+           bg2, vic2_color_names[bg2],
+           bg3, vic2_color_names[bg3],
+           VIC2_FRAME_W, VIC2_FRAME_H);
+}
+
+void vic2_json_regs(const memory_t *mem)
+{
+    uint8_t ctrl1    = mem->mem[0xD011];
+    uint8_t ctrl2    = mem->mem[0xD016];
+    uint8_t memsetup = mem->mem[0xD018];
+    uint8_t raster   = mem->mem[0xD012];
+    uint8_t border   = mem->mem[0xD020] & 0xF;
+    uint8_t bg0      = mem->mem[0xD021] & 0xF;
+    uint8_t bg1      = mem->mem[0xD022] & 0xF;
+    uint8_t bg2      = mem->mem[0xD023] & 0xF;
+    uint8_t bg3      = mem->mem[0xD024] & 0xF;
+    uint8_t d019     = mem->mem[0xD019];
+    uint8_t d01a     = mem->mem[0xD01A];
+    uint8_t cia2a    = mem->mem[0xDD00];
+
+    int ecm     = (ctrl1 >> 6) & 1;
+    int bmm     = (ctrl1 >> 5) & 1;
+    int den     = (ctrl1 >> 4) & 1;
+    int rsel    = (ctrl1 >> 3) & 1;
+    int rst8    = (ctrl1 >> 7) & 1;
+    int mcm     = (ctrl2 >> 4) & 1;
+    int csel    = (ctrl2 >> 3) & 1;
+    int bank    = (~cia2a) & 3;
+
+    uint32_t vic_bank    = (uint32_t)bank * 0x4000u;
+    uint32_t screen_addr = vic_bank + (uint32_t)((memsetup >> 4) & 0xF) * 1024u;
+    uint32_t cg_addr     = vic_bank + (uint32_t)((memsetup >> 1) & 0x7) * 2048u;
+    uint32_t bm_addr     = vic_bank + (uint32_t)(((memsetup >> 3) & 1) * 0x2000u);
+    uint16_t raster_line = (uint16_t)(raster | (rst8 << 8));
+
+    const char *mode;
+    if      (!den)               mode = "Display Off";
+    else if (!bmm&&!ecm&&!mcm)  mode = "Standard Char";
+    else if (!bmm&&!ecm&& mcm)  mode = "Multicolour Char";
+    else if (!bmm&& ecm&&!mcm)  mode = "Extended Colour";
+    else if ( bmm&&!ecm&&!mcm)  mode = "Standard Bitmap";
+    else if ( bmm&&!ecm&& mcm)  mode = "Multicolour Bitmap";
+    else                         mode = "Invalid";
+
+    printf("{\"mode\":\"%s\","
+           "\"d011\":%d,\"d016\":%d,\"d018\":%d,\"d012\":%d,"
+           "\"ecm\":%d,\"bmm\":%d,\"den\":%d,\"mcm\":%d,"
+           "\"rsel\":%d,\"csel\":%d,\"rst8\":%d,"
+           "\"yscroll\":%d,\"xscroll\":%d,"
+           "\"raster_line\":%d,"
+           "\"irq_flag\":%d,\"irq_rst\":%d,\"irq_mbc\":%d,\"irq_mmc\":%d,\"irq_lp\":%d,"
+           "\"irq_en_rst\":%d,\"irq_en_mbc\":%d,\"irq_en_mmc\":%d,\"irq_en_lp\":%d,"
+           "\"bank\":%d,\"vic_bank_start\":%u,"
+           "\"screen_addr\":%u,\"chargen_addr\":%u,\"bitmap_addr\":%u,"
+           "\"border_color\":%d,\"border_name\":\"%s\","
+           "\"bg0\":%d,\"bg0_name\":\"%s\","
+           "\"bg1\":%d,\"bg1_name\":\"%s\","
+           "\"bg2\":%d,\"bg2_name\":\"%s\","
+           "\"bg3\":%d,\"bg3_name\":\"%s\"}",
+           mode,
+           ctrl1, ctrl2, memsetup, raster,
+           ecm, bmm, den, mcm,
+           rsel, csel, rst8,
+           ctrl1 & 7, ctrl2 & 7,
+           raster_line,
+           (d019>>7)&1, d019&1, (d019>>1)&1, (d019>>2)&1, (d019>>3)&1,
+           d01a&1, (d01a>>1)&1, (d01a>>2)&1, (d01a>>3)&1,
+           bank, (unsigned)vic_bank,
+           (unsigned)screen_addr, (unsigned)cg_addr, (unsigned)bm_addr,
+           border, vic2_color_names[border],
+           bg0, vic2_color_names[bg0],
+           bg1, vic2_color_names[bg1],
+           bg2, vic2_color_names[bg2],
+           bg3, vic2_color_names[bg3]);
+}
+
+void vic2_json_sprites(const memory_t *mem)
+{
+    uint8_t d015  = mem->mem[0xD015];
+    uint8_t d01c  = mem->mem[0xD01C];
+    uint8_t d01d  = mem->mem[0xD01D];
+    uint8_t d017  = mem->mem[0xD017];
+    uint8_t d01b  = mem->mem[0xD01B];
+    uint8_t d010  = mem->mem[0xD010];
+    uint8_t d018  = mem->mem[0xD018];
+    uint8_t d025  = mem->mem[0xD025] & 0xF;
+    uint8_t d026  = mem->mem[0xD026] & 0xF;
+    uint8_t cia2a = mem->mem[0xDD00];
+
+    uint32_t vic_bank    = (uint32_t)((~cia2a) & 3) * 0x4000u;
+    uint32_t screen_base = vic_bank + (uint32_t)((d018 >> 4) & 0xF) * 1024u;
+
+    printf("{\"d015\":%d,\"mc0\":%d,\"mc0_name\":\"%s\",\"mc1\":%d,\"mc1_name\":\"%s\",\"sprites\":[",
+           d015, d025, vic2_color_names[d025], d026, vic2_color_names[d026]);
+
+    for (int sn = 0; sn < 8; sn++) {
+        int      enabled = (d015 >> sn) & 1;
+        uint16_t sx      = (uint16_t)(mem->mem[0xD000 + sn*2] | (((d010 >> sn) & 1) << 8));
+        uint8_t  sy      = mem->mem[0xD001 + sn*2];
+        uint8_t  color   = mem->mem[0xD027 + sn] & 0xF;
+        uint8_t  ptr     = mem->mem[(screen_base + 0x3F8 + sn) & 0xFFFF];
+        uint32_t saddr   = (vic_bank + (uint32_t)ptr * 64u) & 0xFFFF;
+
+        if (sn > 0) printf(",");
+        printf("{\"index\":%d,\"enabled\":%d,\"x\":%d,\"y\":%d,"
+               "\"color\":%d,\"color_name\":\"%s\","
+               "\"multicolor\":%d,\"expand_x\":%d,\"expand_y\":%d,"
+               "\"behind_bg\":%d,\"data_addr\":%u}",
+               sn, enabled, sx, sy,
+               color, vic2_color_names[color],
+               (d01c >> sn) & 1, (d01d >> sn) & 1, (d017 >> sn) & 1,
+               (d01b >> sn) & 1, (unsigned)saddr);
+    }
+    printf("]}");
+}

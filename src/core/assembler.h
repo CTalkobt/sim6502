@@ -14,6 +14,7 @@ typedef struct {
 	char op[8];
 	unsigned char mode;
 	unsigned short arg;
+	unsigned char arg_overflow; /* set if literal value is out of range for the mode */
 } instruction_t;
 
 /* --- Core Assembler API --- */
