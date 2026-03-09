@@ -41,6 +41,7 @@ extern "C" {
 #include "cpu.h"
 #include "sim_api.h"
 #include "vic2.h"
+#include "patterns.h"
 }
 
 /* --------------------------------------------------------------------------
@@ -136,8 +137,9 @@ static int        g_watch_count = 0;
 static bool show_iref     = false;
 static bool show_symbols  = false;
 static bool show_source   = false;
-static bool show_profiler = false;
-static bool show_snap_diff = false;
+static bool show_profiler    = false;
+static bool show_snap_diff   = false;
+static bool show_patterns    = false;
 
 /* ---- Phase 6 pane visibility ---- */
 static bool show_vic_screen   = false;
@@ -2922,6 +2924,89 @@ static void draw_pane_test_runner(void)
 }
 
 /* --------------------------------------------------------------------------
+ * Pane: Pattern Library
+ *
+ * Browse and copy built-in assembly snippet templates.
+ * -------------------------------------------------------------------------- */
+
+static int  g_pat_selected = -1;       /* index into g_snippets[] */
+static char g_pat_filter[32] = "";     /* name / category filter   */
+
+static void draw_pane_patterns(void)
+{
+    if (!show_patterns) return;
+    ImGui::Begin("Pattern Library", &show_patterns);
+
+    /* Filter */
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputText("Filter", g_pat_filter, sizeof(g_pat_filter));
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Clear")) g_pat_filter[0] = '\0';
+
+    ImGui::Separator();
+
+    /* Left: scrollable list */
+    float list_w = 230.0f;
+    ImGui::BeginChild("##pat_list", ImVec2(list_w, 0.0f), true);
+
+    const char *cur_cat = "";
+    for (int i = 0; i < g_snippet_count; i++) {
+        const snippet_t *s = &g_snippets[i];
+        /* Filter */
+        if (g_pat_filter[0]) {
+            bool ok = (strstr(s->name,     g_pat_filter) != nullptr) ||
+                      (strstr(s->category, g_pat_filter) != nullptr) ||
+                      (strstr(s->processor,g_pat_filter) != nullptr);
+            if (!ok) continue;
+        }
+        /* Category header */
+        if (strcmp(s->category, cur_cat) != 0) {
+            cur_cat = s->category;
+            ImGui::TextDisabled("[%s]", cur_cat);
+        }
+        /* Processor badge colour */
+        ImVec4 badge;
+        if      (strcmp(s->processor, "45gs02") == 0) badge = ImVec4(0.5f, 0.8f, 1.0f, 1.0f);
+        else if (strcmp(s->processor, "65c02")  == 0) badge = ImVec4(0.6f, 1.0f, 0.6f, 1.0f);
+        else                                           badge = ImVec4(0.8f, 0.8f, 0.8f, 1.0f);
+
+        ImGui::TextColored(badge, "%-8s", s->processor);
+        ImGui::SameLine();
+        bool sel = (g_pat_selected == i);
+        if (ImGui::Selectable(s->name, sel, ImGuiSelectableFlags_AllowOverlap))
+            g_pat_selected = i;
+    }
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+
+    /* Right: detail / code view */
+    ImGui::BeginChild("##pat_body", ImVec2(0.0f, 0.0f), false);
+    if (g_pat_selected >= 0 && g_pat_selected < g_snippet_count) {
+        const snippet_t *s = &g_snippets[g_pat_selected];
+        ImGui::TextDisabled("%s  [%s / %s]", s->name, s->category, s->processor);
+        ImGui::TextWrapped("%s", s->summary);
+        ImGui::Spacing();
+        if (ImGui::Button("Copy to Clipboard"))
+            ImGui::SetClipboardText(s->body);
+        ImGui::Separator();
+        /* Monospace scrollable code block */
+        ImGui::PushFont(ImGui::GetIO().Fonts->Fonts.Size > 1
+                        ? ImGui::GetIO().Fonts->Fonts[1] : nullptr);
+        ImGui::InputTextMultiline("##code",
+            const_cast<char *>(s->body), strlen(s->body) + 1,
+            ImVec2(-1.0f, -1.0f),
+            ImGuiInputTextFlags_ReadOnly);
+        ImGui::PopFont();
+    } else {
+        ImGui::TextDisabled("Select a snippet on the left.");
+    }
+    ImGui::EndChild();
+
+    ImGui::End();
+}
+
+/* --------------------------------------------------------------------------
  * Pane: Memory Snapshot Diff (Phase 4)
  *
  * Take a snapshot of current memory, run code, then diff to see what changed.
@@ -4953,8 +5038,9 @@ int main(int /*argc*/, char ** /*argv*/)
                     ImGui::MenuItem("Symbols",     nullptr, &show_symbols);
                     ImGui::MenuItem("Source",      nullptr, &show_source);
                     ImGui::MenuItem("Profiler",    nullptr, &show_profiler);
-                    ImGui::MenuItem("Snap Diff",   nullptr, &show_snap_diff);
-                    ImGui::MenuItem("Test Runner", nullptr, &show_test_runner);
+                    ImGui::MenuItem("Snap Diff",      nullptr, &show_snap_diff);
+                    ImGui::MenuItem("Test Runner",    nullptr, &show_test_runner);
+                    ImGui::MenuItem("Pattern Library",nullptr, &show_patterns);
                     ImGui::Separator();
                     ImGui::MenuItem("VIC-II Screen",    nullptr, &show_vic_screen);
                     ImGui::MenuItem("VIC-II Sprites",   nullptr, &show_vic_sprites);
@@ -5072,6 +5158,7 @@ int main(int /*argc*/, char ** /*argv*/)
         draw_pane_profiler();
         draw_pane_snap_diff();
         draw_pane_test_runner();
+        draw_pane_patterns();
 
         /* Phase 6 panes */
         draw_pane_vic_screen();

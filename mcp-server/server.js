@@ -320,6 +320,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       }}
     },
     {
+      name: "list_patterns",
+      description: "List all built-in assembly snippet templates (idioms). Use get_pattern to retrieve the full documented source for a specific snippet.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "get_pattern",
+      description: "Return a fully documented, parameterised assembly snippet ready to inline or adapt. Use list_patterns to see available names.",
+      inputSchema: {
+        type: "object",
+        required: ["name"],
+        properties: {
+          name: { type: "string", description: "Snippet name, e.g. 'mul8_mega65', 'memcopy'. Use list_patterns to see all names." }
+        }
+      }
+    },
+    {
       name: "snapshot",
       description: "Capture current memory state. Subsequent run/step/trace_run calls track every write. Use diff_snapshot to see what changed.",
       inputSchema: { type: "object", properties: {} }
@@ -518,6 +534,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
         }
         return text(lines.join('\n'));
+      }
+
+      case "list_patterns": {
+        const raw  = await sendCommand("list_patterns");
+        const d    = parseResult(raw);
+        const pats = d.patterns;
+        const byCat = {};
+        for (const p of pats) {
+          if (!byCat[p.category]) byCat[p.category] = [];
+          byCat[p.category].push(p);
+        }
+        const lines = [`Available snippets (${pats.length}):\n`];
+        for (const [cat, items] of Object.entries(byCat)) {
+          lines.push(`[${cat}]`);
+          for (const p of items)
+            lines.push(`  ${p.name.padEnd(24)} ${p.processor.padEnd(8)} ${p.summary}`);
+          lines.push('');
+        }
+        lines.push('Use get_pattern <name> for the full documented source.');
+        return text(lines.join('\n'));
+      }
+
+      case "get_pattern": {
+        const name = args.name || '';
+        const raw  = await sendCommand(`get_pattern ${name}`);
+        const d    = parseResult(raw);
+        return text(`; ${d.name}  [${d.category} / ${d.processor}]\n; ${d.summary}\n\n${d.body}`);
       }
 
       case "snapshot": {

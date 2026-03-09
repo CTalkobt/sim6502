@@ -1,6 +1,6 @@
 # 6502 Simulator
 
-A single-pass assembler and executor for 6502 and compatible processors, with an interactive monitor, symbol table support, a Dear ImGui-based graphical debugger, and an MCP server for LLM integration.
+A two-pass assembler and executor for 6502 and compatible processors, with an interactive monitor, symbol table support, a Dear ImGui-based graphical debugger, and an MCP server for LLM integration.
 
 For a full walkthrough of all features, see **[doc/tutorial.md](doc/tutorial.md)**.
 For detailed information on the graphical debugger, see **[README-gui.md](README-gui.md)**.

@@ -11,7 +11,8 @@ CORE_SRCS = \
 	src/core/assembler.c \
 	src/core/disassembler.c \
 	src/core/condition.c \
-	src/core/vic2.c
+	src/core/vic2.c \
+	src/core/patterns.c
 
 OPCODE_SRCS = \
 	src/core/opcodes/6502.c \

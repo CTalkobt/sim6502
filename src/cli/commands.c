@@ -2,6 +2,7 @@
 #include "cpu_engine.h"
 #include "condition.h"
 #include "vic2.h"
+#include "patterns.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -508,6 +509,7 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
             printf("          vic2.savescreen [file], vic2.savebitmap [file],\n");
             printf("          validate <addr> [A=v X=v ...] : [A=v X=v ...]\n");
             printf("          snapshot, diff,\n");
+            printf("          list_patterns, get_pattern <name>,\n");
             printf("          speed [scale]  (1.0=C64, 0=unlimited), quit\n");
         } else if (strcmp(cmd, "break") == 0) {
             const char *p = line; SKIP_CMD(p); unsigned long addr;
@@ -1121,6 +1123,65 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
                         }
                     }
                 }
+            }
+        } else if (strcmp(cmd, "list_patterns") == 0) {
+            if (g_json_mode) {
+                printf("{\"cmd\":\"list_patterns\",\"ok\":true,\"data\":{\"patterns\":[");
+                for (int i = 0; i < g_snippet_count; i++) {
+                    if (i > 0) printf(",");
+                    printf("{\"name\":\"%s\",\"category\":\"%s\",\"processor\":\"%s\",\"summary\":\"%s\"}",
+                           g_snippets[i].name, g_snippets[i].category,
+                           g_snippets[i].processor, g_snippets[i].summary);
+                }
+                printf("]}}\n");
+            } else {
+                printf("Available snippets (%d):\n\n", g_snippet_count);
+                const char *cat = "";
+                for (int i = 0; i < g_snippet_count; i++) {
+                    if (strcmp(g_snippets[i].category, cat) != 0) {
+                        cat = g_snippets[i].category;
+                        printf("  [%s]\n", cat);
+                    }
+                    printf("    %-22s  %-8s  %s\n",
+                           g_snippets[i].name,
+                           g_snippets[i].processor,
+                           g_snippets[i].summary);
+                }
+                printf("\nUse: get_pattern <name>\n");
+            }
+        } else if (strcmp(cmd, "get_pattern") == 0) {
+            const char *p = line; SKIP_CMD(p);
+            while (*p && isspace((unsigned char)*p)) p++;
+            /* strip trailing whitespace */
+            char pname[64] = "";
+            if (*p) {
+                int n = (int)strlen(p);
+                while (n > 0 && isspace((unsigned char)p[n-1])) n--;
+                if (n > 63) n = 63;
+                memcpy(pname, p, (size_t)n);
+                pname[n] = '\0';
+            }
+            const snippet_t *sn = pname[0] ? snippet_find(pname) : NULL;
+            if (!sn) {
+                if (g_json_mode) json_err("get_pattern", pname[0] ? "Pattern not found" : "Usage: get_pattern <name>");
+                else printf(pname[0] ? "Pattern '%s' not found. Use list_patterns to see available snippets.\n" : "Usage: get_pattern <name>\n", pname);
+            } else if (g_json_mode) {
+                /* JSON: escape the body for embedding */
+                printf("{\"cmd\":\"get_pattern\",\"ok\":true,\"data\":{"
+                       "\"name\":\"%s\",\"category\":\"%s\",\"processor\":\"%s\","
+                       "\"summary\":\"%s\",\"body\":\"",
+                       sn->name, sn->category, sn->processor, sn->summary);
+                for (const char *c = sn->body; *c; c++) {
+                    if      (*c == '"')  printf("\\\"");
+                    else if (*c == '\\') printf("\\\\");
+                    else if (*c == '\n') printf("\\n");
+                    else                putchar(*c);
+                }
+                printf("\"}}\n");
+            } else {
+                printf("; --- %s  [%s / %s] ---\n", sn->name, sn->category, sn->processor);
+                printf("; %s\n;\n", sn->summary);
+                printf("%s", sn->body);
             }
         } else if (strcmp(cmd, "vic2.info") == 0) {
             if (g_json_mode) {
