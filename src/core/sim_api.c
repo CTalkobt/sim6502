@@ -14,6 +14,19 @@
 #include <string.h>
 #include <ctype.h>
 
+/* --- Snapshot linked-list accumulator ---
+ * One node per unique virtual address written since the last snapshot.
+ * Hashed by (addr & 0xFF) for O(1) average lookup.
+ * Total overhead: 256 × sizeof(ptr) = 2 KB fixed + ~12 B per written addr.
+ */
+typedef struct snap_node {
+    uint16_t          addr;
+    uint8_t           before;     /* value when first written after snapshot */
+    uint8_t           after;      /* most-recent value written               */
+    uint16_t          writer_pc;  /* PC of last instruction that wrote here  */
+    struct snap_node *next;       /* collision/overflow chain                */
+} snap_node_t;
+
 /* Full definition of the opaque sim_session_t handle. */
 struct sim_session {
     cpu_t             cpu;
@@ -35,6 +48,9 @@ struct sim_session {
     int               trace_head;
     int               trace_count;
     int               trace_enabled;
+    /* Memory snapshot: 256-bucket hash table of linked lists */
+    snap_node_t      *snap_buckets[256];  /* 2 KB fixed overhead */
+    int               snap_active;        /* 1 if snapshot has been taken */
     uint32_t          prof_exec[65536];
     uint32_t          prof_cycles[65536];
     int               prof_enabled;
@@ -77,6 +93,33 @@ static void api_history_clear(sim_session_t *s) {
     s->hist_write = 0;
     s->hist_count = 0;
     s->hist_pos   = 0;
+}
+
+/* Record one write into the snapshot accumulator.
+ * On first write to addr: stores `before` as the snapshot value.
+ * On subsequent writes: only updates `after` and `writer_pc`. */
+static void snap_record_write(sim_session_t *s,
+                               uint16_t addr, uint8_t before,
+                               uint8_t after,  uint16_t writer_pc)
+{
+    int bucket = addr & 0xFF;
+    snap_node_t *n = s->snap_buckets[bucket];
+    while (n) {
+        if (n->addr == addr) {
+            n->after      = after;
+            n->writer_pc  = writer_pc;
+            return;
+        }
+        n = n->next;
+    }
+    n = (snap_node_t *)malloc(sizeof(snap_node_t));
+    if (!n) return;
+    n->addr      = addr;
+    n->before    = before;
+    n->after     = after;
+    n->writer_pc = writer_pc;
+    n->next      = s->snap_buckets[bucket];
+    s->snap_buckets[bucket] = n;
 }
 
 static void api_select_handlers(sim_session_t *s) {
@@ -131,6 +174,10 @@ void sim_destroy(sim_session_t *s) {
     if (!s) return;
     for (int i = 0; i < FAR_NUM_PAGES; i++) {
         if (s->mem.far_pages[i]) { free(s->mem.far_pages[i]); s->mem.far_pages[i] = NULL; }
+    }
+    for (int i = 0; i < 256; i++) {
+        snap_node_t *n = s->snap_buckets[i];
+        while (n) { snap_node_t *nx = n->next; free(n); n = nx; }
     }
     free(s->hist_buf);
     free(s);
@@ -342,6 +389,13 @@ int sim_step(sim_session_t *s, int count) {
         unsigned long pre_cycles = s->cpu.cycles;
         cpu_t pre_cpu = s->cpu;
         execute_from_mem(&s->cpu, &s->mem, &s->dt, s->cpu_type);
+        /* Update snapshot accumulator */
+        if (s->snap_active) {
+            int _nw = s->mem.mem_writes < 256 ? s->mem.mem_writes : 256;
+            for (int _d = 0; _d < _nw; _d++)
+                snap_record_write(s, s->mem.mem_addr[_d], s->mem.mem_old_val[_d],
+                                  s->mem.mem_val[_d], pre_pc);
+        }
         /* Push history entry */
         if (s->hist_enabled && s->hist_buf) {
             if (s->hist_pos > 0) {
@@ -402,6 +456,13 @@ int sim_step_cycles(sim_session_t *s, unsigned long max_cycles) {
         unsigned long pre_cycles = s->cpu.cycles;
         cpu_t pre_cpu = s->cpu;
         execute_from_mem(&s->cpu, &s->mem, &s->dt, s->cpu_type);
+        /* Update snapshot accumulator */
+        if (s->snap_active) {
+            int _nw = s->mem.mem_writes < 256 ? s->mem.mem_writes : 256;
+            for (int _d = 0; _d < _nw; _d++)
+                snap_record_write(s, s->mem.mem_addr[_d], s->mem.mem_old_val[_d],
+                                  s->mem.mem_val[_d], pre_pc);
+        }
         if (s->hist_enabled && s->hist_buf) {
             if (s->hist_pos > 0) {
                 s->hist_write = (s->hist_write - s->hist_pos + s->hist_cap * 2) % s->hist_cap;
@@ -619,3 +680,219 @@ uint32_t sim_profiler_get_exec(sim_session_t *s, uint16_t addr) { return s ? s->
 uint32_t sim_profiler_get_cycles(sim_session_t *s, uint16_t addr) { return s ? s->prof_cycles[addr] : 0; }
 int sim_profiler_top_exec(sim_session_t *s, uint16_t *out_addrs, uint32_t *out_counts, int max_n) { (void)s; (void)out_addrs; (void)out_counts; (void)max_n; return 0; }
 const char *sim_mode_name(unsigned char mode) { return mode_name(mode); }
+
+/* --- Memory Snapshot & Diff --- */
+
+static int diff_entry_cmp(const void *a, const void *b) {
+    return (int)((const sim_diff_entry_t *)a)->addr - (int)((const sim_diff_entry_t *)b)->addr;
+}
+
+void sim_snapshot_take(sim_session_t *s) {
+    if (!s) return;
+    for (int i = 0; i < 256; i++) {
+        snap_node_t *n = s->snap_buckets[i];
+        while (n) { snap_node_t *nx = n->next; free(n); n = nx; }
+        s->snap_buckets[i] = NULL;
+    }
+    s->snap_active = 1;
+}
+
+int sim_snapshot_valid(sim_session_t *s) { return s ? s->snap_active : 0; }
+
+int sim_snapshot_diff(sim_session_t *s, sim_diff_entry_t *entries, int entries_cap) {
+    if (!s || !s->snap_active || !entries || entries_cap <= 0) return -1;
+    int count = 0;
+    for (int i = 0; i < 256; i++) {
+        snap_node_t *n = s->snap_buckets[i];
+        while (n) {
+            if (n->before != n->after && count < entries_cap) {
+                entries[count].addr      = n->addr;
+                entries[count].before    = n->before;
+                entries[count].after     = n->after;
+                entries[count].writer_pc = n->writer_pc;
+                count++;
+            }
+            n = n->next;
+        }
+    }
+    qsort(entries, (size_t)count, sizeof(sim_diff_entry_t), diff_entry_cmp);
+    return count;
+}
+
+/* --- Trace Run --- */
+
+int sim_trace_run(sim_session_t *s,
+                  int start_addr, int max_instr, int stop_on_brk,
+                  sim_trace_entry_t *entries, int entries_cap,
+                  char *stop_reason_out, int stop_reason_sz)
+{
+    if (!s || !entries || entries_cap <= 0 || max_instr <= 0) {
+        if (stop_reason_out && stop_reason_sz > 0) strncpy(stop_reason_out, "count", stop_reason_sz - 1);
+        return 0;
+    }
+    if (start_addr >= 0) s->cpu.pc = (uint16_t)start_addr;
+    if (max_instr > entries_cap) max_instr = entries_cap;
+
+    const char *reason = "count";
+    int n = 0;
+
+    while (n < max_instr) {
+        s->mem.mem_writes = 0;
+        int tr = handle_trap(&s->symbols, &s->cpu, &s->mem);
+        if (tr < 0) { reason = "trap"; break; }
+        if (tr > 0) continue;
+
+        if (breakpoint_hit(&s->breakpoints, &s->cpu)) { reason = "bp"; break; }
+
+        uint16_t pre_pc = s->cpu.pc;
+        unsigned char opc = mem_read(&s->mem, pre_pc);
+
+        /* Disassemble before executing */
+        disasm_one(&s->mem, &s->dt, s->cpu_type, pre_pc, entries[n].disasm,
+                   (int)sizeof(entries[n].disasm));
+        entries[n].pc = pre_pc;
+
+        if (opc == 0x00) {
+            entries[n].cpu = s->cpu;
+            entries[n].cycles_delta = 0;
+            n++;
+            reason = "brk";
+            s->state = SIM_FINISHED;
+            break;  /* always stop at BRK (recording it) regardless of stop_on_brk */
+        }
+
+        const dispatch_entry_t *te = peek_dispatch(&s->cpu, &s->mem, &s->dt, s->cpu_type);
+        if (te && te->mnemonic && strcmp(te->mnemonic, "STP") == 0) {
+            entries[n].cpu = s->cpu;
+            entries[n].cycles_delta = 0;
+            n++;
+            reason = "stp";
+            s->state = SIM_FINISHED;
+            break;
+        }
+
+        unsigned long pre_cycles = s->cpu.cycles;
+        execute_from_mem(&s->cpu, &s->mem, &s->dt, s->cpu_type);
+        entries[n].cpu = s->cpu;
+        entries[n].cycles_delta = (int)(s->cpu.cycles - pre_cycles);
+        if (s->snap_active) {
+            int _nw = s->mem.mem_writes < 256 ? s->mem.mem_writes : 256;
+            for (int _d = 0; _d < _nw; _d++)
+                snap_record_write(s, s->mem.mem_addr[_d], s->mem.mem_old_val[_d],
+                                  s->mem.mem_val[_d], pre_pc);
+        }
+        n++;
+    }
+
+    if (s->state != SIM_FINISHED) s->state = SIM_PAUSED;
+    if (stop_reason_out && stop_reason_sz > 0) {
+        strncpy(stop_reason_out, reason, (size_t)(stop_reason_sz - 1));
+        stop_reason_out[stop_reason_sz - 1] = '\0';
+    }
+    return n;
+}
+
+/* --- Validate Routine --- */
+
+int sim_validate_routine(sim_session_t          *s,
+                         uint16_t                routine_addr,
+                         uint16_t                scratch_addr,
+                         int                     max_steps,
+                         const sim_test_in_t    *inputs,
+                         const sim_test_expect_t *expects,
+                         sim_test_result_t      *results,
+                         int                     count)
+{
+    if (!s || !inputs || !expects || !results || count <= 0) return 0;
+    if (scratch_addr == 0) scratch_addr = 0xFFF8;
+    if (max_steps    <= 0) max_steps    = 100000;
+
+    /* Save 4 bytes at scratch area */
+    uint8_t saved[4];
+    for (int i = 0; i < 4; i++) saved[i] = s->mem.mem[(scratch_addr + i) & 0xFFFF];
+
+    /* Write: JSR routine_addr (3 bytes) + BRK (1 byte) */
+    s->mem.mem[(scratch_addr    ) & 0xFFFF] = 0x20;
+    s->mem.mem[(scratch_addr + 1) & 0xFFFF] = (uint8_t)(routine_addr & 0xFF);
+    s->mem.mem[(scratch_addr + 2) & 0xFFFF] = (uint8_t)(routine_addr >> 8);
+    s->mem.mem[(scratch_addr + 3) & 0xFFFF] = 0x00;
+
+    cpu_t       saved_cpu   = s->cpu;
+    sim_state_t saved_state = s->state;
+    int         total_pass  = 0;
+
+    for (int t = 0; t < count; t++) {
+        const sim_test_in_t     *in  = &inputs[t];
+        const sim_test_expect_t *exp = &expects[t];
+        sim_test_result_t       *res = &results[t];
+
+        /* Reset registers to neutral state; keep memory */
+        cpu_init(&s->cpu);
+        if (s->cpu_type == CPU_45GS02) set_flag(&s->cpu, FLAG_E, 1);
+        s->cpu.pc = scratch_addr;
+
+        /* Apply input register overrides */
+        if (in->a >= 0) s->cpu.a = (uint8_t)in->a;
+        if (in->x >= 0) s->cpu.x = (uint8_t)in->x;
+        if (in->y >= 0) s->cpu.y = (uint8_t)in->y;
+        if (in->z >= 0) s->cpu.z = (uint8_t)in->z;
+        if (in->b >= 0) s->cpu.b = (uint8_t)in->b;
+        if (in->s >= 0) s->cpu.s = (uint8_t)in->s;
+        if (in->p >= 0) s->cpu.p = (uint8_t)in->p;
+
+        /* Apply input memory writes */
+        for (int m = 0; m < in->mem_count && m < SIM_VALIDATE_MEM_OPS; m++)
+            s->mem.mem[in->mem_addr[m]] = in->mem_val[m];
+
+        /* Execute until BRK or step limit */
+        s->state = SIM_READY;
+        int ev = sim_step(s, max_steps);
+
+        /* Capture actual register values */
+        res->a = s->cpu.a;  res->x = s->cpu.x;
+        res->y = s->cpu.y;  res->z = s->cpu.z;
+        res->b = s->cpu.b;  res->s = s->cpu.s;  res->p = s->cpu.p;
+        res->fail_msg[0] = '\0';
+        res->passed = 1;
+
+        if (ev != SIM_EVENT_BRK && ev != SIM_EVENT_STP) {
+            /* Did not complete normally */
+            res->passed = 0;
+            const char *why = (ev == 0) ? "timeout" :
+                              (ev == SIM_EVENT_BREAK) ? "breakpoint" : "trap";
+            snprintf(res->fail_msg, sizeof(res->fail_msg),
+                     "did not complete (%s at $%04X, %d steps)",
+                     why, (unsigned)s->cpu.pc, max_steps);
+        } else {
+            /* Compare expected register values */
+            char buf[32];
+#define VR(NM, F) \
+            if (exp->F >= 0 && res->F != (uint8_t)(exp->F)) { \
+                snprintf(buf, sizeof(buf), NM "=$%02X exp $%02X; ", \
+                         (unsigned)(uint8_t)res->F, (unsigned)(uint8_t)exp->F); \
+                strncat(res->fail_msg, buf, sizeof(res->fail_msg) - strlen(res->fail_msg) - 1); \
+                res->passed = 0; \
+            }
+            VR("A",a) VR("X",x) VR("Y",y) VR("Z",z) VR("B",b) VR("P",p)
+#undef VR
+            /* Compare expected memory values */
+            for (int m = 0; m < exp->mem_count && m < SIM_VALIDATE_MEM_OPS; m++) {
+                uint8_t got = s->mem.mem[exp->mem_addr[m]];
+                if (got != exp->mem_val[m]) {
+                    snprintf(buf, sizeof(buf), "[$%04X]=$%02X exp $%02X; ",
+                             (unsigned)exp->mem_addr[m], (unsigned)got,
+                             (unsigned)exp->mem_val[m]);
+                    strncat(res->fail_msg, buf, sizeof(res->fail_msg) - strlen(res->fail_msg) - 1);
+                    res->passed = 0;
+                }
+            }
+        }
+        if (res->passed) total_pass++;
+    }
+
+    /* Restore scratch area and CPU */
+    for (int i = 0; i < 4; i++) s->mem.mem[(scratch_addr + i) & 0xFFFF] = saved[i];
+    s->cpu   = saved_cpu;
+    s->state = saved_state;
+    return total_pass;
+}

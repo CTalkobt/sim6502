@@ -137,6 +137,7 @@ static bool show_iref     = false;
 static bool show_symbols  = false;
 static bool show_source   = false;
 static bool show_profiler = false;
+static bool show_snap_diff = false;
 
 /* ---- Phase 6 pane visibility ---- */
 static bool show_vic_screen   = false;
@@ -176,6 +177,15 @@ static int  g_iref_sel_idx    = -1;
 static char g_sym_filter[64]    = "";
 static bool g_symload_open      = false;
 static char g_symload_path[512] = "";
+
+/* ---- Trace Run buffer ---- */
+#define TRACE_RUN_CAP 2000
+static sim_trace_entry_t g_trace_run_buf[TRACE_RUN_CAP];
+static int   g_trace_run_count       = 0;
+static char  g_trace_run_reason[16]  = "";
+static char  g_trace_run_addr[8]     = "";   /* empty = use PC */
+static int   g_trace_run_max         = 100;
+static bool  g_trace_run_stop_brk    = true;
 
 /* ---- File-open / file-save dialog ---- */
 static FileDlgState g_filedlg;
@@ -1691,29 +1701,8 @@ static void draw_pane_breakpoints(void)
  * Ring buffer of the last SIM_TRACE_DEPTH instructions executed.
  * Slot 0 = most recent.  Virtualised with ImGuiListClipper.
  * -------------------------------------------------------------------------- */
-static void draw_pane_trace(void)
+static void draw_trace_table(sim_trace_entry_t *entries, int count)
 {
-    if (!show_trace) return;
-    ImGui::Begin("Trace Log", &show_trace);
-
-    /* Controls */
-    bool rec = (sim_trace_is_enabled(g_sim) != 0);
-    if (ImGui::Checkbox("Record", &rec))
-        sim_trace_enable(g_sim, rec ? 1 : 0);
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Clear"))
-        sim_trace_clear(g_sim);
-    int cnt = sim_trace_count(g_sim);
-    ImGui::SameLine();
-    ImGui::TextDisabled("(%d / %d)", cnt, SIM_TRACE_DEPTH);
-    ImGui::Separator();
-
-    if (cnt == 0) {
-        ImGui::TextDisabled("No entries. Enable 'Record' then step or run.");
-        ImGui::End();
-        return;
-    }
-
     const ImGuiTableFlags tf =
         ImGuiTableFlags_SizingFixedFit |
         ImGuiTableFlags_BordersInnerV  |
@@ -1721,22 +1710,20 @@ static void draw_pane_trace(void)
         ImGuiTableFlags_RowBg;
 
     float avail_h = ImGui::GetContentRegionAvail().y;
-    if (ImGui::BeginTable("##trace", 5, tf, ImVec2(0, avail_h))) {
+    if (ImGui::BeginTable("##trace_tbl", 5, tf, ImVec2(0, avail_h))) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("#",     ImGuiTableColumnFlags_WidthFixed,   38.0f);
-        ImGui::TableSetupColumn("PC",    ImGuiTableColumnFlags_WidthFixed,   44.0f);
-        ImGui::TableSetupColumn("Instr", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-        ImGui::TableSetupColumn("Cyc",   ImGuiTableColumnFlags_WidthFixed,   26.0f);
-        ImGui::TableSetupColumn("A  X  Y", ImGuiTableColumnFlags_WidthFixed, 66.0f);
+        ImGui::TableSetupColumn("#",       ImGuiTableColumnFlags_WidthFixed,   38.0f);
+        ImGui::TableSetupColumn("PC",      ImGuiTableColumnFlags_WidthFixed,   44.0f);
+        ImGui::TableSetupColumn("Instr",   ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("Cyc",     ImGuiTableColumnFlags_WidthFixed,   26.0f);
+        ImGui::TableSetupColumn("A  X  Y", ImGuiTableColumnFlags_WidthFixed,   66.0f);
         ImGui::TableHeadersRow();
 
         ImGuiListClipper clipper;
-        clipper.Begin(cnt);
+        clipper.Begin(count);
         while (clipper.Step()) {
             for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
-                sim_trace_entry_t e;
-                if (!sim_trace_get(g_sim, i, &e)) continue;
-
+                sim_trace_entry_t &e = entries[i];
                 ImGui::TableNextRow();
 
                 ImGui::TableSetColumnIndex(0);
@@ -1746,8 +1733,7 @@ static void draw_pane_trace(void)
                 ImGui::Text("%04X", (unsigned)e.pc);
 
                 ImGui::TableSetColumnIndex(2);
-                /* disasm = "$XXXX: %-18s %-6s %s"
-                 * Skip the 7-char "$XXXX: " address prefix. */
+                /* disasm string: "$XXXX: bytes  MNEM OPER" — skip 7-char "$XXXX: " prefix */
                 const char *ins = (strlen(e.disasm) > 7) ? e.disasm + 7 : e.disasm;
                 ImGui::TextUnformatted(ins);
 
@@ -1762,6 +1748,88 @@ static void draw_pane_trace(void)
             }
         }
         ImGui::EndTable();
+    }
+}
+
+static void draw_pane_trace(void)
+{
+    if (!show_trace) return;
+    ImGui::Begin("Trace", &show_trace);
+
+    if (ImGui::BeginTabBar("##trace_tabs")) {
+
+        /* ── Tab 1: Live Log (ring buffer) ─────────────────────── */
+        if (ImGui::BeginTabItem("Live Log")) {
+            bool rec = (sim_trace_is_enabled(g_sim) != 0);
+            if (ImGui::Checkbox("Record", &rec))
+                sim_trace_enable(g_sim, rec ? 1 : 0);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Clear"))
+                sim_trace_clear(g_sim);
+            int cnt = sim_trace_count(g_sim);
+            ImGui::SameLine();
+            ImGui::TextDisabled("(%d / %d)", cnt, SIM_TRACE_DEPTH);
+            ImGui::Separator();
+
+            if (cnt == 0) {
+                ImGui::TextDisabled("No entries. Enable 'Record' then step or run.");
+            } else {
+                /* Copy ring buffer into a flat array for the table */
+                static sim_trace_entry_t live_flat[SIM_TRACE_DEPTH];
+                for (int i = 0; i < cnt; i++)
+                    sim_trace_get(g_sim, i, &live_flat[i]);
+                draw_trace_table(live_flat, cnt);
+            }
+            ImGui::EndTabItem();
+        }
+
+        /* ── Tab 2: Trace Run ───────────────────────────────────── */
+        if (ImGui::BeginTabItem("Run Trace")) {
+            /* Controls row */
+            ImGui::SetNextItemWidth(80.0f);
+            ImGui::InputText("From $", g_trace_run_addr, sizeof(g_trace_run_addr),
+                             ImGuiInputTextFlags_CharsHexadecimal);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(70.0f);
+            ImGui::InputInt("Max", &g_trace_run_max);
+            if (g_trace_run_max < 1)   g_trace_run_max = 1;
+            if (g_trace_run_max > TRACE_RUN_CAP) g_trace_run_max = TRACE_RUN_CAP;
+            ImGui::SameLine();
+            ImGui::Checkbox("Stop@BRK", &g_trace_run_stop_brk);
+            ImGui::SameLine();
+
+            bool can_run = (sim_get_state(g_sim) == SIM_READY ||
+                            sim_get_state(g_sim) == SIM_PAUSED);
+            if (!can_run) ImGui::BeginDisabled();
+            if (ImGui::Button("Run Trace")) {
+                /* Parse start address (empty = current PC = -1) */
+                int start = -1;
+                if (g_trace_run_addr[0]) {
+                    unsigned int v = 0;
+                    sscanf(g_trace_run_addr, "%x", &v);
+                    start = (int)(v & 0xFFFF);
+                }
+                g_trace_run_count = sim_trace_run(
+                    g_sim, start, g_trace_run_max,
+                    g_trace_run_stop_brk ? 1 : 0,
+                    g_trace_run_buf, TRACE_RUN_CAP,
+                    g_trace_run_reason, (int)sizeof(g_trace_run_reason));
+            }
+            if (!can_run) ImGui::EndDisabled();
+
+            if (g_trace_run_count > 0) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("Stop: %s  (%d instr)", g_trace_run_reason, g_trace_run_count);
+                ImGui::Separator();
+                draw_trace_table(g_trace_run_buf, g_trace_run_count);
+            } else {
+                ImGui::Separator();
+                ImGui::TextDisabled("Press 'Run Trace' to execute and capture a trace.");
+            }
+            ImGui::EndTabItem();
+        }
+
+        ImGui::EndTabBar();
     }
 
     ImGui::End();
@@ -2647,6 +2715,301 @@ static void draw_pane_source(void)
         }
 
         ImGui::EndTable();
+    }
+    ImGui::End();
+}
+
+/* --------------------------------------------------------------------------
+ * Pane: Test Runner (Phase 4)
+ *
+ * Enter test vectors (input registers + expected outputs) for a subroutine
+ * and run them all in one click.  Uses sim_validate_routine().
+ * -------------------------------------------------------------------------- */
+
+#define TEST_RUNNER_MAX_ROWS 32
+
+struct TestRow {
+    char  label[32];
+    /* inputs  (-1 in the int means "not set") */
+    char  in_a[6],  in_x[6],  in_y[6],  in_z[6],  in_p[6];
+    /* expects (-1 in the int means "not checked") */
+    char  ex_a[6],  ex_x[6],  ex_y[6],  ex_z[6],  ex_p[6];
+    /* result */
+    int   result;       /* -1 = not run, 0 = fail, 1 = pass */
+    char  fail_msg[128];
+    int   act_a, act_x, act_y, act_z, act_p;
+};
+
+static bool     show_test_runner = false;
+static char     g_tr_routine[8]  = "0300";
+static char     g_tr_scratch[8]  = "FFF8";
+static TestRow  g_tr_rows[TEST_RUNNER_MAX_ROWS];
+static int      g_tr_row_count   = 0;
+static char     g_tr_summary[64] = "";
+
+/* C++ wrapper for parse_mon_value since it takes const char ** */
+extern "C" int parse_mon_value(const char **, unsigned long *);
+static int parse_mon_value_cpp(const char *s, unsigned long *out) {
+    const char *p = s;
+    return parse_mon_value(&p, out);
+}
+
+/* Parse a hex/decimal input string to int; return -1 if blank */
+static int tr_parse_field(const char *s) {
+    if (!s || !s[0]) return -1;
+    unsigned long v;
+    if (!parse_mon_value_cpp(s, &v)) return -1;
+    return (int)(v & 0xFF);
+}
+
+static void draw_pane_test_runner(void)
+{
+    if (!show_test_runner) return;
+    ImGui::Begin("Test Runner", &show_test_runner);
+
+    sim_state_t state = sim_get_state(g_sim);
+    bool can_run = (state == SIM_READY || state == SIM_PAUSED);
+
+    /* --- Top controls --- */
+    ImGui::SetNextItemWidth(70.0f);
+    ImGui::InputText("Routine $", g_tr_routine, sizeof(g_tr_routine),
+                     ImGuiInputTextFlags_CharsHexadecimal);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(70.0f);
+    ImGui::InputText("Scratch $", g_tr_scratch, sizeof(g_tr_scratch),
+                     ImGuiInputTextFlags_CharsHexadecimal);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Add Row") && g_tr_row_count < TEST_RUNNER_MAX_ROWS) {
+        TestRow &r = g_tr_rows[g_tr_row_count++];
+        memset(&r, 0, sizeof(r));
+        r.result = -1;
+        snprintf(r.label, sizeof(r.label), "test %d", g_tr_row_count);
+    }
+    ImGui::SameLine();
+    if (!can_run || g_tr_row_count == 0) ImGui::BeginDisabled();
+    if (ImGui::Button("Run All")) {
+        uint16_t raddr = (uint16_t)strtol(g_tr_routine, NULL, 16);
+        uint16_t saddr = (uint16_t)strtol(g_tr_scratch, NULL, 16);
+
+        /* Build test vector arrays */
+        sim_test_in_t     *ins = (sim_test_in_t     *)calloc((size_t)g_tr_row_count, sizeof(sim_test_in_t));
+        sim_test_expect_t *exs = (sim_test_expect_t *)calloc((size_t)g_tr_row_count, sizeof(sim_test_expect_t));
+        sim_test_result_t *res = (sim_test_result_t *)calloc((size_t)g_tr_row_count, sizeof(sim_test_result_t));
+
+        if (ins && exs && res) {
+            for (int i = 0; i < g_tr_row_count; i++) {
+                TestRow &row = g_tr_rows[i];
+                /* Initialise all to "don't set / don't check" */
+                ins[i].a = ins[i].x = ins[i].y = ins[i].z = ins[i].b = ins[i].s = ins[i].p = -1;
+                exs[i].a = exs[i].x = exs[i].y = exs[i].z = exs[i].b = exs[i].s = exs[i].p = -1;
+
+                auto pf = [](const char *s) -> int {
+                    return tr_parse_field(s);
+                };
+                ins[i].a = pf(row.in_a); ins[i].x = pf(row.in_x);
+                ins[i].y = pf(row.in_y); ins[i].z = pf(row.in_z);
+                ins[i].p = pf(row.in_p);
+                exs[i].a = pf(row.ex_a); exs[i].x = pf(row.ex_x);
+                exs[i].y = pf(row.ex_y); exs[i].z = pf(row.ex_z);
+                exs[i].p = pf(row.ex_p);
+                strncpy(ins[i].label, row.label, 47);
+            }
+
+            int passed = sim_validate_routine(g_sim, raddr, saddr, 0,
+                                              ins, exs, res, g_tr_row_count);
+            for (int i = 0; i < g_tr_row_count; i++) {
+                g_tr_rows[i].result  = res[i].passed;
+                g_tr_rows[i].act_a   = res[i].a;
+                g_tr_rows[i].act_x   = res[i].x;
+                g_tr_rows[i].act_y   = res[i].y;
+                g_tr_rows[i].act_z   = res[i].z;
+                g_tr_rows[i].act_p   = res[i].p;
+                strncpy(g_tr_rows[i].fail_msg, res[i].fail_msg, 127);
+            }
+            snprintf(g_tr_summary, sizeof(g_tr_summary),
+                     "%d / %d passed", passed, g_tr_row_count);
+        }
+        free(ins); free(exs); free(res);
+    }
+    if (!can_run || g_tr_row_count == 0) ImGui::EndDisabled();
+
+    if (g_tr_summary[0]) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.6f,1.0f,0.6f,1.0f), "%s", g_tr_summary);
+    }
+    ImGui::Separator();
+
+    /* --- Test vector table --- */
+    const ImGuiTableFlags tf =
+        ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV |
+        ImGuiTableFlags_ScrollY        | ImGuiTableFlags_RowBg;
+    float avail_h = ImGui::GetContentRegionAvail().y;
+    if (ImGui::BeginTable("##tr_table", 12, tf, ImVec2(0.0f, avail_h))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("",      ImGuiTableColumnFlags_WidthFixed,  14.0f); /* status */
+        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed,  90.0f);
+        ImGui::TableSetupColumn("A in",  ImGuiTableColumnFlags_WidthFixed,  42.0f);
+        ImGui::TableSetupColumn("X in",  ImGuiTableColumnFlags_WidthFixed,  42.0f);
+        ImGui::TableSetupColumn("Y in",  ImGuiTableColumnFlags_WidthFixed,  42.0f);
+        ImGui::TableSetupColumn("Z in",  ImGuiTableColumnFlags_WidthFixed,  42.0f);
+        ImGui::TableSetupColumn("A exp", ImGuiTableColumnFlags_WidthFixed,  42.0f);
+        ImGui::TableSetupColumn("X exp", ImGuiTableColumnFlags_WidthFixed,  42.0f);
+        ImGui::TableSetupColumn("Y exp", ImGuiTableColumnFlags_WidthFixed,  42.0f);
+        ImGui::TableSetupColumn("Z exp", ImGuiTableColumnFlags_WidthFixed,  42.0f);
+        ImGui::TableSetupColumn("Result",ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("Del",   ImGuiTableColumnFlags_WidthFixed,  20.0f);
+        ImGui::TableHeadersRow();
+
+        for (int i = 0; i < g_tr_row_count; ) {
+            TestRow &row = g_tr_rows[i];
+            ImGui::TableNextRow();
+            ImGui::PushID(i);
+
+            /* Status icon */
+            ImGui::TableSetColumnIndex(0);
+            if      (row.result == 1)  ImGui::TextColored(ImVec4(0.3f,1.0f,0.3f,1.0f), "✓");
+            else if (row.result == 0)  ImGui::TextColored(ImVec4(1.0f,0.3f,0.3f,1.0f), "✗");
+            else                       ImGui::TextDisabled("·");
+
+            /* Label */
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(-1);
+            ImGui::InputText("##lbl", row.label, sizeof(row.label));
+
+            /* Input fields */
+            auto inp_field = [&](int col, char *buf, size_t bufsz) {
+                ImGui::TableSetColumnIndex(col);
+                ImGui::SetNextItemWidth(-1);
+                ImGui::InputText("##f", buf, bufsz, ImGuiInputTextFlags_CharsHexadecimal);
+            };
+            inp_field(2, row.in_a, sizeof(row.in_a));
+            inp_field(3, row.in_x, sizeof(row.in_x));
+            inp_field(4, row.in_y, sizeof(row.in_y));
+            inp_field(5, row.in_z, sizeof(row.in_z));
+            inp_field(6, row.ex_a, sizeof(row.ex_a));
+            inp_field(7, row.ex_x, sizeof(row.ex_x));
+            inp_field(8, row.ex_y, sizeof(row.ex_y));
+            inp_field(9, row.ex_z, sizeof(row.ex_z));
+
+            /* Result / fail msg */
+            ImGui::TableSetColumnIndex(10);
+            if (row.result == 1) {
+                ImGui::TextColored(ImVec4(0.3f,1.0f,0.3f,1.0f),
+                    "A=$%02X X=$%02X Y=$%02X Z=$%02X",
+                    (unsigned)row.act_a,(unsigned)row.act_x,
+                    (unsigned)row.act_y,(unsigned)row.act_z);
+            } else if (row.result == 0) {
+                ImGui::TextColored(ImVec4(1.0f,0.5f,0.5f,1.0f), "%s", row.fail_msg);
+            } else {
+                ImGui::TextDisabled("(not run)");
+            }
+
+            /* Delete button */
+            ImGui::TableSetColumnIndex(11);
+            if (ImGui::SmallButton("x")) {
+                for (int j = i; j < g_tr_row_count - 1; j++)
+                    g_tr_rows[j] = g_tr_rows[j+1];
+                g_tr_row_count--;
+                ImGui::PopID();
+                continue;
+            }
+            ImGui::PopID();
+            i++;
+        }
+        ImGui::EndTable();
+    }
+    ImGui::End();
+}
+
+/* --------------------------------------------------------------------------
+ * Pane: Memory Snapshot Diff (Phase 4)
+ *
+ * Take a snapshot of current memory, run code, then diff to see what changed.
+ * -------------------------------------------------------------------------- */
+#define SNAP_DIFF_CAP 4096
+static sim_diff_entry_t g_snap_diff_buf[SNAP_DIFF_CAP];
+static int              g_snap_diff_count = -1; /* -1 = not yet diffed */
+
+static void draw_pane_snap_diff(void)
+{
+    if (!show_snap_diff) return;
+    ImGui::Begin("Snap Diff", &show_snap_diff);
+
+    bool snap_valid = sim_snapshot_valid(g_sim) != 0;
+
+    if (ImGui::Button("Take Snapshot")) {
+        sim_snapshot_take(g_sim);
+        g_snap_diff_count = -1;  /* invalidate previous diff */
+    }
+    ImGui::SameLine();
+    if (!snap_valid) ImGui::BeginDisabled();
+    if (ImGui::Button("Show Diff")) {
+        g_snap_diff_count = sim_snapshot_diff(g_sim, g_snap_diff_buf, SNAP_DIFF_CAP);
+    }
+    if (!snap_valid) ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::TextDisabled(snap_valid ? "(snapshot active)" : "(no snapshot)");
+    ImGui::Separator();
+
+    if (g_snap_diff_count < 0) {
+        ImGui::TextDisabled("Take a snapshot, run code, then click 'Show Diff'.");
+    } else if (g_snap_diff_count == 0) {
+        ImGui::TextDisabled("No memory changes since snapshot.");
+    } else {
+        ImGui::Text("%d change(s)", g_snap_diff_count);
+        ImGui::Separator();
+
+        const ImGuiTableFlags tf =
+            ImGuiTableFlags_SizingFixedFit |
+            ImGuiTableFlags_BordersInnerV  |
+            ImGuiTableFlags_ScrollY        |
+            ImGuiTableFlags_RowBg;
+        float avail_h = ImGui::GetContentRegionAvail().y;
+        if (ImGui::BeginTable("##snapdiff", 4, tf, ImVec2(0.0f, avail_h))) {
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableSetupColumn("Addr",    ImGuiTableColumnFlags_WidthFixed,   52.0f);
+            ImGui::TableSetupColumn("Before",  ImGuiTableColumnFlags_WidthFixed,   50.0f);
+            ImGui::TableSetupColumn("After",   ImGuiTableColumnFlags_WidthFixed,   50.0f);
+            ImGui::TableSetupColumn("Writer",  ImGuiTableColumnFlags_WidthFixed,   54.0f);
+            ImGui::TableHeadersRow();
+
+            int i = 0;
+            while (i < g_snap_diff_count) {
+                /* Find extent of consecutive-address run */
+                int j = i;
+                while (j + 1 < g_snap_diff_count &&
+                       g_snap_diff_buf[j+1].addr == g_snap_diff_buf[j].addr + 1) j++;
+
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                if (i == j)
+                    ImGui::Text("$%04X", (unsigned)g_snap_diff_buf[i].addr);
+                else
+                    ImGui::Text("$%04X-%04X", (unsigned)g_snap_diff_buf[i].addr,
+                                              (unsigned)g_snap_diff_buf[j].addr);
+                ImGui::TableSetColumnIndex(1);
+                if (i == j) ImGui::Text("%02X", (unsigned)g_snap_diff_buf[i].before);
+                else        ImGui::Text("(%d)", j - i + 1);
+                ImGui::TableSetColumnIndex(2);
+                if (i == j) ImGui::TextColored(ImVec4(1.0f,0.85f,0.3f,1.0f),
+                                "%02X", (unsigned)g_snap_diff_buf[i].after);
+                else {
+                    /* Show first few bytes in amber */
+                    char abuf[32] = ""; int ai = 0;
+                    for (int k = i; k <= j && k < i+4 && ai < 28; k++)
+                        ai += snprintf(abuf+ai, sizeof(abuf)-ai-1,
+                                       k==i ? "%02X" : " %02X",
+                                       (unsigned)g_snap_diff_buf[k].after);
+                    if (j - i >= 4) strncat(abuf, "..", sizeof(abuf)-strlen(abuf)-1);
+                    ImGui::TextColored(ImVec4(1.0f,0.85f,0.3f,1.0f), "%s", abuf);
+                }
+                ImGui::TableSetColumnIndex(3);
+                ImGui::Text("$%04X", (unsigned)g_snap_diff_buf[j].writer_pc);
+
+                i = j + 1;
+            }
+            ImGui::EndTable();
+        }
     }
     ImGui::End();
 }
@@ -4590,6 +4953,8 @@ int main(int /*argc*/, char ** /*argv*/)
                     ImGui::MenuItem("Symbols",     nullptr, &show_symbols);
                     ImGui::MenuItem("Source",      nullptr, &show_source);
                     ImGui::MenuItem("Profiler",    nullptr, &show_profiler);
+                    ImGui::MenuItem("Snap Diff",   nullptr, &show_snap_diff);
+                    ImGui::MenuItem("Test Runner", nullptr, &show_test_runner);
                     ImGui::Separator();
                     ImGui::MenuItem("VIC-II Screen",    nullptr, &show_vic_screen);
                     ImGui::MenuItem("VIC-II Sprites",   nullptr, &show_vic_sprites);
@@ -4705,6 +5070,8 @@ int main(int /*argc*/, char ** /*argv*/)
         draw_pane_symbols();
         draw_pane_source();
         draw_pane_profiler();
+        draw_pane_snap_diff();
+        draw_pane_test_runner();
 
         /* Phase 6 panes */
         draw_pane_vic_screen();

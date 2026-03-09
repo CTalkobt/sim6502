@@ -13,6 +13,54 @@
 static float  g_cli_speed   = 0.0f;
 static const double CLI_C64_HZ = 985248.0;
 
+/* --------------------------------------------------------------------------
+ * Memory snapshot (linked-list accumulator, mirrors sim_api snap_node_t)
+ * -------------------------------------------------------------------------- */
+typedef struct cli_snap_node {
+    uint16_t addr;
+    uint8_t  before;
+    uint8_t  after;
+    uint16_t writer_pc;
+    struct cli_snap_node *next;
+} cli_snap_node_t;
+
+static cli_snap_node_t *s_snap_buckets[256]; /* zero-initialised at start-up */
+static int              s_snap_active = 0;
+
+static void cli_snap_reset(void) {
+    for (int i = 0; i < 256; i++) {
+        cli_snap_node_t *n = s_snap_buckets[i];
+        while (n) { cli_snap_node_t *nx = n->next; free(n); n = nx; }
+        s_snap_buckets[i] = NULL;
+    }
+    s_snap_active = 0;
+}
+
+/* Record one virtual-memory write into the accumulator.
+ * If addr is seen for the first time: stores `before` as the snapshot value.
+ * On repeat writes to the same addr: updates `after` and `writer_pc` only. */
+static void cli_snap_record(uint16_t addr, uint8_t before,
+                             uint8_t after, uint16_t writer_pc) {
+    int b = addr & 0xFF;
+    cli_snap_node_t *n = s_snap_buckets[b];
+    while (n) {
+        if (n->addr == addr) { n->after = after; n->writer_pc = writer_pc; return; }
+        n = n->next;
+    }
+    n = (cli_snap_node_t *)malloc(sizeof(cli_snap_node_t));
+    if (!n) return;
+    n->addr = addr; n->before = before; n->after = after; n->writer_pc = writer_pc;
+    n->next = s_snap_buckets[b]; s_snap_buckets[b] = n;
+}
+
+/* Simple entry used for sorting the diff output */
+typedef struct { uint16_t addr; uint8_t before; uint8_t after; uint16_t writer_pc; } cli_diff_t;
+static int cli_diff_cmp(const void *a, const void *b) {
+    return (int)((const cli_diff_t *)a)->addr - (int)((const cli_diff_t *)b)->addr;
+}
+#define CLI_DIFF_CAP 4096
+static cli_diff_t s_diff_buf[CLI_DIFF_CAP];
+
 /* JSON mode flag: 0 = plain text, 1 = JSON output */
 static int g_json_mode = 0;
 
@@ -190,6 +238,187 @@ static const char *mode_operand_template(unsigned char mode) {
 }
 
 /* --------------------------------------------------------------------------
+ * validate command helper
+ * -------------------------------------------------------------------------- */
+
+/* Parse space-separated REG=val pairs (A X Y Z B S P) into individual ints.
+ * Returns the number of pairs parsed.  Stops at ':' or end of string. */
+static int parse_reg_assigns(const char **pp,
+                              int *a, int *x, int *y, int *z,
+                              int *b, int *s, int *p_flag)
+{
+    int found = 0;
+    const char *p = *pp;
+    while (*p && *p != ':' && *p != '\n' && *p != '\r') {
+        while (*p && isspace((unsigned char)*p)) p++;
+        if (*p == ':' || !*p || *p == '\n') break;
+        char reg = (char)toupper((unsigned char)*p);
+        if ((reg=='A'||reg=='X'||reg=='Y'||reg=='Z'||reg=='B'||reg=='S'||reg=='P')
+            && *(p+1)=='=') {
+            p += 2;
+            unsigned long val;
+            if (parse_mon_value(&p, &val)) {
+                switch (reg) {
+                case 'A': *a      = (int)(val & 0xFF); break;
+                case 'X': *x      = (int)(val & 0xFF); break;
+                case 'Y': *y      = (int)(val & 0xFF); break;
+                case 'Z': *z      = (int)(val & 0xFF); break;
+                case 'B': *b      = (int)(val & 0xFF); break;
+                case 'S': *s      = (int)(val & 0xFF); break;
+                case 'P': *p_flag = (int)(val & 0xFF); break;
+                }
+                found++;
+            }
+        } else {
+            /* Unknown token — skip it */
+            while (*p && !isspace((unsigned char)*p) && *p != ':') p++;
+        }
+    }
+    *pp = p;
+    return found;
+}
+
+static void cmd_validate(const char *line,
+                         cpu_t *cpu, memory_t *mem,
+                         dispatch_table_t *dt, cpu_type_t *p_cpu_type,
+                         breakpoint_list_t *breakpoints,
+                         symbol_table_t *symbols)
+{
+    const char *p = line;
+    /* Skip command word */
+    while (*p && !isspace((unsigned char)*p)) p++;
+    while (*p && isspace((unsigned char)*p)) p++;
+
+    /* Routine address */
+    unsigned long routine_addr;
+    if (!parse_mon_value(&p, &routine_addr)) {
+        if (g_json_mode) json_err("validate", "Usage: validate <addr> [REG=val...] : [REG=val...]");
+        else printf("Usage: validate <addr> [A=val X=val ...] : [A=val X=val ...]\n");
+        return;
+    }
+    while (*p && isspace((unsigned char)*p)) p++;
+
+    /* Optional scratch=$xxxx */
+    unsigned short scratch = 0xFFF8;
+    if ((*p=='s'||*p=='S') && strncasecmp(p,"scratch=",8)==0) {
+        p += 8;
+        unsigned long sv;
+        if (parse_mon_value(&p, &sv)) scratch = (unsigned short)sv;
+        while (*p && isspace((unsigned char)*p)) p++;
+    }
+
+    /* Input registers (before ':') */
+    int in_a=-1, in_x=-1, in_y=-1, in_z=-1, in_b=-1, in_s=-1, in_p=-1;
+    parse_reg_assigns(&p, &in_a, &in_x, &in_y, &in_z, &in_b, &in_s, &in_p);
+
+    /* Skip ':' */
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p == ':') p++;
+
+    /* Expected registers (after ':') */
+    int ex_a=-1, ex_x=-1, ex_y=-1, ex_z=-1, ex_b=-1, ex_s=-1, ex_p=-1;
+    parse_reg_assigns(&p, &ex_a, &ex_x, &ex_y, &ex_z, &ex_b, &ex_s, &ex_p);
+
+    /* Save 4 bytes at scratch area (JSR lo hi + BRK) */
+    uint8_t saved_bytes[4];
+    for (int i = 0; i < 4; i++) saved_bytes[i] = mem->mem[(scratch + i) & 0xFFFF];
+
+    mem->mem[(scratch    ) & 0xFFFF] = 0x20;                        /* JSR */
+    mem->mem[(scratch + 1) & 0xFFFF] = (uint8_t)(routine_addr & 0xFF);
+    mem->mem[(scratch + 2) & 0xFFFF] = (uint8_t)(routine_addr >> 8);
+    mem->mem[(scratch + 3) & 0xFFFF] = 0x00;                        /* BRK */
+
+    cpu_t saved_cpu = *cpu;
+
+    /* Reset CPU and apply inputs */
+    cpu_init(cpu);
+    cpu->pc = scratch;
+    if (*p_cpu_type == CPU_45GS02) set_flag(cpu, FLAG_E, 1);
+    if (in_a >= 0) cpu->a = (unsigned char)in_a;
+    if (in_x >= 0) cpu->x = (unsigned char)in_x;
+    if (in_y >= 0) cpu->y = (unsigned char)in_y;
+    if (in_z >= 0) cpu->z = (unsigned char)in_z;
+    if (in_b >= 0) cpu->b = (unsigned char)in_b;
+    if (in_s >= 0) cpu->s = (unsigned char)in_s;
+    if (in_p >= 0) cpu->p = (unsigned char)in_p;
+
+    /* Execute until BRK / STP / breakpoint (max 100 000 steps) */
+    const int VLD_MAX = 100000;
+    int steps = 0;
+    const char *stop = "count";
+    while (steps < VLD_MAX) {
+        mem->mem_writes = 0;
+        int tr = handle_trap_local(symbols, cpu, mem);
+        if (tr < 0) { stop = "trap";  break; }
+        if (tr > 0) continue;
+        unsigned char opc = mem_read(mem, cpu->pc);
+        if (opc == 0x00) { stop = "brk"; break; }
+        const dispatch_entry_t *te = peek_dispatch(cpu, mem, dt, *p_cpu_type);
+        if (te && te->mnemonic && strcmp(te->mnemonic, "STP") == 0) { stop = "stp"; break; }
+        if (breakpoint_hit(breakpoints, cpu)) { stop = "bp"; break; }
+        if (s_snap_active) {
+            for (int _d = 0; _d < (mem->mem_writes < 256 ? mem->mem_writes : 256); _d++)
+                cli_snap_record(mem->mem_addr[_d], mem->mem_old_val[_d],
+                                mem->mem_val[_d], (uint16_t)routine_addr);
+        }
+        execute_from_mem(cpu, mem, dt, *p_cpu_type);
+        steps++;
+    }
+
+    int act_a=cpu->a, act_x=cpu->x, act_y=cpu->y;
+    int act_z=cpu->z, act_b=cpu->b, act_s=cpu->s, act_p=cpu->p;
+
+    /* Check pass/fail */
+    int passed = 1;
+    char fail_msg[256] = "";
+
+    if (strcmp(stop,"brk")!=0 && strcmp(stop,"stp")!=0) {
+        passed = 0;
+        snprintf(fail_msg, sizeof(fail_msg),
+                 "did not complete (stop=%s at $%04X after %d steps)",
+                 stop, (unsigned)cpu->pc, steps);
+    } else {
+#define CHK(NM, ev, av) \
+        if ((ev) >= 0 && (av) != ((ev) & 0xFF)) { \
+            char _t[32]; \
+            snprintf(_t, sizeof(_t), NM "=$%02X exp $%02X; ", \
+                     (unsigned)((av) & 0xFF), (unsigned)((ev) & 0xFF)); \
+            strncat(fail_msg, _t, sizeof(fail_msg)-strlen(fail_msg)-1); \
+            passed = 0; \
+        }
+        CHK("A",ex_a,act_a) CHK("X",ex_x,act_x) CHK("Y",ex_y,act_y)
+        CHK("Z",ex_z,act_z) CHK("B",ex_b,act_b) CHK("P",ex_p,act_p)
+#undef CHK
+    }
+
+    /* Restore scratch area and CPU */
+    for (int i = 0; i < 4; i++) mem->mem[(scratch + i) & 0xFFFF] = saved_bytes[i];
+    *cpu = saved_cpu;
+
+    /* Output */
+    if (g_json_mode) {
+        printf("{\"cmd\":\"validate\",\"ok\":true,\"data\":{"
+               "\"passed\":%s,"
+               "\"actual\":{\"a\":%d,\"x\":%d,\"y\":%d,\"z\":%d,\"b\":%d,\"sp\":%d,\"p\":%d},"
+               "\"fail_msg\":\"%s\"}}\n",
+               passed ? "true" : "false",
+               act_a, act_x, act_y, act_z, act_b, act_s, act_p,
+               fail_msg);
+    } else {
+        if (passed) {
+            printf("PASS  A=$%02X X=$%02X Y=$%02X Z=$%02X P=$%02X\n",
+                   (unsigned)act_a,(unsigned)act_x,(unsigned)act_y,
+                   (unsigned)act_z,(unsigned)act_p);
+        } else {
+            printf("FAIL  %s\n      A=$%02X X=$%02X Y=$%02X Z=$%02X P=$%02X\n",
+                   fail_msg,
+                   (unsigned)act_a,(unsigned)act_x,(unsigned)act_y,
+                   (unsigned)act_z,(unsigned)act_p);
+        }
+    }
+}
+
+/* --------------------------------------------------------------------------
  * run_asm_mode
  * -------------------------------------------------------------------------- */
 
@@ -277,6 +506,8 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
             printf("          asm [addr], disasm [addr [count]],\n");
             printf("          vic2.info, vic2.regs, vic2.sprites,\n");
             printf("          vic2.savescreen [file], vic2.savebitmap [file],\n");
+            printf("          validate <addr> [A=v X=v ...] : [A=v X=v ...]\n");
+            printf("          snapshot, diff,\n");
             printf("          speed [scale]  (1.0=C64, 0=unlimited), quit\n");
         } else if (strcmp(cmd, "break") == 0) {
             const char *p = line; SKIP_CMD(p); unsigned long addr;
@@ -387,6 +618,12 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
                 cpu_t pre = *cpu;
                 execute_from_mem(cpu, mem, dt, *p_cpu_type);
                 cli_hist_push(&pre, mem);
+                if (s_snap_active) {
+                    int _nw = mem->mem_writes < 256 ? mem->mem_writes : 256;
+                    for (int _d = 0; _d < _nw; _d++)
+                        cli_snap_record(mem->mem_addr[_d], mem->mem_old_val[_d],
+                                        mem->mem_val[_d], pre.pc);
+                }
                 if (g_cli_speed > 0.0f && ((cpu->cycles - cyc0) & 0x3FF) < 8) {
                     struct timespec tnow; clock_gettime(CLOCK_MONOTONIC, &tnow);
                     double elapsed = (tnow.tv_sec - t0.tv_sec) + (tnow.tv_nsec - t0.tv_nsec) * 1e-9;
@@ -400,6 +637,132 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
             }
             if (g_json_mode) json_exec_result("run", stop_reason, cpu);
             else printf("STOP at $%04X\n", cpu->pc);
+        } else if (strcmp(cmd, "trace") == 0) {
+            const char *p = line; SKIP_CMD(p);
+            while (*p && isspace((unsigned char)*p)) p++;
+            unsigned long tmp;
+            /* Optional start address — only if $ prefix (bare numbers are treated as count) */
+            int has_addr = 0;
+            unsigned short trace_start = cpu->pc;
+            if (*p == '$') {
+                if (parse_mon_value(&p, &tmp)) { trace_start = (unsigned short)tmp; has_addr = 1; }
+                while (*p && isspace((unsigned char)*p)) p++;
+            }
+            /* Optional max instructions (default 100) */
+            int max_n = parse_mon_value(&p, &tmp) ? (int)tmp : 100;
+            if (max_n < 1) max_n = 1;
+            if (max_n > 2000) max_n = 2000;
+            while (*p && isspace((unsigned char)*p)) p++;
+            /* Optional stop_on_brk (default 1) */
+            int stop_brk = parse_mon_value(&p, &tmp) ? ((int)tmp ? 1 : 0) : 1;
+
+            if (has_addr) cpu->pc = trace_start;
+
+            const char *stop_reason = "count";
+            int n_exec = 0;
+            unsigned long start_cycles = cpu->cycles;
+
+            if (g_json_mode)
+                printf("{\"cmd\":\"trace\",\"ok\":true,\"data\":{\"instructions\":[");
+
+            while (n_exec < max_n) {
+                mem->mem_writes = 0;
+                int tr = handle_trap_local(symbols, cpu, mem);
+                if (tr < 0) { stop_reason = "trap"; break; }
+                if (tr > 0) continue;
+                if (breakpoint_hit(breakpoints, cpu)) { stop_reason = "bp"; break; }
+
+                uint16_t pre_pc = cpu->pc;
+                unsigned char opc = mem_read(mem, pre_pc);
+
+                disasm_entry_t de;
+                disasm_one_entry(mem, dt, *p_cpu_type, pre_pc, &de);
+
+                if (opc == 0x00) {
+                    if (g_json_mode) {
+                        if (n_exec > 0) printf(",");
+                        printf("{\"pc\":%d,\"mnemonic\":\"BRK\",\"operand\":\"\","
+                               "\"bytes\":\"%s\","
+                               "\"a\":%d,\"x\":%d,\"y\":%d,\"z\":%d,\"b\":%d,"
+                               "\"p\":%d,\"sp\":%d,\"cycles\":0,\"stop\":true}",
+                               (int)pre_pc, de.bytes,
+                               (int)cpu->a,(int)cpu->x,(int)cpu->y,
+                               (int)cpu->z,(int)cpu->b,(int)cpu->p,(int)cpu->s);
+                    } else {
+                        printf("$%04X  %-4s %-16s  (stop)\n", (unsigned)pre_pc, "BRK", "");
+                    }
+                    n_exec++;
+                    stop_reason = "brk";
+                    break;
+                }
+
+                const dispatch_entry_t *te = peek_dispatch(cpu, mem, dt, *p_cpu_type);
+                if (te && te->mnemonic && strcmp(te->mnemonic, "STP") == 0) {
+                    if (g_json_mode) {
+                        if (n_exec > 0) printf(",");
+                        printf("{\"pc\":%d,\"mnemonic\":\"STP\",\"operand\":\"\","
+                               "\"bytes\":\"%s\","
+                               "\"a\":%d,\"x\":%d,\"y\":%d,\"z\":%d,\"b\":%d,"
+                               "\"p\":%d,\"sp\":%d,\"cycles\":0,\"stop\":true}",
+                               (int)pre_pc, de.bytes,
+                               (int)cpu->a,(int)cpu->x,(int)cpu->y,
+                               (int)cpu->z,(int)cpu->b,(int)cpu->p,(int)cpu->s);
+                    } else {
+                        printf("$%04X  %-4s %-16s  (stop)\n", (unsigned)pre_pc, "STP", "");
+                    }
+                    n_exec++;
+                    stop_reason = "stp";
+                    break;
+                }
+
+                unsigned long pre_cycles = cpu->cycles;
+                execute_from_mem(cpu, mem, dt, *p_cpu_type);
+                int cdelta = (int)(cpu->cycles - pre_cycles);
+                if (s_snap_active) {
+                    int _nw = mem->mem_writes < 256 ? mem->mem_writes : 256;
+                    for (int _d = 0; _d < _nw; _d++)
+                        cli_snap_record(mem->mem_addr[_d], mem->mem_old_val[_d],
+                                        mem->mem_val[_d], pre_pc);
+                }
+
+                if (g_json_mode) {
+                    if (n_exec > 0) printf(",");
+                    /* Escape operand for JSON (replace '"' with '\\"') */
+                    char esc_op[64]; int ei = 0;
+                    for (int oi = 0; de.operand[oi] && ei < 62; oi++) {
+                        if (de.operand[oi] == '"') esc_op[ei++] = '\\';
+                        esc_op[ei++] = de.operand[oi];
+                    }
+                    esc_op[ei] = '\0';
+                    printf("{\"pc\":%d,\"mnemonic\":\"%s\",\"operand\":\"%s\","
+                           "\"bytes\":\"%s\","
+                           "\"a\":%d,\"x\":%d,\"y\":%d,\"z\":%d,\"b\":%d,"
+                           "\"p\":%d,\"sp\":%d,\"cycles\":%d}",
+                           (int)pre_pc, de.mnemonic, esc_op, de.bytes,
+                           (int)cpu->a,(int)cpu->x,(int)cpu->y,
+                           (int)cpu->z,(int)cpu->b,(int)cpu->p,(int)cpu->s, cdelta);
+                } else {
+                    char instr[24];
+                    if (de.operand[0])
+                        snprintf(instr, sizeof(instr), "%s %s", de.mnemonic, de.operand);
+                    else
+                        snprintf(instr, sizeof(instr), "%s", de.mnemonic);
+                    printf("$%04X  %-20s  A=%02X X=%02X Y=%02X P=%02X SP=%02X  cycles=%d\n",
+                           (unsigned)pre_pc, instr,
+                           (unsigned)cpu->a,(unsigned)cpu->x,(unsigned)cpu->y,
+                           (unsigned)cpu->p,(unsigned)cpu->s, cdelta);
+                }
+                n_exec++;
+            }
+
+            unsigned long total_cycles = cpu->cycles - start_cycles;
+            if (g_json_mode) {
+                printf("],\"stop_reason\":\"%s\",\"count\":%d,\"total_cycles\":%lu}}\n",
+                       stop_reason, n_exec, total_cycles);
+            } else {
+                printf("---\nStopped: %s  Executed: %d  Cycles: %lu\n",
+                       stop_reason, n_exec, total_cycles);
+            }
         } else if (strcmp(cmd, "processors") == 0) {
             if (g_json_mode) printf("{\"cmd\":\"processors\",\"ok\":true,\"data\":{\"processors\":[\"6502\",\"65c02\",\"65ce02\",\"45gs02\"]}}\n");
             else list_processors();
@@ -497,6 +860,12 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
                 cpu_t pre = *cpu;
                 execute_from_mem(cpu, mem, dt, *p_cpu_type);
                 cli_hist_push(&pre, mem);
+                if (s_snap_active) {
+                    int _nw = mem->mem_writes < 256 ? mem->mem_writes : 256;
+                    for (int _d = 0; _d < _nw; _d++)
+                        cli_snap_record(mem->mem_addr[_d], mem->mem_old_val[_d],
+                                        mem->mem_val[_d], pre.pc);
+                }
             }
             if (g_json_mode) json_exec_result("step", stop_reason, cpu);
             else printf("STOP $%04X\n", cpu->pc);
@@ -629,6 +998,128 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
                 } else {
                     if (g_cli_speed == 0.0f) printf("Speed: unlimited (use 'speed 1.0' for C64 speed)\n");
                     else printf("Speed: %.4fx C64 (%.0f Hz)\n", g_cli_speed, CLI_C64_HZ * g_cli_speed);
+                }
+            }
+        } else if (strcmp(cmd, "symbols") == 0) {
+            if (g_json_mode) {
+                printf("{\"cmd\":\"symbols\",\"ok\":true,\"data\":{\"count\":%d,\"symbols\":[",
+                       symbols->count);
+                for (int i = 0; i < symbols->count; i++) {
+                    const char *tname;
+                    switch (symbols->symbols[i].type) {
+                    case SYM_LABEL:         tname = "label";    break;
+                    case SYM_VARIABLE:      tname = "variable"; break;
+                    case SYM_CONSTANT:      tname = "constant"; break;
+                    case SYM_FUNCTION:      tname = "function"; break;
+                    case SYM_IO_PORT:       tname = "io_port";  break;
+                    case SYM_MEMORY_REGION: tname = "region";   break;
+                    case SYM_TRAP:          tname = "trap";     break;
+                    default:                tname = "unknown";  break;
+                    }
+                    if (i > 0) printf(",");
+                    printf("{\"name\":\"%s\",\"address\":%d,\"type\":\"%s\"}",
+                           symbols->symbols[i].name, symbols->symbols[i].address, tname);
+                }
+                printf("]}}\n");
+            } else {
+                if (symbols->count == 0) {
+                    printf("No symbols defined.\n");
+                } else {
+                    printf("%-20s  %-6s  %s\n", "Name", "Addr", "Type");
+                    printf("%-20s  %-6s  %s\n", "--------------------", "------", "----");
+                    for (int i = 0; i < symbols->count; i++) {
+                        const char *tname;
+                        switch (symbols->symbols[i].type) {
+                        case SYM_LABEL:         tname = "label";    break;
+                        case SYM_VARIABLE:      tname = "variable"; break;
+                        case SYM_CONSTANT:      tname = "constant"; break;
+                        case SYM_FUNCTION:      tname = "function"; break;
+                        case SYM_IO_PORT:       tname = "io_port";  break;
+                        case SYM_MEMORY_REGION: tname = "region";   break;
+                        case SYM_TRAP:          tname = "trap";     break;
+                        default:                tname = "?";        break;
+                        }
+                        printf("%-20s  $%04X   %s\n",
+                               symbols->symbols[i].name, symbols->symbols[i].address, tname);
+                    }
+                    printf("%d symbol(s)\n", symbols->count);
+                }
+            }
+        } else if (strcmp(cmd, "validate") == 0) {
+            cmd_validate(line, cpu, mem, dt, p_cpu_type, breakpoints, symbols);
+        } else if (strcmp(cmd, "snapshot") == 0) {
+            cli_snap_reset();
+            s_snap_active = 1;
+            if (g_json_mode)
+                printf("{\"cmd\":\"snapshot\",\"ok\":true,\"data\":{\"message\":\"snapshot taken\"}}\n");
+            else
+                printf("Memory snapshot taken.\n");
+        } else if (strcmp(cmd, "diff") == 0) {
+            if (!s_snap_active) {
+                if (g_json_mode) json_err("diff", "No snapshot taken; use 'snapshot' first");
+                else printf("No snapshot taken; use 'snapshot' first.\n");
+            } else {
+                /* Collect changed entries (before != after) */
+                int count = 0;
+                for (int i = 0; i < 256; i++) {
+                    cli_snap_node_t *n = s_snap_buckets[i];
+                    while (n) {
+                        if (n->before != n->after && count < CLI_DIFF_CAP) {
+                            s_diff_buf[count].addr      = n->addr;
+                            s_diff_buf[count].before    = n->before;
+                            s_diff_buf[count].after     = n->after;
+                            s_diff_buf[count].writer_pc = n->writer_pc;
+                            count++;
+                        }
+                        n = n->next;
+                    }
+                }
+                qsort(s_diff_buf, (size_t)count, sizeof(cli_diff_t), cli_diff_cmp);
+
+                if (g_json_mode) {
+                    printf("{\"cmd\":\"diff\",\"ok\":true,\"data\":{\"count\":%d,\"changes\":[",
+                           count);
+                    for (int i = 0; i < count; i++) {
+                        if (i > 0) printf(",");
+                        printf("{\"addr\":%d,\"before\":%d,\"after\":%d,\"writer_pc\":%d}",
+                               (int)s_diff_buf[i].addr, (int)s_diff_buf[i].before,
+                               (int)s_diff_buf[i].after, (int)s_diff_buf[i].writer_pc);
+                    }
+                    printf("]}}\n");
+                } else {
+                    if (count == 0) {
+                        printf("No memory changes since snapshot.\n");
+                    } else {
+                        printf("Memory diff: %d change(s)\n", count);
+                        int i = 0;
+                        while (i < count) {
+                            /* Find end of consecutive-address run */
+                            int j = i;
+                            while (j + 1 < count && s_diff_buf[j+1].addr == s_diff_buf[j].addr + 1)
+                                j++;
+                            if (i == j) {
+                                /* Single byte */
+                                printf("  $%04X        %02X->%02X  by $%04X\n",
+                                       (unsigned)s_diff_buf[i].addr,
+                                       (unsigned)s_diff_buf[i].before,
+                                       (unsigned)s_diff_buf[i].after,
+                                       (unsigned)s_diff_buf[i].writer_pc);
+                            } else {
+                                /* Range */
+                                int span = j - i + 1;
+                                printf("  $%04X-$%04X  %d byte(s):  [",
+                                       (unsigned)s_diff_buf[i].addr,
+                                       (unsigned)s_diff_buf[j].addr, span);
+                                for (int k = i; k <= j && k < i + 8; k++) printf("%s%02X", k>i?" ":"", (unsigned)s_diff_buf[k].before);
+                                if (span > 8) printf(" ...");
+                                printf("]->[");
+                                for (int k = i; k <= j && k < i + 8; k++) printf("%s%02X", k>i?" ":"", (unsigned)s_diff_buf[k].after);
+                                if (span > 8) printf(" ...");
+                                printf("]  by $%04X\n", (unsigned)s_diff_buf[j].writer_pc);
+                            }
+                            i = j + 1;
+                        }
+                    }
                 }
             }
         } else if (strcmp(cmd, "vic2.info") == 0) {

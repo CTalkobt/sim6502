@@ -351,6 +351,107 @@ int sim_history_step_fwd(sim_session_t *s);
  * Returns 1 on success, 0 if slot is out of range.                         */
 int sim_history_get(sim_session_t *s, int slot, sim_history_entry_t *entry);
 
+/* ---- Memory Snapshot & Diff ---- */
+
+/* One changed-byte entry returned by sim_snapshot_diff(). */
+typedef struct {
+    uint16_t addr;
+    uint8_t  before;    /* value at snapshot time                         */
+    uint8_t  after;     /* current value                                   */
+    uint16_t writer_pc; /* PC of instruction that most recently wrote here */
+} sim_diff_entry_t;
+
+/* Capture current 64 KB memory state as a named snapshot.
+ * Overwrites any previous snapshot.                                         */
+void sim_snapshot_take(sim_session_t *s);
+
+/* Return 1 if a snapshot has been taken, 0 otherwise.                       */
+int  sim_snapshot_valid(sim_session_t *s);
+
+/* Compare current memory to snapshot.
+ * Fills entries[0..N-1] with addresses where before != after.
+ * Returns count of differences, or -1 if no snapshot has been taken.        */
+int  sim_snapshot_diff(sim_session_t *s,
+                       sim_diff_entry_t *entries, int entries_cap);
+
+/* ---- Trace Run ---- */
+
+/* Execute up to max_instr instructions from start_addr (-1 = current PC) and
+ * record each one into entries[0..N-1].
+ * stop_on_brk: 1 = stop when BRK (0x00) opcode is reached (BRK IS recorded).
+ * entries_cap: capacity of the entries[] array.
+ * stop_reason_out: if non-NULL, filled with "brk"|"stp"|"bp"|"count".
+ * Returns the number of entries recorded (0 .. min(max_instr, entries_cap)).
+ * CPU and memory state are updated in-place (real execution).               */
+int sim_trace_run(sim_session_t *s,
+                  int                start_addr,
+                  int                max_instr,
+                  int                stop_on_brk,
+                  sim_trace_entry_t *entries,
+                  int                entries_cap,
+                  char              *stop_reason_out,
+                  int                stop_reason_sz);
+
+/* ---- Validate Routine ---- */
+
+#define SIM_VALIDATE_MEM_OPS 8   /* max memory-write setup / check ops per test */
+
+/* Input setup for one test case.  All register fields default to -1 (don't set). */
+typedef struct {
+    int      a, x, y, z, b, s, p;                   /* -1 = don't set */
+    uint16_t mem_addr[SIM_VALIDATE_MEM_OPS];         /* memory pre-writes */
+    uint8_t  mem_val [SIM_VALIDATE_MEM_OPS];
+    int      mem_count;
+    char     label[48];
+} sim_test_in_t;
+
+/* Expected outputs for one test case.  All register fields default to -1 (don't check). */
+typedef struct {
+    int      a, x, y, z, b, s, p;                   /* -1 = don't check */
+    uint16_t mem_addr[SIM_VALIDATE_MEM_OPS];         /* memory post-checks */
+    uint8_t  mem_val [SIM_VALIDATE_MEM_OPS];
+    int      mem_count;
+} sim_test_expect_t;
+
+/* Result of one test case. */
+typedef struct {
+    int  passed;
+    int  a, x, y, z, b, s, p;   /* actual register values after call  */
+    char fail_msg[128];           /* empty string when passed           */
+} sim_test_result_t;
+
+/*
+ * Run test vectors against a subroutine at routine_addr.
+ *
+ * For each test case i:
+ *   1. Reset CPU registers to a neutral state (preserves memory).
+ *   2. Apply input register overrides from inputs[i].
+ *   3. Apply memory writes from inputs[i].mem_addr/mem_val.
+ *   4. Set PC = scratch_addr, which holds: JSR routine_addr ; BRK
+ *   5. Execute until BRK / STP / step limit.
+ *   6. Compare actual registers + memory against expects[i].
+ *   7. Fill results[i].
+ *
+ * Memory is shared between test cases (state accumulates — useful for
+ * testing routines that operate on persistent buffers).
+ *
+ * The 4 bytes at scratch_addr are saved before the run and restored after.
+ * The CPU state (registers) prior to calling this function is also restored.
+ *
+ * scratch_addr     : address for the 4-byte JSR+BRK shim (0 → default $FFF8)
+ * max_steps        : execution limit per test (0 → default 100 000)
+ *
+ * Returns number of tests that passed.
+ */
+int sim_validate_routine(sim_session_t          *s,
+                         uint16_t                routine_addr,
+                         uint16_t                scratch_addr,
+                         int                     max_steps,
+                         const sim_test_in_t    *inputs,
+                         const sim_test_expect_t *expects,
+                         sim_test_result_t      *results,
+                         int                     count);
+
 /* ---- Profiler ---- */
 
 /* Enable (1) or disable (0) per-instruction profiling.                      */

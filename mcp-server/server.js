@@ -143,6 +143,22 @@ function fmtInfo(d) {
   return lines.join('\n');
 }
 
+/** Format a trace_run instruction array as a compact log */
+function fmtTrace(d) {
+  const h4 = n => n.toString(16).toUpperCase().padStart(4, '0');
+  const h2 = n => n.toString(16).toUpperCase().padStart(2, '0');
+  const lines = d.instructions.map(i => {
+    if (i.stop) {
+      return `$${h4(i.pc)}  ${i.mnemonic}${i.operand ? ' ' + i.operand : ''}`.padEnd(30) + `  (stop)`;
+    }
+    const instr = (i.mnemonic + (i.operand ? ' ' + i.operand : '')).padEnd(20);
+    return `$${h4(i.pc)}  ${instr}  A=${h2(i.a)} X=${h2(i.x)} Y=${h2(i.y)} P=${h2(i.p)} SP=${h2(i.sp)}  cycles=${i.cycles}`;
+  });
+  lines.push(`---`);
+  lines.push(`Stopped: ${d.stop_reason}  Executed: ${d.count}  Cycles: ${d.total_cycles}`);
+  return lines.join('\n');
+}
+
 /** Format a breakpoint list */
 function fmtBreakpoints(d) {
   if (d.breakpoints.length === 0) return 'No breakpoints set.';
@@ -274,6 +290,46 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       }}
     },
     {
+      name: "trace_run",
+      description: "Execute N instructions and return a compact per-instruction log showing address, disassembly, and register state after each step. Efficient alternative to calling step_instruction + read_registers in a loop.",
+      inputSchema: { type: "object", properties: {
+        start_address:    { type: "number", description: "Start address (default: current PC)" },
+        max_instructions: { type: "number", description: "Maximum instructions to execute (default 100, max 2000)" },
+        stop_on_brk:      { type: "boolean", description: "Stop when BRK is reached (default true)" }
+      }}
+    },
+    {
+      name: "validate_routine",
+      description: "Run an array of register test-vectors against a subroutine. For each test: sets input registers, calls the routine via JSR, captures output registers, and checks expected values. Returns pass/fail per test. Dramatically faster than step_instruction + read_registers loops for TDD.",
+      inputSchema: { type: "object", required: ["routine_address", "tests"], properties: {
+        routine_address: { type: "number", description: "Address of the subroutine (e.g. 768 = $0300)" },
+        scratch_address: { type: "number", description: "4-byte scratch area for the JSR+BRK shim (default $FFF8)" },
+        setup:           { type: "string", description: "Optional assembly snippet executed ONCE before all tests to initialise memory (e.g. 'LDA #$00\\nSTA $FB')" },
+        tests: {
+          type: "array",
+          description: "Array of test vectors",
+          items: {
+            type: "object",
+            properties: {
+              label:  { type: "string" },
+              in:     { type: "object", description: "Input registers: {a,x,y,z,b,s,p} (omit to leave unset)" },
+              expect: { type: "object", description: "Expected output registers: {a,x,y,z,b,s,p} (omit to skip check)" }
+            }
+          }
+        }
+      }}
+    },
+    {
+      name: "snapshot",
+      description: "Capture current memory state. Subsequent run/step/trace_run calls track every write. Use diff_snapshot to see what changed.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "diff_snapshot",
+      description: "Compare current memory to the last snapshot. Returns every address whose value differs, with before/after values and the PC of the instruction that last wrote it. Consecutive changed addresses are shown as ranges.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
       name: "vic2_info",
       description: "VIC-II state summary: mode, key addresses, colours.",
       inputSchema: { type: "object", properties: {} }
@@ -318,7 +374,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "load_program": {
         await startSimulator(args.code);
-        return text("Program loaded successfully.");
+        const symRaw = await sendCommand("symbols");
+        const symData = parseResult(symRaw);
+        const h4 = n => n.toString(16).toUpperCase().padStart(4, '0');
+        const lines = ["Program loaded successfully."];
+        if (symData.count > 0) {
+          lines.push(`\nResolved symbols (${symData.count}):`);
+          for (const s of symData.symbols) {
+            lines.push(`  ${s.name.padEnd(20)} $${h4(s.address)}  (${s.type})`);
+          }
+        } else {
+          lines.push("No symbols defined.");
+        }
+        return text(lines.join('\n'));
       }
 
       case "run_program": {
@@ -391,6 +459,112 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         parts.push(await sendCommand('.'));
         const out = parts.filter(Boolean).join('\n');
         return text(hasErrors ? `Assembly completed with errors:\n${out}` : out);
+      }
+
+      case "validate_routine": {
+        const h2 = n => (n & 0xFF).toString(16).padStart(2,'0').toUpperCase();
+        const h4 = n => (n & 0xFFFF).toString(16).padStart(4,'0').toUpperCase();
+        const routineAddr = args.routine_address;
+        const scratchAddr = args.scratch_address;
+        const tests       = args.tests || [];
+
+        // Handle optional setup: reload program with setup code appended, run it once
+        if (args.setup) {
+          const origCode = fs.readFileSync(TEMP_ASM_FILE, 'utf8');
+          const combined = origCode + `\n_vr_setup_:\n${args.setup}\n  BRK\n`;
+          await startSimulator(combined);
+          const symsRaw  = await sendCommand("symbols");
+          const symsData = parseResult(symsRaw);
+          const setupSym = symsData.symbols.find(s => s.name === '_vr_setup_');
+          if (setupSym) {
+            // Run setup code until BRK (up to 10000 steps)
+            await sendCommand(`trace $${h4(setupSym.address)} 10000 1`);
+          }
+        }
+
+        const results = [];
+        for (let i = 0; i < tests.length; i++) {
+          const test = tests[i];
+          const inp  = test.in     || {};
+          const exp  = test.expect || {};
+
+          let vcmd = `validate $${h4(routineAddr)}`;
+          if (scratchAddr !== undefined) vcmd += ` scratch=$${h4(scratchAddr)}`;
+          for (const [k, v] of Object.entries(inp)) vcmd += ` ${k.toUpperCase()}=${v}`;
+          vcmd += ' :';
+          for (const [k, v] of Object.entries(exp)) vcmd += ` ${k.toUpperCase()}=${v}`;
+
+          const raw = await sendCommand(vcmd);
+          const d   = parseResult(raw);
+          results.push({
+            label:    test.label || `test ${i + 1}`,
+            passed:   d.passed,
+            actual:   d.actual,
+            fail_msg: d.fail_msg || '',
+          });
+        }
+
+        const passCount = results.filter(r => r.passed).length;
+        const lines = [`${passCount}/${results.length} test(s) passed\n`];
+        for (const r of results) {
+          const icon = r.passed ? '✓' : '✗';
+          lines.push(`  ${icon} ${r.label}`);
+          if (!r.passed) {
+            if (r.fail_msg) lines.push(`       ${r.fail_msg.trim()}`);
+            if (r.actual) {
+              const a = r.actual;
+              lines.push(`       actual: A=$${h2(a.a)} X=$${h2(a.x)} Y=$${h2(a.y)} Z=$${h2(a.z)} B=$${h2(a.b)} P=$${h2(a.p)}`);
+            }
+          }
+        }
+        return text(lines.join('\n'));
+      }
+
+      case "snapshot": {
+        await sendCommand("snapshot");
+        return text("Memory snapshot taken. Run/step your code, then call diff_snapshot.");
+      }
+
+      case "diff_snapshot": {
+        const raw = await sendCommand("diff");
+        const d   = parseResult(raw);
+        if (d.count === 0) return text("No memory changes since snapshot.");
+        const h4 = n => n.toString(16).toUpperCase().padStart(4, '0');
+        const lines = [`Memory diff: ${d.count} change(s)\n`];
+        // Collapse consecutive addresses into ranges
+        const changes = d.changes;
+        let i = 0;
+        while (i < changes.length) {
+          let j = i;
+          while (j + 1 < changes.length && changes[j+1].addr === changes[j].addr + 1) j++;
+          if (i === j) {
+            const c = changes[i];
+            lines.push(`  $${h4(c.addr)}        ${h4(c.before).slice(-2)}->${h4(c.after).slice(-2)}  by $${h4(c.writer_pc)}`);
+          } else {
+            const span = j - i + 1;
+            const preview = changes.slice(i, Math.min(i+8, j+1));
+            const bef = preview.map(c => c.before.toString(16).padStart(2,'0')).join(' ');
+            const aft = preview.map(c => c.after .toString(16).padStart(2,'0')).join(' ');
+            const ellipsis = span > 8 ? ' ...' : '';
+            lines.push(`  $${h4(changes[i].addr)}-$${h4(changes[j].addr)}  ${span} byte(s): [${bef}${ellipsis}]->[${aft}${ellipsis}]  by $${h4(changes[j].writer_pc)}`);
+          }
+          i = j + 1;
+        }
+        return text(lines.join('\n'));
+      }
+
+      case "trace_run": {
+        const maxN  = Math.min(args.max_instructions || 100, 2000);
+        const brk   = args.stop_on_brk !== false ? 1 : 0;
+        let   cmd   = `trace`;
+        if (args.start_address !== undefined) cmd += ` $${args.start_address.toString(16)}`;
+        else cmd += ` .`;   // use current PC (. is not a valid addr, let the CLI default)
+        // rebuild: no-address form just omits it
+        cmd = args.start_address !== undefined
+          ? `trace $${args.start_address.toString(16)} ${maxN} ${brk}`
+          : `trace ${maxN} ${brk}`;
+        const raw = await sendCommand(cmd);
+        return text(fmtTrace(parseResult(raw)));
       }
 
       case "reset_cpu": {
