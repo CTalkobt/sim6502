@@ -90,5 +90,6 @@ clean:
 
 test: $(TARGET)
 	./tools/run_tests.py
+	./tools/test_patterns.py
 
 .PHONY: all clean gui test

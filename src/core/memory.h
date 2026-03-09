@@ -29,10 +29,44 @@ static inline unsigned char mem_read_phys(memory_t *mem, unsigned int phys) {
 	return mem->far_pages[page][off];
 }
 
+/* MEGA65 math coprocessor — recompute results whenever an input register is
+ * written.  Registers are combinatorial on real hardware; we mirror that here.
+ *
+ *   $D768/$D769  Divider dividend (A)       $D76A/$D76B  Divider divisor (B)
+ *   $D770/$D771  Multiplier input A         $D772/$D773  Multiplier input B
+ *   $D778-$D77B  Shared 32-bit result (LSB first)
+ *
+ * MUL write  → result = MUL_A × MUL_B  (32-bit)
+ * DIV write  → result bytes 0-1 = quotient, bytes 2-3 = remainder
+ */
+static inline void mem_math_update(memory_t *mem, unsigned short addr) {
+	if (addr >= 0xD770 && addr <= 0xD773) {
+		/* Multiply */
+		unsigned int a = mem->mem[0xD770] | ((unsigned int)mem->mem[0xD771] << 8);
+		unsigned int b = mem->mem[0xD772] | ((unsigned int)mem->mem[0xD773] << 8);
+		unsigned long long p = (unsigned long long)a * b;
+		mem->mem[0xD778] = (unsigned char)(p);
+		mem->mem[0xD779] = (unsigned char)(p >> 8);
+		mem->mem[0xD77A] = (unsigned char)(p >> 16);
+		mem->mem[0xD77B] = (unsigned char)(p >> 24);
+	} else if (addr >= 0xD768 && addr <= 0xD76B) {
+		/* Divide */
+		unsigned int a = mem->mem[0xD768] | ((unsigned int)mem->mem[0xD769] << 8);
+		unsigned int b = mem->mem[0xD76A] | ((unsigned int)mem->mem[0xD76B] << 8);
+		unsigned int q = 0, r = 0;
+		if (b) { q = a / b; r = a % b; }
+		mem->mem[0xD778] = (unsigned char)(q);
+		mem->mem[0xD779] = (unsigned char)(q >> 8);
+		mem->mem[0xD77A] = (unsigned char)(r);
+		mem->mem[0xD77B] = (unsigned char)(r >> 8);
+	}
+}
+
 /* Physical (raw) byte write — no MAP translation. */
 static inline void mem_write_phys(memory_t *mem, unsigned int phys, unsigned char val) {
 	if (phys < 0x10000) {
 		mem->mem[phys] = val;
+		mem_math_update(mem, (unsigned short)phys);
 		return;
 	}
 	unsigned int page = phys >> FAR_PAGE_SHIFT;
@@ -68,6 +102,7 @@ static inline void mem_write(memory_t *mem, unsigned short addr, unsigned char v
 		mem_write_phys(mem, phys, val);
 	} else {
 		mem->mem[addr] = val;
+		mem_math_update(mem, addr);
 	}
 }
 

@@ -395,6 +395,49 @@ void parse_line(const char *line, instruction_t *instr, symbol_table_t *symbols,
 					else instr->mode = MODE_ZP_INDIRECT;
 				}
 			}
+		} else if (isalpha(*line) || *line == '_') {
+			/* Symbol name inside parens: look up its value, then detect mode */
+			char lbl[64]; int j = 0;
+			while ((*line && (isalnum(*line) || *line == '_')) && j < 63) lbl[j++] = *line++;
+			lbl[j] = 0;
+			instr->arg = 0;
+			if (symbols) symbol_lookup_name(symbols, lbl, &instr->arg);
+			while (*line && isspace(*line)) line++;
+			if (*line == ',') {
+				line++;
+				while (*line && isspace(*line)) line++;
+				if (toupper(*line) == 'X') {
+					if (instr->arg > 0xFF) instr->mode = MODE_ABS_INDIRECT_X;
+					else instr->mode = MODE_INDIRECT_X;
+					while (*line && *line != ')') line++;
+					if (*line == ')') line++;
+				} else if (toupper(*line) == 'S') {
+					if (toupper(line[1]) == 'P') line += 2;
+					else line++;
+					while (*line && isspace(*line)) line++;
+					if (*line == ')') {
+						line++;
+						while (*line && isspace(*line)) line++;
+						if (*line == ',') {
+							line++;
+							while (*line && isspace(*line)) line++;
+							if (toupper(*line) == 'Y') instr->mode = MODE_SP_INDIRECT_Y;
+						}
+					}
+				}
+			} else if (*line == ')') {
+				line++;
+				while (*line && isspace(*line)) line++;
+				if (*line == ',') {
+					line++;
+					while (*line && isspace(*line)) line++;
+					if (toupper(*line) == 'Y') instr->mode = MODE_INDIRECT_Y;
+					else if (toupper(*line) == 'Z') instr->mode = MODE_ZP_INDIRECT_Z;
+				} else {
+					if (instr->arg > 0xFF) instr->mode = MODE_INDIRECT;
+					else instr->mode = MODE_ZP_INDIRECT;
+				}
+			}
 		}
 	} else if (*line == '[') {
 		line++;
@@ -413,9 +456,10 @@ void parse_line(const char *line, instruction_t *instr, symbol_table_t *symbols,
 			}
 		}
 	} else if (instr->op[0]) {
-		if (isalpha(*line) || *line == '_') {
+		if (isalpha(*line) || *line == '_' || *line == '.') {
 			char label[64];
 			int j = 0;
+			if (*line == '.' && j < 63) label[j++] = *line++;  /* allow leading dot */
 			while ((*line && (isalnum(*line) || *line == '_')) && j < 63) label[j++] = *line++;
 			label[j] = 0;
 			if (is_branch) {

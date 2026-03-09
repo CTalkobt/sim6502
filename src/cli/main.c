@@ -150,14 +150,31 @@ int main(int argc, char *argv[]) {
 		while (fgets(line, sizeof(line), f)) {
 			const char *ptr = line; while (*ptr && isspace(*ptr)) ptr++;
 			if (!*ptr || *ptr == ';') continue;
-			if (*ptr == '.') { handle_pseudo_op(ptr, &cpu_type, &pc, NULL, NULL, NULL); continue; }
 			const char *semi1 = strchr(ptr, ';');
 			const char *colon = strchr(ptr, ':');
+			/* Dot-prefixed local label (.name:) must be checked before pseudo-op */
+			if (*ptr == '.' && !(colon && (!semi1 || colon < semi1))) {
+				handle_pseudo_op(ptr, &cpu_type, &pc, NULL, NULL, NULL); continue;
+			}
 			if (colon && (!semi1 || colon < semi1)) {
 				char l[64]; int len = colon - ptr; if (len >= 64) len = 63;
 				strncpy(l, ptr, len); l[len] = 0; symbol_add(&symbols, l, pc, SYM_LABEL, "Source");
 				const char *after = colon + 1; while (*after && isspace(*after)) after++;
 				if (*after == '.') { handle_pseudo_op(after, &cpu_type, &pc, NULL, NULL, NULL); continue; }
+			} else {
+				/* Equate:  NAME = VALUE  (no colon, '=' before any ';') */
+				const char *eq = strchr(ptr, '=');
+				if (eq && (!semi1 || eq < semi1)) {
+					const char *nend = eq - 1; while (nend > ptr && isspace(*nend)) nend--;
+					int nlen = (int)(nend - ptr) + 1;
+					if (nlen > 0 && nlen < 64 && (isalpha(*ptr) || *ptr == '_')) {
+						char ename[64]; strncpy(ename, ptr, (size_t)nlen); ename[nlen] = 0;
+						const char *vp = eq + 1; while (*vp && isspace(*vp)) vp++;
+						unsigned long val = (unsigned long)parse_value(vp, NULL);
+						symbol_add(&symbols, ename, (int)val, SYM_LABEL, "Equate");
+						continue;
+					}
+				}
 			}
 			instruction_t instr; parse_line(line, &instr, NULL, pc);
 			if (instr.op[0]) {
@@ -174,10 +191,18 @@ int main(int argc, char *argv[]) {
 		while (fgets(line, sizeof(line), f)) {
 			const char *ptr = line; while (*ptr && isspace(*ptr)) ptr++;
 			if (!*ptr || *ptr == ';') continue;
-			if (*ptr == '.') { handle_pseudo_op(ptr, &cpu_type, &pc, &mem, &symbols, NULL); continue; }
 			const char *semi2 = strchr(ptr, ';');
 			const char *colon2 = strchr(ptr, ':');
+			/* Dot-prefixed local label (.name:) must be checked before pseudo-op */
+			if (*ptr == '.' && !(colon2 && (!semi2 || colon2 < semi2))) {
+				handle_pseudo_op(ptr, &cpu_type, &pc, &mem, &symbols, NULL); continue;
+			}
 			if (colon2 && (!semi2 || colon2 < semi2)) { const char *after = colon2 + 1; while (*after && isspace(*after)) after++; if (*after == '.') { handle_pseudo_op(after, &cpu_type, &pc, &mem, &symbols, NULL); continue; } }
+			else {
+				/* Skip equate lines in second pass (already in symbol table) */
+				const char *eq2 = strchr(ptr, '=');
+				if (eq2 && (!semi2 || eq2 < semi2) && (isalpha(*ptr) || *ptr == '_')) continue;
+			}
 			instruction_t instr; parse_line(line, &instr, &symbols, pc);
 			if (instr.op[0]) {
 				rom[pc] = instr;
