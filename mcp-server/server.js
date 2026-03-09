@@ -23,7 +23,7 @@ let simulatorBuffer  = '';
 let simulatorResolve = null;
 
 const server = new Server(
-  { name: "6502-simulator", version: "1.0.0" },
+  { name: "6502-simulator", version: "0.99.0" },
   { capabilities: { tools: {} } }
 );
 

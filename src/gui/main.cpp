@@ -4583,7 +4583,7 @@ int main(int /*argc*/, char ** /*argv*/)
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
 
     SDL_Window *window = SDL_CreateWindow(
-        "sim6502-gui",
+        "sim6502-gui v0.99",
         win_x, win_y,
         win_w, win_h,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI

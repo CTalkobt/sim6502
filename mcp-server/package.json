@@ -1,6 +1,6 @@
 {
   "name": "6502-simulator-mcp",
-  "version": "1.0.0",
+  "version": "0.99.0",
   "description": "A 6502 simulator MCP server.",
   "main": "server.js",
   "type": "module",

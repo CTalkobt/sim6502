@@ -1255,7 +1255,7 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
  * -------------------------------------------------------------------------- */
 
 void print_help(const char *progname) {
-    printf("6502 Simulator\nUsage: %s [options] <file.asm>\n\n", progname);
+    printf("6502 Simulator v0.99\nUsage: %s [options] <file.asm>\n\n", progname);
     printf("Options:\n"
            "  -p <CPU>  Select processor: 6502, 65c02, 65ce02, 45gs02\n"
            "  -I        Interactive mode\n"
