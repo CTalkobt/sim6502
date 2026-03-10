@@ -425,6 +425,85 @@ static void cmd_validate(const char *line,
 }
 
 /* --------------------------------------------------------------------------
+ * cmd_assemble
+ * -------------------------------------------------------------------------- */
+
+static void cmd_assemble(const char *line,
+                         memory_t *mem, symbol_table_t *symbols,
+                         opcode_handler_t *handlers, int num_handlers,
+                         cpu_type_t cpu_type, cpu_t *cpu) {
+    const char *p = line;
+    /* Skip command word */
+    while (*p && !isspace((unsigned char)*p)) p++;
+    while (*p && isspace((unsigned char)*p)) p++;
+
+    /* Optional address */
+    unsigned long tmp_pc;
+    int asm_pc = parse_mon_value(&p, &tmp_pc) ? (int)tmp_pc : (int)cpu->pc;
+    while (*p && isspace((unsigned char)*p)) p++;
+
+    /* The rest of the line is the code. In JSON mode, we might get multiple lines
+     * separated by literal '\n' if the MCP server sent them that way, but actually
+     * sendCommand joins them with spaces. So we expect the MCP server to send 
+     * one instruction at a time or use a special separator.
+     * To support multi-line from the MCP server, we'll assume they are separated by ';' 
+     * if not in a string, but for now let's just handle the string after the address.
+     */
+    
+    if (!*p) {
+        if (g_json_mode) json_err("asm", "Usage: asm [addr] <instruction>");
+        else printf("Usage: asm [addr] <instruction>\n");
+        return;
+    }
+
+    int base_pc = asm_pc;
+    int enc = -1;
+
+    if (*p == '.') {
+        handle_pseudo_op(p, &cpu_type, &asm_pc, mem, symbols, NULL);
+        enc = asm_pc - base_pc;
+    } else {
+        const char *colon = strchr(p, ':');
+        if (colon) {
+            char lname[64]; int llen = (int)(colon - p); if (llen > 63) llen = 63;
+            memcpy(lname, p, (size_t)llen); lname[llen] = '\0';
+            while (llen > 0 && isspace((unsigned char)lname[llen-1])) lname[--llen] = '\0';
+            symbol_add(symbols, lname, (unsigned short)asm_pc, SYM_LABEL, "asm");
+            p = colon + 1; while (*p && isspace((unsigned char)*p)) p++;
+            if (!*p || *p == ';') {
+                if (g_json_mode) printf("{\"cmd\":\"asm\",\"ok\":true,\"data\":{\"address\":%d,\"size\":0,\"bytes\":\"\"}}\n", base_pc);
+                return;
+            }
+        }
+        
+        instruction_t instr; parse_line(p, &instr, symbols, asm_pc);
+        if (instr.op[0]) {
+            enc = encode_to_mem(mem, asm_pc, &instr, handlers, num_handlers, cpu_type);
+            if (enc >= 0) asm_pc += enc;
+        }
+    }
+
+    if (enc < 0) {
+        if (g_json_mode) json_err("asm", "Assembly failed");
+        else printf("Assembly failed: %s\n", p);
+    } else {
+        if (g_json_mode) {
+            char hex[32] = "";
+            for (int i = 0; i < (enc < 8 ? enc : 8); i++) {
+                char t[4]; snprintf(t, sizeof(t), "%02X", mem->mem[base_pc + i]);
+                strcat(hex, t);
+            }
+            printf("{\"cmd\":\"asm\",\"ok\":true,\"data\":{\"address\":%d,\"size\":%d,\"bytes\":\"%s\"}}\n",
+                   base_pc, enc, hex);
+        } else {
+            printf("$%04X:", base_pc);
+            for (int i = 0; i < (enc < 4 ? enc : 4); i++) printf(" %02X", mem->mem[base_pc + i]);
+            printf("  %s\n", p);
+        }
+    }
+}
+
+/* --------------------------------------------------------------------------
  * run_asm_mode
  * -------------------------------------------------------------------------- */
 
@@ -850,9 +929,13 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
                 else printf("Usage: mem <addr> [len]\n");
             }
         } else if (cmd == "asm") {
-            const char *p = line.c_str(); SKIP_CMD(p); unsigned long tmp;
-            int asm_pc = parse_mon_value(&p, &tmp) ? (int)tmp : (int)cpu->pc;
-            run_asm_mode(mem, symbols, *p_handlers, *p_num_handlers, *p_cpu_type, &asm_pc);
+            if (g_json_mode) {
+                cmd_assemble(line.c_str(), mem, symbols, *p_handlers, *p_num_handlers, *p_cpu_type, cpu);
+            } else {
+                const char *p = line.c_str(); SKIP_CMD(p); unsigned long tmp;
+                int asm_pc = parse_mon_value(&p, &tmp) ? (int)tmp : (int)cpu->pc;
+                run_asm_mode(mem, symbols, *p_handlers, *p_num_handlers, *p_cpu_type, &asm_pc);
+            }
         } else if (cmd == "disasm") {
             const char *p = line.c_str(); SKIP_CMD(p); unsigned long tmp;
             unsigned short daddr = parse_mon_value(&p, &tmp) ? (unsigned short)tmp : cpu->pc;

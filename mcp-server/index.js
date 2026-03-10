@@ -411,6 +411,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           variables:    { type: "object", description: "Optional variable overrides (e.g. { 'CPU': '6502' })" }
         }
       }
+    },
+    {
+      name: "shutdown_simulator",
+      description: "Terminate the persistent simulator process and free system resources.",
+      inputSchema: { type: "object", properties: {} }
     }
   ]
 }));
@@ -494,24 +499,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "assemble": {
-        // Assembly mode uses interactive prompts — runs in text mode regardless of -J
-        const addrPart = args.address !== undefined ? ` $${args.address.toString(16)}` : '';
+        const addrPart = args.address !== undefined ? `$${args.address.toString(16)} ` : '';
         const lines = (args.code || '').split('\n').filter(l => l.trim());
-        const parts = [];
-        parts.push(await sendCommand(`asm${addrPart}`));
+        const results = [];
         let hasErrors = false;
+        
         for (let i = 0; i < lines.length; i++) {
-          const response = await sendCommand(lines[i]);
-          if (response && response.includes('error:')) {
+          const raw = await sendCommand(`asm ${addrPart}${lines[i]}`);
+          try {
+            const d = parseResult(raw);
+            results.push(`$${d.address.toString(16).toUpperCase().padStart(4,'0')}: ${d.bytes.padEnd(8)}  ${lines[i]}`);
+          } catch (e) {
             hasErrors = true;
-            // Prefix with line number and original source so the error is unambiguous
-            parts.push(`Line ${i + 1}: ${lines[i]}\n${response}`);
-          } else {
-            parts.push(response);
+            results.push(`Line ${i + 1}: ${lines[i]}\n  Error: ${e.message}`);
           }
         }
-        parts.push(await sendCommand('.'));
-        const out = parts.filter(Boolean).join('\n');
+        const out = results.join('\n');
         return text(hasErrors ? `Assembly completed with errors:\n${out}` : out);
       }
 
@@ -519,21 +522,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const h2 = n => (n & 0xFF).toString(16).padStart(2,'0').toUpperCase();
         const h4 = n => (n & 0xFFFF).toString(16).padStart(4,'0').toUpperCase();
         const routineAddr = args.routine_address;
-        const scratchAddr = args.scratch_address;
+        const scratchAddr = args.scratch_address || 0xFFF8;
         const tests       = args.tests || [];
 
-        // Handle optional setup: reload program with setup code appended, run it once
+        // Handle optional setup: assemble code at the routine address (or a safe place) and run it
         if (args.setup) {
-          const origCode = fs.readFileSync(TEMP_ASM_FILE, 'utf8');
-          const combined = origCode + `\n_vr_setup_:\n${args.setup}\n  BRK\n`;
-          await startSimulator(combined);
-          const symsRaw  = await sendCommand("symbols");
-          const symsData = parseResult(symsRaw);
-          const setupSym = symsData.symbols.find(s => s.name === '_vr_setup_');
-          if (setupSym) {
-            // Run setup code until BRK (up to 10000 steps)
-            await sendCommand(`trace $${h4(setupSym.address)} 10000 1`);
+          const setupLines = args.setup.split('\n').filter(l => l.trim());
+          // Assemble setup code at a temporary scratch location to avoid overwriting the routine
+          const setupBase = (scratchAddr - setupLines.length * 3) & 0xFFF0; 
+          let currentAsm = setupBase;
+          for (const line of setupLines) {
+            const raw = await sendCommand(`asm $${h4(currentAsm)} ${line}`);
+            const d = parseResult(raw);
+            currentAsm += d.size;
           }
+          // End with BRK
+          await sendCommand(`asm $${h4(currentAsm)} BRK`);
+          // Run setup
+          await sendCommand(`trace $${h4(setupBase)} 10000 1`);
         }
 
         const results = [];
@@ -634,18 +640,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return text(lines.join('\n'));
       }
 
-      case "trace_run": {
+    case "trace_run": {
         const maxN  = Math.min(args.max_instructions || 100, 2000);
         const brk   = args.stop_on_brk !== false ? 1 : 0;
-        let   cmd   = `trace`;
-        if (args.start_address !== undefined) cmd += ` $${args.start_address.toString(16)}`;
-        else cmd += ` .`;   // use current PC (. is not a valid addr, let the CLI default)
-        // rebuild: no-address form just omits it
-        cmd = args.start_address !== undefined
+        const cmd   = args.start_address !== undefined
           ? `trace $${args.start_address.toString(16)} ${maxN} ${brk}`
           : `trace ${maxN} ${brk}`;
         const raw = await sendCommand(cmd);
         return text(fmtTrace(parseResult(raw)));
+      }
+
+      case "shutdown_simulator": {
+        if (simulatorProcess) {
+          simulatorProcess.kill();
+          simulatorProcess = null;
+          return text("Simulator process terminated.");
+        }
+        return text("Simulator was not running.");
       }
 
       case "reset_cpu": {
