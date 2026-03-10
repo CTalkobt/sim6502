@@ -496,10 +496,27 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
                                  opcode_handler_t **p_handlers, int *p_num_handlers,
                                  cpu_type_t *p_cpu_type, dispatch_table_t *dt,
                                  unsigned short start_addr, breakpoint_list_t *breakpoints,
-                                 symbol_table_t *symbols) {
+                                 symbol_table_t *symbols,
+                                 const char *initial_cmd) {
     char line_buf[256];
     CommandRegistry registry;
     setvbuf(stdout, NULL, _IONBF, 0);
+
+    if (initial_cmd) {
+        std::string line = initial_cmd;
+        std::vector<std::string> args = split_line(line);
+        if (!args.empty()) {
+            const std::string& cmd = args[0];
+            CLICommand* command = registry.getCommand(cmd);
+            if (command) {
+                command->execute(args, static_cast<CPU*>(cpu), mem, p_handlers, p_num_handlers, p_cpu_type, dt, breakpoints, symbols);
+                return;
+            } else {
+                fprintf(stderr, "Debug: Initial command '%s' not found in registry.\n", cmd.c_str());
+            }
+        }
+    }
+
     if (!g_json_mode)
         printf("6502 Simulator Interactive Mode\nType 'help' for commands.\n");
     while (1) {

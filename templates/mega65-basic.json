@@ -1,0 +1,27 @@
+{
+  "name": "MEGA65 Basic Project",
+  "description": "A basic 45GS02 assembly project structure with Makefile.",
+  "variables": {
+    "CPU": "45gs02",
+    "START_ADDR": "$2000"
+  },
+  "structure": [
+    "src",
+    "bin",
+    "assets"
+  ],
+  "files": [
+    {
+      "target": "src/main.asm",
+      "content": "; Project: {{PROJECT_NAME}}\\n.processor {{CPU}}\\n.org {{START_ADDR}}\\n\\nstart:\\n    lda #$05\\n    sta $d020\\n    rts\\n"
+    },
+    {
+      "target": "Makefile",
+      "content": "all:\\n\\t../sim6502 src/main.asm -o bin/{{PROJECT_NAME}}.prg\\n\\nrun:\\n\\tall\\n\\t../sim6502-gui bin/{{PROJECT_NAME}}.prg\\n"
+    },
+    {
+      "target": "README.md",
+      "content": "# {{PROJECT_NAME}}\\nGenerated on {{DATE}} for {{CPU}}.\\n"
+    }
+  ]
+}

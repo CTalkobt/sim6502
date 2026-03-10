@@ -1,0 +1,29 @@
+{
+  "name": "6502 Minimal",
+  "description": "The bare minimum for standard 6502 assembly.",
+  "variables": {
+    "START_ADDR": "$0200"
+  },
+  "structure": [
+    "src"
+  ],
+  "files": [
+    {
+      "target": "src/main.asm",
+      "content": "; Project: {{PROJECT_NAME}}
+.processor 6502
+.org {{START_ADDR}}
+
+start:
+    nop
+    rts
+"
+    },
+    {
+      "target": "README.md",
+      "content": "# {{PROJECT_NAME}}
+Minimal 6502 assembly project.
+"
+    }
+  ]
+}

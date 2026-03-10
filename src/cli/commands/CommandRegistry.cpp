@@ -1,10 +1,12 @@
 #include "CommandRegistry.h"
 #include "StepCmd.h"
 #include "BreakCmd.h"
+#include "EnvCmd.h"
 
 CommandRegistry::CommandRegistry() {
     registerCommand(std::make_unique<StepCmd>());
     registerCommand(std::make_unique<BreakCmd>());
+    registerCommand(std::make_unique<EnvCmd>());
 }
 
 void CommandRegistry::registerCommand(std::unique_ptr<CLICommand> cmd) {

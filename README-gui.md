@@ -66,7 +66,14 @@ The GUI is designed with a flexible docking system, allowing you to rearrange, s
 - **CLI equivalent**: `validate <addr> [REG=val…] : [REG=val…]` in the interactive monitor.
 - **MCP equivalent**: `validate_routine` tool.
 
-### 12. VIC-II Viewer (View menu → VIC-II Screen / Sprites / Registers)
+### 12. Project Wizard (File menu → New Project...)
+
+Quickly bootstrap a new development environment using pre-defined templates.
+- **Template Selection**: Choose from minimal, standard C64, or advanced MEGA65 setups.
+- **Live Configuration**: Set project name, target directory, and template-specific variables (like `START_ADDR`) directly in the wizard.
+- **Auto-Load**: Upon creation, the wizard automatically generates the directory structure, Makefile, and boilerplate code, then loads the main assembly file into the Source Viewer.
+
+### 13. VIC-II Viewer (View menu → VIC-II Screen / Sprites / Registers)
 
 Three panes expose the Commodore 64 VIC-II video chip state for C64 / C128 / MEGA65 development:
 

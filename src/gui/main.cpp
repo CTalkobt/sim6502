@@ -41,6 +41,7 @@
 #include "sim_api.h"
 #include "vic2.h"
 #include "patterns.h"
+#include "project_manager.h"
 
 /* --------------------------------------------------------------------------
  * Core globals
@@ -146,6 +147,13 @@ static bool show_patterns    = false;
 static bool show_vic_screen   = false;
 static bool show_vic_sprites  = false;
 static bool show_vic_regs     = false;
+
+/* ---- Project Wizard state ---- */
+static bool show_new_project_wizard = false;
+static char g_wizard_name[64]       = "Untitled";
+static char g_wizard_path[512]      = "";
+static int  g_wizard_tmpl_idx       = 0;
+static std::map<std::string, std::string> g_wizard_vars;
 static int  g_vic_sprite_edit_idx  = 0;
 
 /* ---- Phase 5: keyboard shortcut state ---- */
@@ -4508,6 +4516,105 @@ static void draw_symload_popup(void)
     }
 }
 
+static void draw_new_project_wizard(void)
+{
+    if (show_new_project_wizard) {
+        ImGui::OpenPopup("New Project Wizard");
+        show_new_project_wizard = false;
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(550, 450), ImGuiCond_FirstUseEver);
+    if (ImGui::BeginPopupModal("New Project Wizard", nullptr)) {
+        std::vector<ProjectTemplate> templates = ProjectManager::list_templates();
+        
+        ImGui::Columns(2, "wizard_cols", true);
+        ImGui::SetColumnWidth(0, 180);
+
+        /* Left side: Template List */
+        ImGui::Text("1. Select Template");
+        ImGui::Separator();
+        if (ImGui::BeginChild("##tmpl_list", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()))) {
+            for (int i = 0; i < (int)templates.size(); i++) {
+                if (ImGui::Selectable(templates[i].name.c_str(), g_wizard_tmpl_idx == i)) {
+                    g_wizard_tmpl_idx = i;
+                    g_wizard_vars.clear();
+                }
+            }
+            ImGui::EndChild();
+        }
+
+        ImGui::NextColumn();
+
+        /* Right side: Configuration */
+        if (!templates.empty() && g_wizard_tmpl_idx < (int)templates.size()) {
+            ProjectTemplate& tmpl = templates[g_wizard_tmpl_idx];
+            ImGui::Text("2. Configure Project");
+            ImGui::Separator();
+            
+            ImGui::TextDisabled("%s", tmpl.description.c_str());
+            ImGui::Spacing();
+
+            ImGui::Text("Project Name:");
+            if (ImGui::InputText("##pname", g_wizard_name, sizeof(g_wizard_name))) {
+                /* Update default path if it was tracking the name */
+                char cwd[256];
+                if (getcwd(cwd, sizeof(cwd))) {
+                    snprintf(g_wizard_path, sizeof(g_wizard_path), "%s/%s", cwd, g_wizard_name);
+                }
+            }
+
+            ImGui::Text("Target Directory:");
+            ImGui::InputText("##pdir", g_wizard_path, sizeof(g_wizard_path));
+
+            ImGui::Spacing();
+            ImGui::Text("Template Variables:");
+            ImGui::BeginChild("##vars", ImVec2(0, 150), true);
+            for (auto const& [key, val] : tmpl.variables) {
+                if (key == "PROJECT_NAME") continue;
+                std::string current = g_wizard_vars.count(key) ? g_wizard_vars[key] : val;
+                char buf[128];
+                strncpy(buf, current.c_str(), sizeof(buf));
+                if (ImGui::InputText(key.c_str(), buf, sizeof(buf))) {
+                    g_wizard_vars[key] = buf;
+                }
+            }
+            ImGui::EndChild();
+        } else {
+            ImGui::Text("No templates found in templates/");
+        }
+
+        ImGui::Columns(1);
+        ImGui::Separator();
+
+        if (ImGui::Button("Cancel", ImVec2(120, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (!templates.empty() && ImGui::Button("Create Project", ImVec2(120, 0))) {
+            std::string err;
+            g_wizard_vars["PROJECT_NAME"] = g_wizard_name;
+            if (ProjectManager::create_project(templates[g_wizard_tmpl_idx].id, 
+                                             g_wizard_path, g_wizard_vars, err)) {
+                con_add(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "Created project '%s' in %s", g_wizard_name, g_wizard_path);
+                
+                /* Auto-load the main.asm if it exists */
+                char main_asm[1024];
+                snprintf(main_asm, sizeof(main_asm), "%s/src/main.asm", g_wizard_path);
+                struct stat st;
+                if (stat(main_asm, &st) == 0) {
+                    strncpy(g_filename_buf, main_asm, sizeof(g_filename_buf));
+                    do_load();
+                }
+                ImGui::CloseCurrentPopup();
+            } else {
+                con_add(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Failed to create project: %s", err.c_str());
+            }
+        }
+
+        ImGui::EndPopup();
+    }
+}
+
 /* --------------------------------------------------------------------------
  * File-dialog popup dispatcher
  * -------------------------------------------------------------------------- */
@@ -5146,6 +5253,16 @@ int main(int /*argc*/, char ** /*argv*/)
             /* Menu bar */
             if (ImGui::BeginMenuBar()) {
                 if (ImGui::BeginMenu("File")) {
+                    if (ImGui::MenuItem("New Project...")) {
+                        show_new_project_wizard = true;
+                        g_wizard_vars.clear();
+                        /* Default path to CWD/ProjectName */
+                        char cwd[256];
+                        if (getcwd(cwd, sizeof(cwd))) {
+                            snprintf(g_wizard_path, sizeof(g_wizard_path), "%s/%s", cwd, g_wizard_name);
+                        }
+                    }
+                    ImGui::Separator();
                     if (ImGui::MenuItem("Load...", "Ctrl+L")) g_focus_filename = true;
                     if (ImGui::MenuItem("Browse to Load...", nullptr)) {
                         static const FileDlgFilter load_filters[] = {
@@ -5395,6 +5512,7 @@ int main(int /*argc*/, char ** /*argv*/)
         draw_binsave_popup();
         draw_symload_popup();
         draw_layout_save_popup();
+        draw_new_project_wizard();
         draw_goto_popup();
         draw_file_dialog_popup();
 

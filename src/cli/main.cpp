@@ -60,6 +60,7 @@ int main(int argc, char *argv[]) {
 	unsigned short start_addr = 0;
 	const char *start_label = NULL;
 	int start_addr_provided = 0;
+	const char *initial_cmd = NULL;
 	
 	symbol_table_t symbols;
 	breakpoint_init(&breakpoints);
@@ -127,6 +128,8 @@ int main(int argc, char *argv[]) {
 				else if (strcmp(p, "65ce02") == 0) cpu_type = CPU_65CE02;
 				else if (strcmp(p, "45gs02") == 0) cpu_type = CPU_45GS02;
 			}
+		} else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--command") == 0) {
+			if (i + 1 < argc) initial_cmd = argv[++i];
 		} else if (argv[i][0] != '-' && !filename) filename = argv[i];
 	}
 
@@ -136,7 +139,7 @@ int main(int argc, char *argv[]) {
 	else if (cpu_type == CPU_65CE02) { handlers = opcodes_65ce02; num_handlers = OPCODES_65CE02_COUNT; }
 	else if (cpu_type == CPU_45GS02) { handlers = opcodes_45gs02; num_handlers = OPCODES_45GS02_COUNT; }
 
-	if (!filename && !interactive_mode) { print_help(argv[0]); return 1; }
+	if (!filename && !interactive_mode && !initial_cmd) { print_help(argv[0]); return 1; }
 	if (symbol_file) symbol_load_file(&symbols, symbol_file);
 
 	cpu_t cpu;
@@ -219,7 +222,7 @@ int main(int argc, char *argv[]) {
 	if (enable_trace && trace_file) trace_enable_file(&trace_info, trace_file);
 	else if (enable_trace) trace_enable_stdout(&trace_info);
 
-	if (interactive_mode) { run_interactive_mode(&cpu, &mem, &handlers, &num_handlers, &cpu_type, &dt, cpu.pc, &breakpoints, &symbols); return 0; }
+	if (interactive_mode || initial_cmd) { run_interactive_mode(&cpu, &mem, &handlers, &num_handlers, &cpu_type, &dt, cpu.pc, &breakpoints, &symbols, initial_cmd); return 0; }
 
     printf("\nStarting execution at 0x%04X...\n", cpu.pc);
 	while (cpu.cycles < 1000000) {

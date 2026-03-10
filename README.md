@@ -20,8 +20,9 @@ Help with this development by contributing and buy me coffee at: https://kodecof
 7. [Interactive Monitor](#interactive-monitor)
 8. [Symbol Tables](#symbol-tables)
 9. [MCP Server](#mcp-server)
-10. [File Structure](#file-structure)
-11. [Known Limitations](#known-limitations)
+10. [Project Scaffolding (Environments)](#project-scaffolding-environments)
+11. [File Structure](#file-structure)
+12. [Known Limitations](#known-limitations)
 
 ---
 
@@ -74,6 +75,29 @@ The simulator includes an integrated assembler that runs before execution:
 - **Sparse 28-bit Space**: Supports up to 256MB of physical memory, allocated on demand in 4KB pages.
 - **MAP Translation**: Full implementation of the C65/MEGA65 MAP register logic for virtual-to-physical address mapping.
 - **Write Logging**: Tracks memory writes for history undo/redo and GUI highlighting.
+
+---
+
+## Project Scaffolding (Environments)
+
+The simulator includes a template-based project scaffolding system to instantly bootstrap development environments.
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `env list` | List all available project templates (found in `templates/`). |
+| `env create <id> <name> [dir] [VAR=VAL...]` | Materialize a new project from a template. Supports custom variable overrides. |
+
+### Templates
+
+Templates are defined as JSON files in the `templates/` directory. They define the directory structure, boilerplate assembly code, Makefiles, and default variables.
+
+Built-in templates include:
+- `6502-minimal`: Bare-bones 6502 setup.
+- `c64-standard`: C64 setup with BASIC stub andKernal loop.
+- `mega65-basic`: Standard 45GS02 structure with Makefile.
+- `mega65-quad`: Focused on 32-bit quad operations and extended registers.
 
 ---
 
@@ -407,6 +431,8 @@ TRAPs simulate Kernal/ROM routines without requiring the actual ROM to be loaded
 | `vic2_sprites` | Print all 8 sprite states |
 | `vic2_savescreen` | Render full 384×272 PAL frame to PPM |
 | `vic2_savebitmap` | Render 320×200 active display area to PPM (mode-aware, no border; sprites included) |
+| `list_env_templates` | Discover available project environment templates |
+| `create_project` | Bootstrap a new project directory structure from a template |
 
 ---
 
@@ -442,4 +468,4 @@ TRAPs simulate Kernal/ROM routines without requiring the actual ROM to be loaded
 
 Proprietary — see `LICENSE`. Will move to open source at a future date.
 
-**Last Updated**: 2026-03-09
+**Last Updated**: 2026-03-10

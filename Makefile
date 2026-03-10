@@ -13,7 +13,8 @@ CORE_SRCS = \
 	src/core/disassembler.cpp \
 	src/core/condition.cpp \
 	src/core/vic2.cpp \
-	src/core/patterns.cpp
+	src/core/patterns.cpp \
+	src/core/project_manager.cpp
 
 OPCODE_SRCS = \
 	src/core/opcodes/6502.cpp \
@@ -34,6 +35,7 @@ $(LIB_TARGET): $(CORE_OBJS)
 CLI_COMMANDS_SRCS = \
 	src/cli/commands/StepCmd.cpp \
 	src/cli/commands/BreakCmd.cpp \
+	src/cli/commands/EnvCmd.cpp \
 	src/cli/commands/CommandRegistry.cpp
 
 CLI_SRCS = src/cli/main.cpp src/cli/commands.cpp $(CLI_COMMANDS_SRCS)

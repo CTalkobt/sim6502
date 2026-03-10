@@ -373,6 +373,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: "object", properties: {
         path: { type: "string", description: "Output file path (default: /tmp/vic2bitmap.ppm)" }
       }}
+    },
+    {
+      name: "list_env_templates",
+      description: "List all available project environment templates.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "create_project",
+      description: "Create a new project directory structure from a template.",
+      inputSchema: { 
+        type: "object", 
+        required: ["template_id", "project_name"],
+        properties: {
+          template_id:  { type: "string", description: "The ID of the template to use (e.g. 'mega65-basic')" },
+          project_name: { type: "string", description: "The name of the project" },
+          target_dir:   { type: "string", description: "Target directory path (optional, defaults to project_name)" },
+          variables:    { type: "object", description: "Optional variable overrides (e.g. { 'CPU': '6502' })" }
+        }
+      }
     }
   ]
 }));
@@ -695,6 +714,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const raw = await sendCommand(`vic2.savebitmap ${filePath}`);
         const d   = parseResult(raw);
         return text(`Saved ${d.width}×${d.height} active-area PPM to '${d.path}'`);
+      }
+
+      case "list_env_templates": {
+        const raw = await sendCommand("env list");
+        const d   = parseResult(raw);
+        const lines = ["Available Project Templates:\n"];
+        for (const t of d.templates) {
+          lines.push(`  ID: ${t.id.padEnd(16)} Name: ${t.name}`);
+          lines.push(`      ${t.description}`);
+        }
+        return text(lines.join('\n'));
+      }
+
+      case "create_project": {
+        const tid  = args.template_id;
+        const name = args.project_name;
+        const dir  = args.target_dir || name;
+        const vars = args.variables || {};
+        
+        let cmd = `env create ${tid} "${name}" "${dir}"`;
+        for (const [k, v] of Object.entries(vars)) {
+          cmd += ` ${k}=${v}`;
+        }
+        
+        const raw = await sendCommand(cmd);
+        const d   = parseResult(raw);
+        return text(`Project '${name}' created successfully in: ${d.path}`);
       }
 
       default:

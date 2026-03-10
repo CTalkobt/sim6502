@@ -1,0 +1,53 @@
+{
+  "name": "MEGA65 Quad-Mode",
+  "description": "MEGA65 project focused on 32-bit 45GS02 quad instructions and extended registers.",
+  "variables": {
+    "START_ADDR": "$2000"
+  },
+  "structure": [
+    "src",
+    "bin",
+    "docs"
+  ],
+  "files": [
+    {
+      "target": "src/main.asm",
+      "content": "; Project: {{PROJECT_NAME}}
+.processor 45gs02
+.org {{START_ADDR}}
+
+; Enable 45GS02 extended mode (SEE)
+; Note: Simulator starts with E=1 by default
+
+start:
+    cle ; Clear E bit (enable 16-bit SP and other features)
+    
+    ; Load 32-bit value into Q (A,X,Y,Z combination)
+    ; Using quad-instruction prefix $42 $42
+    lda #$11
+    ldx #$22
+    ldy #$33
+    ldz #$44
+    ; At this point Q = $44332211
+
+    ; Perform a quad addition or other 32-bit ops here...
+    
+    see ; Restore E bit before returning to BASIC/Monitor if needed
+    rts
+"
+    },
+    {
+      "target": "README.md",
+      "content": "# {{PROJECT_NAME}}
+MEGA65 45GS02 project.
+Focuses on high-performance 32-bit operations.
+"
+    },
+    {
+      "target": "Makefile",
+      "content": "all:
+	../sim6502 src/main.asm -o bin/{{PROJECT_NAME}}.prg
+"
+    }
+  ]
+}
