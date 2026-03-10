@@ -754,4 +754,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
+console.error("6502-simulator MCP server starting...");
 await server.connect(transport);
+console.error("6502-simulator MCP server running on stdio");
