@@ -42,7 +42,7 @@ int get_encoded_length(const char *mnem, unsigned char mode,
 			int operand = 0;
 			switch (mode) {
 			case MODE_ABSOLUTE: case MODE_ABSOLUTE_X: case MODE_ABSOLUTE_Y:
-			case MODE_INDIRECT: case MODE_ABS_INDIRECT_X:
+			case MODE_INDIRECT: case MODE_ABS_INDIRECT_X: case MODE_ABS_INDIRECT_Y:
 			case MODE_RELATIVE_LONG: case MODE_IMMEDIATE_WORD:
 				operand = 2; break;
 			case MODE_IMPLIED:
@@ -94,7 +94,7 @@ int is_branch_opcode(const char *op) {
 	if (strcmp(op, "BVS") == 0 || strcmp(op, "LBVS") == 0) return 1;
 	if (strcmp(op, "BRA") == 0 || strcmp(op, "LBRA") == 0) return 1;
 	if (strcmp(op, "BSR") == 0 || strcmp(op, "LBSR") == 0) return 1;
-	if (strcmp(op, "BRL") == 0) return 1;
+	if (strcmp(op, "BRL") == 0 || strcmp(op, "LBRL") == 0) return 1;
 	return 0;
 }
 
@@ -330,9 +330,21 @@ void parse_line(const char *line, instruction_t *instr, symbol_table_t *symbols,
 		/* immediate: value must fit in one byte (or two bytes for PHW) */
 		if (instr->mode == MODE_IMMEDIATE && instr->arg > 0xFF)
 			instr->arg_overflow = 1;
-	} else if (*line == '$' || *line == '%' || *line == '\'' || isdigit(*line)) {
-		int digits;
-		instr->arg = parse_value(line, &digits);
+	} else if (*line == '$' || *line == '%' || *line == '\'' || isdigit(*line) || *line == '*') {
+		int digits = 4;
+		if (*line == '*') {
+			instr->arg = (unsigned short)pc;
+			line++;
+			if (*line == '+') {
+				line++;
+				instr->arg += parse_value(line, NULL);
+			} else if (*line == '-') {
+				line++;
+				instr->arg -= parse_value(line, NULL);
+			}
+		} else {
+			instr->arg = parse_value(line, &digits);
+		}
 		while (*line && !isspace(*line) && *line != ',') line++;
 		while (*line && (isspace(*line) || *line == ',')) line++;
 		if (toupper(*line) == 'X') instr->mode = (digits <= 2) ? MODE_ZP_X : MODE_ABSOLUTE_X;
@@ -388,7 +400,7 @@ void parse_line(const char *line, instruction_t *instr, symbol_table_t *symbols,
 				if (*line == ',') {
 					line++;
 					while (*line && isspace(*line)) line++;
-					if (toupper(*line) == 'Y') instr->mode = MODE_INDIRECT_Y;
+					if (toupper(*line) == 'Y') instr->mode = (instr->arg > 0xFF) ? MODE_ABS_INDIRECT_Y : MODE_INDIRECT_Y;
 					else if (toupper(*line) == 'Z') instr->mode = MODE_ZP_INDIRECT_Z;
 				} else {
 					if (instr->arg > 0xFF) instr->mode = MODE_INDIRECT;
@@ -431,7 +443,7 @@ void parse_line(const char *line, instruction_t *instr, symbol_table_t *symbols,
 				if (*line == ',') {
 					line++;
 					while (*line && isspace(*line)) line++;
-					if (toupper(*line) == 'Y') instr->mode = MODE_INDIRECT_Y;
+					if (toupper(*line) == 'Y') instr->mode = (instr->arg > 0xFF) ? MODE_ABS_INDIRECT_Y : MODE_INDIRECT_Y;
 					else if (toupper(*line) == 'Z') instr->mode = MODE_ZP_INDIRECT_Z;
 				} else {
 					if (instr->arg > 0xFF) instr->mode = MODE_INDIRECT;
@@ -504,7 +516,30 @@ int encode_to_mem(memory_t *mem, int pc_base,
 		    handlers[i].opcode_len > 0)
 			break;
 	}
+	instruction_t adjusted_instr = *instr;
+	if (i >= n && (instr->mode == MODE_RELATIVE || instr->mode == MODE_RELATIVE_LONG)) {
+		/* Fallback: try the other relative mode if this one didn't match.
+		 * This handles mnemonics like BRL/BSR that might be short on some CPUs and long on others. */
+		unsigned char other_mode = (instr->mode == MODE_RELATIVE) ? MODE_RELATIVE_LONG : MODE_RELATIVE;
+		for (i = 0; i < n; i++) {
+			if (strcmp(instr->op, handlers[i].mnemonic) == 0 &&
+			    handlers[i].mode == other_mode &&
+			    handlers[i].opcode_len > 0) {
+				/* Found a match in the other mode. Recalculate target address from original arg,
+				 * then recalculate relative offset for the new mode.
+				 * Original arg was (target - (pc_base + len_of_orig_mode)) */
+				int orig_len = (instr->mode == MODE_RELATIVE) ? 2 : 3;
+				int new_len = (other_mode == MODE_RELATIVE) ? 2 : 3;
+				unsigned short target = (unsigned short)(pc_base + orig_len + (short)instr->arg);
+				adjusted_instr.mode = other_mode;
+				adjusted_instr.arg = (unsigned short)(target - (pc_base + new_len));
+				break;
+			}
+		}
+	}
 	if (i >= n) return -1;
+	const instruction_t *final_instr = (i < n && adjusted_instr.mode != instr->mode) ? &adjusted_instr : instr;
+
 	unsigned char olen = handlers[i].opcode_len;
 	for (int j = 0; j < olen; j++)
 		mem->mem[pc++] = handlers[i].opcode_bytes[j];
@@ -515,14 +550,14 @@ int encode_to_mem(memory_t *mem, int pc_base,
 	case MODE_INDIRECT_X: case MODE_INDIRECT_Y:
 	case MODE_ZP_INDIRECT: case MODE_ZP_INDIRECT_Z:
 	case MODE_ZP_INDIRECT_Z_FLAT: case MODE_ZP_INDIRECT_FLAT:
-	case MODE_SP_INDIRECT_Y: case MODE_RELATIVE: case MODE_ABS_INDIRECT_Y:
-		mem->mem[pc++] = instr->arg & 0xFF;
+	case MODE_SP_INDIRECT_Y: case MODE_RELATIVE:
+		mem->mem[pc++] = final_instr->arg & 0xFF;
 		break;
 	case MODE_ABSOLUTE: case MODE_ABSOLUTE_X: case MODE_ABSOLUTE_Y:
-	case MODE_INDIRECT: case MODE_ABS_INDIRECT_X:
+	case MODE_INDIRECT: case MODE_ABS_INDIRECT_X: case MODE_ABS_INDIRECT_Y:
 	case MODE_RELATIVE_LONG: case MODE_IMMEDIATE_WORD:
-		mem->mem[pc++] = instr->arg & 0xFF;
-		mem->mem[pc++] = (instr->arg >> 8) & 0xFF;
+		mem->mem[pc++] = final_instr->arg & 0xFF;
+		mem->mem[pc++] = (final_instr->arg >> 8) & 0xFF;
 		break;
 	}
 	return pc - pc_base;

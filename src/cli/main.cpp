@@ -163,6 +163,7 @@ int main(int argc, char *argv[]) {
 				if (cpu_type == CPU_65C02) { handlers = opcodes_65c02; num_handlers = OPCODES_65C02_COUNT; }
 				else if (cpu_type == CPU_65CE02) { handlers = opcodes_65ce02; num_handlers = OPCODES_65CE02_COUNT; }
 				else if (cpu_type == CPU_45GS02) { handlers = opcodes_45gs02; num_handlers = OPCODES_45GS02_COUNT; }
+				else if (cpu_type == CPU_6502_UNDOCUMENTED) { handlers = opcodes_6502_undoc; num_handlers = OPCODES_6502_UNDOC_COUNT; }
 				else { handlers = opcodes_6502; num_handlers = OPCODES_6502_COUNT; }
 				continue;
 			}
@@ -218,6 +219,7 @@ int main(int argc, char *argv[]) {
 				if (cpu_type == CPU_65C02) { handlers = opcodes_65c02; num_handlers = OPCODES_65C02_COUNT; }
 				else if (cpu_type == CPU_65CE02) { handlers = opcodes_65ce02; num_handlers = OPCODES_65CE02_COUNT; }
 				else if (cpu_type == CPU_45GS02) { handlers = opcodes_45gs02; num_handlers = OPCODES_45GS02_COUNT; }
+				else if (cpu_type == CPU_6502_UNDOCUMENTED) { handlers = opcodes_6502_undoc; num_handlers = OPCODES_6502_UNDOC_COUNT; }
 				else { handlers = opcodes_6502; num_handlers = OPCODES_6502_COUNT; }
 				continue;
 			}

@@ -23,13 +23,13 @@ def run_test(asm_file):
             if m:
                 extra_flags = shlex.split(m.group(1).strip())
 
-    if expectations is None:
-        print("SKIP (no expectations found)")
-        return True
-
     # Run simulator
     try:
-        result = subprocess.run(['./sim6502'] + extra_flags + [asm_file], capture_output=True, text=True, timeout=5)
+        flags = extra_flags
+        if 'all_' in asm_file and '-a' not in ' '.join(flags):
+            flags = flags + ['-a', '$1000']
+            
+        result = subprocess.run(['./sim6502'] + flags + [asm_file], capture_output=True, text=True, timeout=5)
     except subprocess.TimeoutExpired:
         print("FAIL (timeout)")
         return False
@@ -38,6 +38,10 @@ def run_test(asm_file):
         print(f"FAIL (return code {result.returncode})")
         print(result.stderr)
         return False
+
+    if expectations is None:
+        print("PASS (assembly)")
+        return True
     
     # Parse actual results
     # First try "Registers: ..." (standard output)
