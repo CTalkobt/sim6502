@@ -40,6 +40,7 @@
 #include "cpu.h"
 #include "sim_api.h"
 #include "device/vic2.h"
+#include "audio.h"
 #include "patterns.h"
 #include "project_manager.h"
 
@@ -5188,6 +5189,9 @@ int main(int /*argc*/, char ** /*argv*/)
     /* Initialise multi-instance memory view: instance 0 starts open */
     g_mem_views[0].open = true;
 
+    /* Initialise audio */
+    audio_init(44100);
+
     /* Initialise file dialog (sets cwd to current working directory) */
     filedlg_init(&g_filedlg);
 
@@ -5703,6 +5707,7 @@ int main(int /*argc*/, char ** /*argv*/)
     if (g_heatmap_tex) { glDeleteTextures(1, &g_heatmap_tex); g_heatmap_tex = 0; }
     if (g_vic_tex)     { glDeleteTextures(1, &g_vic_tex);     g_vic_tex     = 0; }
     if (g_spr_tex[0])  { glDeleteTextures(8, g_spr_tex); for (int i=0;i<8;i++) g_spr_tex[i]=0; }
+    audio_close();
     sim_destroy(g_sim);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();

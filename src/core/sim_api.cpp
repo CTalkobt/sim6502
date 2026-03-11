@@ -12,6 +12,7 @@
 #include "cpu_6502.h"
 #include "device/mega65_io.h"
 #include "device/vic2_io.h"
+#include "device/sid_io.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -172,12 +173,14 @@ static void machine_init_hardware(sim_session_t *s) {
             break;
         case MACHINE_MEGA65:
             mega65_io_register(&s->mem);
+            sid_io_register(&s->mem, s->machine_type, s->dynamic_handlers);
             break;
         case MACHINE_C64:
         case MACHINE_C128:
         case MACHINE_X16:
         default:
             vic2_io_register(&s->mem);
+            sid_io_register(&s->mem, s->machine_type, s->dynamic_handlers);
             s->mem.io_registry->rebuild_map(&s->mem);
             break;
     }

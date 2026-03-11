@@ -1,7 +1,7 @@
 CC       = gcc
 CXX      = g++
 CFLAGS   = -Wall -Wextra -O2 -I src -I src/core -I src/core/opcodes
-CXXFLAGS = -Wall -Wextra -O2 -I src -I src/core -I src/core/opcodes
+CXXFLAGS = -pthread  -Wall -Wextra -O2 -I src -I src/core -I src/core/opcodes
 
 # --- Core Engine (Static Library) ---
 CORE_SRCS = \
@@ -14,6 +14,8 @@ CORE_SRCS = \
 	src/core/condition.cpp \
 	src/core/device/vic2.cpp \
 	src/core/device/vic2_io.cpp \
+	src/core/device/sid_io.cpp \
+	src/core/audio.cpp \
 	src/core/device/mega65_io.cpp \
 	src/core/patterns.cpp \
 	src/core/project_manager.cpp
@@ -46,7 +48,7 @@ CLI_OBJS = $(CLI_SRCS:.cpp=.o)
 TARGET   = sim6502
 
 $(TARGET): $(CLI_OBJS) $(LIB_TARGET)
-	$(CXX) $(CXXFLAGS) -o $@ $^
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(SDL2_LIBS)
 
 # --- GUI Frontend ---
 IMGUI_DIR  = src/gui/imgui
@@ -54,7 +56,7 @@ IMGUI_BACK = $(IMGUI_DIR)/backends
 
 SDL2_CFLAGS := $(shell pkg-config --cflags sdl2 2>/dev/null)
 SDL2_LIBS   := $(shell pkg-config --libs   sdl2 2>/dev/null)
-GL_LIBS      = -lGL
+GL_LIBS      = -lGL -lpthread
 
 IMGUI_SRCS = \
 	$(IMGUI_DIR)/imgui.cpp \
@@ -65,7 +67,7 @@ IMGUI_SRCS = \
 	$(IMGUI_BACK)/imgui_impl_opengl3.cpp
 IMGUI_OBJS = $(IMGUI_SRCS:.cpp=.o)
 
-GUI_CXXFLAGS = $(CXXFLAGS) $(SDL2_CFLAGS) -I $(IMGUI_DIR) -I $(IMGUI_BACK)
+GUI_CXXFLAGS = -pthread  $(CXXFLAGS) $(SDL2_CFLAGS) -I $(IMGUI_DIR) -I $(IMGUI_BACK)
 GUI_TARGET   = sim6502-gui
 
 src/gui/main.o: src/gui/main.cpp $(IMGUI_DIR)/imgui.h src/sim_api.h src/gui/imgui_filedlg.h

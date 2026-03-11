@@ -2,6 +2,7 @@
 #include "cpu_engine.h"
 #include "condition.h"
 #include "device/vic2.h"
+#include "device/sid_io.h"
 #include "patterns.h"
 #include "commands/CommandRegistry.h"
 #include <stdio.h>
@@ -1330,6 +1331,22 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
             } else {
                 if (g_json_mode) { char buf[576]; snprintf(buf, sizeof(buf), "cannot write %s", fbuf); json_err("vic2.savescreen", buf); }
                 else printf("Error: cannot write '%s'\n", fbuf);
+            }
+        } else if (cmd == "sid.info") {
+            if (g_json_mode) {
+                printf("{\"cmd\":\"sid.info\",\"ok\":true,\"data\":");
+                sid_json_info(mem);
+                printf("}\n");
+            } else {
+                sid_print_info(mem);
+            }
+        } else if (cmd == "sid.regs") {
+            if (g_json_mode) {
+                printf("{\"cmd\":\"sid.regs\",\"ok\":true,\"data\":");
+                sid_json_regs(mem);
+                printf("}\n");
+            } else {
+                sid_print_regs(mem);
             }
         } else if (cmd == "vic2.savebitmap") {
             const char *p = line.c_str(); SKIP_CMD(p);

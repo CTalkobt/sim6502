@@ -19,8 +19,11 @@
 #include "cpu_6502.h"
 #include "device/mega65_io.h"
 #include "device/vic2_io.h"
+#include "device/sid_io.h"
+#include <vector>
 
 static instruction_t rom[65536];
+static std::vector<IOHandler*> g_main_dynamic_handlers;
 
 static int handle_trap_main(const symbol_table_t *st, cpu_t *cpu, memory_t *mem) {
     for (int i = 0; i < st->count; i++) {
@@ -163,11 +166,18 @@ int main(int argc, char *argv[]) {
 	if (!filename) {
 		switch (machine_type) {
 			case MACHINE_RAW6502: break;
-			case MACHINE_MEGA65:  mega65_io_register(&mem); break;
+			case MACHINE_MEGA65:  
+                mega65_io_register(&mem); 
+                sid_io_register(&mem, machine_type, g_main_dynamic_handlers);
+                break;
 			case MACHINE_C64:
 			case MACHINE_C128:
 			case MACHINE_X16:
-			default:              vic2_io_register(&mem); mem.io_registry->rebuild_map(&mem); break;
+			default:              
+                vic2_io_register(&mem); 
+                sid_io_register(&mem, machine_type, g_main_dynamic_handlers);
+                mem.io_registry->rebuild_map(&mem); 
+                break;
 		}
 	}
 
@@ -237,11 +247,18 @@ int main(int argc, char *argv[]) {
 
 		switch (machine_type) {
 			case MACHINE_RAW6502: break;
-			case MACHINE_MEGA65:  mega65_io_register(&mem); break;
+			case MACHINE_MEGA65:  
+                mega65_io_register(&mem); 
+                sid_io_register(&mem, machine_type, g_main_dynamic_handlers);
+                break;
 			case MACHINE_C64:
 			case MACHINE_C128:
 			case MACHINE_X16:
-			default:              vic2_io_register(&mem); mem.io_registry->rebuild_map(&mem); break;
+			default:              
+                vic2_io_register(&mem); 
+                sid_io_register(&mem, machine_type, g_main_dynamic_handlers);
+                mem.io_registry->rebuild_map(&mem); 
+                break;
 		}
 
 		cpu_ptr->reset(); cpu_ptr->pc = start_addr_provided ? start_addr : 0x0200;
@@ -324,6 +341,7 @@ int main(int argc, char *argv[]) {
 
 	delete cpu_ptr;
 	if (mem.io_registry) delete mem.io_registry;
+    for (auto h : g_main_dynamic_handlers) delete h;
 
 	return 0;
 }
