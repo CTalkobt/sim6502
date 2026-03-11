@@ -1,7 +1,7 @@
 #include "commands.h"
 #include "cpu_engine.h"
 #include "condition.h"
-#include "vic2.h"
+#include "device/vic2.h"
 #include "patterns.h"
 #include "commands/CommandRegistry.h"
 #include <stdio.h>
@@ -792,7 +792,7 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
                 disasm_entry_t de;
                 disasm_one_entry(mem, dt, *p_cpu_type, pre_pc, &de);
 
-                if (opc == 0x00) {
+                if (opc == 0x00 && stop_brk) {
                     if (g_json_mode) {
                         if (n_exec > 0) printf(",");
                         printf("{\"pc\":%d,\"mnemonic\":\"BRK\",\"operand\":\"\","
@@ -856,7 +856,7 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
                            (int)cpu->a,(int)cpu->x,(int)cpu->y,
                            (int)cpu->z,(int)cpu->b,(int)cpu->p,(int)cpu->s, cdelta);
                 } else {
-                    char instr[24];
+                    char instr[48];
                     if (de.operand[0])
                         snprintf(instr, sizeof(instr), "%s %s", de.mnemonic, de.operand);
                     else

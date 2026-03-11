@@ -1,4 +1,5 @@
 #include "interrupts.h"
+#include "memory.h"
 #include <stdio.h>
 #include <stdint.h>
 

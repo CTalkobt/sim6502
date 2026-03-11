@@ -39,10 +39,17 @@ void mega65_io_register(memory_t *mem) {
 
     vic2_io_register(mem);
 
-    for (uint16_t a = 0xD768; a <= 0xD76B; a++) mem->io_handlers[a] = &math_handler;
-    for (uint16_t a = 0xD770; a <= 0xD773; a++) mem->io_handlers[a] = &math_handler;
-    
-    mem->io_handlers[0xD700] = &dma_handler;
-    mem->io_handlers[0xD702] = &dma_handler;
-    mem->io_handlers[0xD705] = &dma_handler;
+    if (mem->io_registry) {
+        mem->io_registry->register_handler(0xD768, 0xD76B, &math_handler);
+        mem->io_registry->register_handler(0xD770, 0xD773, &math_handler);
+        mem->io_registry->register_handler(0xD700, 0xD705, &dma_handler);
+        mem->io_registry->rebuild_map(mem);
+    } else {
+        /* Fallback for cases where registry isn't initialized yet */
+        for (uint16_t a = 0xD768; a <= 0xD76B; a++) mem->io_handlers[a] = &math_handler;
+        for (uint16_t a = 0xD770; a <= 0xD773; a++) mem->io_handlers[a] = &math_handler;
+        mem->io_handlers[0xD700] = &dma_handler;
+        mem->io_handlers[0xD702] = &dma_handler;
+        mem->io_handlers[0xD705] = &dma_handler;
+    }
 }

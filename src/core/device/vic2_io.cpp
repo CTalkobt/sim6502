@@ -20,7 +20,11 @@ bool VIC2Handler::io_read(memory_t *mem, uint16_t addr, uint8_t *val) {
 
 void vic2_io_register(memory_t *mem) {
     static VIC2Handler vic2_handler;
-    for (uint16_t a = 0xD000; a <= 0xD02E; a++) {
-        mem->io_handlers[a] = &vic2_handler;
+    if (mem->io_registry) {
+        mem->io_registry->register_handler(0xD000, 0xD02E, &vic2_handler);
+    } else {
+        for (uint16_t a = 0xD000; a <= 0xD02E; a++) {
+            mem->io_handlers[a] = &vic2_handler;
+        }
     }
 }

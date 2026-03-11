@@ -399,6 +399,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: "object", properties: {} }
     },
     {
+      name: "list_devices",
+      description: "List all registered I/O devices and their status.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
+      name: "toggle_device",
+      description: "Enable or disable an I/O device by name.",
+      inputSchema: {
+        type: "object",
+        required: ["name", "enabled"],
+        properties: {
+          name:    { type: "string",  description: "Device name (e.g. 'VIC-II Video Controller')" },
+          enabled: { type: "boolean", description: "Set to true to enable, false to disable" }
+        }
+      }
+    },
+    {
       name: "create_project",
       description: "Create a new project directory structure from a template.",
       inputSchema: { 
@@ -755,6 +772,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           lines.push(`      ${t.description}`);
         }
         return text(lines.join('\n'));
+      }
+
+      case "list_devices": {
+        const raw = await sendCommand("devices list");
+        const d   = parseResult(raw);
+        const lines = [`%-30s  %-12s  %-8s  %s`.replace(/%-30s/, 'Device Name'.padEnd(30)).replace(/%-12s/, 'Range'.padEnd(12)).replace(/%-8s/, 'Priority'.padEnd(8)).replace(/%s/, 'Status'),
+                       "----------------------------------------------------------------------"];
+        for (const r of d.devices) {
+          const h4 = n => n.toString(16).toUpperCase().padStart(4, '0');
+          const range = `$${h4(r.start)}-$${h4(r.end)}`;
+          lines.push(`${r.name.padEnd(30)}  ${range.padEnd(12)}  ${r.priority.toString().padEnd(8)}  ${r.enabled ? 'ENABLED' : 'DISABLED'}`);
+        }
+        return text(lines.join('\n'));
+      }
+
+      case "toggle_device": {
+        const cmd = args.enabled ? "enable" : "disable";
+        const raw = await sendCommand(`devices ${cmd} "${args.name}"`);
+        const d   = parseResult(raw);
+        return text(`Device '${d.name}' ${d.enabled ? 'enabled' : 'disabled'}.`);
       }
 
       case "create_project": {

@@ -39,7 +39,7 @@
 
 #include "cpu.h"
 #include "sim_api.h"
-#include "vic2.h"
+#include "device/vic2.h"
 #include "patterns.h"
 #include "project_manager.h"
 
@@ -141,6 +141,7 @@ static bool show_source   = false;
 static bool show_profiler    = false;
 static bool show_snap_diff   = false;
 static bool show_test_runner = false;
+static bool show_devices = false;
 static bool show_patterns    = false;
 
 /* ---- Phase 6 pane visibility ---- */
@@ -3059,6 +3060,55 @@ static void draw_pane_test_runner(void)
     ImGui::End();
 }
 
+static void draw_pane_devices(void)
+{
+    if (!show_devices) return;
+    ImGui::Begin("I/O Devices", &show_devices);
+
+    const memory_t *mem = sim_get_memory(g_sim);
+    if (!mem || !mem->io_registry) {
+        ImGui::Text("I/O Registry not available.");
+        ImGui::End();
+        return;
+    }
+
+    if (ImGui::BeginTable("##devices_table", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Device Name");
+        ImGui::TableSetupColumn("Range");
+        ImGui::TableSetupColumn("Priority", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+        ImGui::TableSetupColumn("Enabled", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+        ImGui::TableHeadersRow();
+
+        const auto& regs = mem->io_registry->get_registrations();
+        for (size_t i = 0; i < regs.size(); i++) {
+            const auto& reg = regs[i];
+            ImGui::TableNextRow();
+            ImGui::PushID((int)i);
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("%s", reg.handler->get_handler_name());
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("$%04X-$%04X", reg.start, reg.end);
+
+            ImGui::TableSetColumnIndex(2);
+            ImGui::Text("%d", reg.priority);
+
+            ImGui::TableSetColumnIndex(3);
+            bool enabled = reg.enabled;
+            if (ImGui::Checkbox("##enabled", &enabled)) {
+                mem->io_registry->set_enabled(reg.handler, enabled);
+                mem->io_registry->rebuild_map(const_cast<memory_t*>(mem));
+            }
+
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::End();
+}
+
 /* --------------------------------------------------------------------------
  * Pane: Pattern Library
  *
@@ -5417,6 +5467,7 @@ int main(int /*argc*/, char ** /*argv*/)
                     ImGui::MenuItem("Profiler",    nullptr, &show_profiler);
                     ImGui::MenuItem("Snap Diff",      nullptr, &show_snap_diff);
                     ImGui::MenuItem("Test Runner",    nullptr, &show_test_runner);
+                    ImGui::MenuItem("I/O Devices",    nullptr, &show_devices);
                     ImGui::MenuItem("Pattern Library",nullptr, &show_patterns);
                     ImGui::Separator();
                     ImGui::MenuItem("VIC-II Screen",    nullptr, &show_vic_screen);
@@ -5539,6 +5590,7 @@ int main(int /*argc*/, char ** /*argv*/)
         draw_pane_profiler();
         draw_pane_snap_diff();
         draw_pane_test_runner();
+        draw_pane_devices();
         draw_pane_patterns();
 
         /* Phase 6 panes */

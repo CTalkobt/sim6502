@@ -2,7 +2,6 @@
 #define INTERRUPTS_H
 
 #include "cpu.h"
-#include "memory.h"
 #include <stdint.h>
 
 /* Interrupt types */

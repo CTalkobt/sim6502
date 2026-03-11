@@ -16,7 +16,9 @@
 #include "disassembler.h"
 #include "commands.h"
 #include "cpu_engine.h"
-#include "mega65_io.h"
+#include "cpu_6502.h"
+#include "device/mega65_io.h"
+#include "device/vic2_io.h"
 
 static instruction_t rom[65536];
 
@@ -143,9 +145,15 @@ int main(int argc, char *argv[]) {
 	if (!filename && !interactive_mode && !initial_cmd) { print_help(argv[0]); return 1; }
 	if (symbol_file) symbol_load_file(&symbols, symbol_file);
 
-	cpu_t cpu;
 	memory_t mem; memset(&mem, 0, sizeof(mem));
-	if (cpu_type == CPU_45GS02) mega65_io_register(&mem);
+	CPU *cpu_ptr = CPUFactory::create(cpu_type);
+	cpu_ptr->mem = &mem;
+	mem.io_registry = new IORegistry(cpu_ptr->get_interrupt_controller());
+	if (!filename) {
+		vic2_io_register(&mem);
+		if (cpu_type == CPU_45GS02) mega65_io_register(&mem);
+		else mem.io_registry->rebuild_map(&mem);
+	}
 
 	if (filename) {
 		FILE *f = fopen(filename, "r");
@@ -205,8 +213,16 @@ int main(int argc, char *argv[]) {
 		if (cpu_type == CPU_65C02) { handlers = opcodes_65c02; num_handlers = OPCODES_65C02_COUNT; }
 		else if (cpu_type == CPU_65CE02) { handlers = opcodes_65ce02; num_handlers = OPCODES_65CE02_COUNT; }
 		else if (cpu_type == CPU_45GS02) { handlers = opcodes_45gs02; num_handlers = OPCODES_45GS02_COUNT; }
-		cpu_init(&cpu); cpu.pc = start_addr_provided ? start_addr : 0x0200;
-		if (cpu_type == CPU_45GS02) set_flag(&cpu, FLAG_E, 1);
+		else if (cpu_type == CPU_6502_UNDOCUMENTED) { handlers = opcodes_6502_undoc; num_handlers = OPCODES_6502_UNDOC_COUNT; }
+
+		if (cpu_type == CPU_45GS02) mega65_io_register(&mem);
+		else {
+			vic2_io_register(&mem);
+			mem.io_registry->rebuild_map(&mem);
+		}
+
+		cpu_ptr->reset(); cpu_ptr->pc = start_addr_provided ? start_addr : 0x0200;
+		if (cpu_type == CPU_45GS02) set_flag(cpu_ptr, FLAG_E, 1);
 		rewind(f); pc = start_addr_provided ? start_addr : 0x0200;
 		while (fgets(line, sizeof(line), f)) {
 			const char *ptr = line; while (*ptr && isspace(*ptr)) ptr++;
@@ -249,34 +265,38 @@ int main(int argc, char *argv[]) {
 		}
 		fclose(f);
 	} else {
-		cpu_init(&cpu); cpu.pc = start_addr_provided ? start_addr : 0x0200;
-		if (cpu_type == CPU_45GS02) set_flag(&cpu, FLAG_E, 1);
+		cpu_ptr->reset(); cpu_ptr->pc = start_addr_provided ? start_addr : 0x0200;
+		if (cpu_type == CPU_45GS02) set_flag(cpu_ptr, FLAG_E, 1);
 	}
 
 	dispatch_table_t dt; dispatch_build(&dt, handlers, num_handlers, cpu_type);
 	if (enable_trace && trace_file) trace_enable_file(&trace_info, trace_file);
 	else if (enable_trace) trace_enable_stdout(&trace_info);
 
-	if (interactive_mode || initial_cmd) { run_interactive_mode(&cpu, &mem, &handlers, &num_handlers, &cpu_type, &dt, cpu.pc, &breakpoints, &symbols, initial_cmd); return 0; }
+	if (interactive_mode || initial_cmd) { run_interactive_mode(cpu_ptr, &mem, &handlers, &num_handlers, &cpu_type, &dt, cpu_ptr->pc, &breakpoints, &symbols, initial_cmd); return 0; }
 
-    printf("\nStarting execution at 0x%04X...\n", cpu.pc);
-	while (cpu.cycles < 1000000) {
-		int tr = handle_trap_main(&symbols, &cpu, &mem); if (tr < 0) break; if (tr > 0) continue;
-		unsigned char opc = mem_read(&mem, cpu.pc);
+    printf("\nStarting execution at 0x%04X...\n", cpu_ptr->pc);
+	while (cpu_ptr->cycles < 1000000) {
+		int tr = handle_trap_main(&symbols, cpu_ptr, cpu_ptr->mem); if (tr < 0) break; if (tr > 0) continue;
+		unsigned char opc = mem_read(cpu_ptr->mem, cpu_ptr->pc);
 		if (opc == 0x00) break;
-		const dispatch_entry_t *te = peek_dispatch(&cpu, &mem, &dt, cpu_type);
+		const dispatch_entry_t *te = peek_dispatch(cpu_ptr, cpu_ptr->mem, &dt, cpu_type);
 		if (te && te->mnemonic && strcmp(te->mnemonic, "STP") == 0) break;
-		if (breakpoint_hit(&breakpoints, &cpu)) { printf("STOP at $%04X\n", cpu.pc); break; }
-		if (trace_info.enabled) { trace_instruction_full(&trace_info, &cpu, te->mnemonic, mode_name(te->mode), cpu.cycles); }
-		execute_from_mem(&cpu, &mem, &dt, cpu_type);
+		if (breakpoint_hit(&breakpoints, cpu_ptr)) { printf("STOP at $%04X\n", cpu_ptr->pc); break; }
+		if (trace_info.enabled) { trace_instruction_full(&trace_info, cpu_ptr, te->mnemonic, mode_name(te->mode), cpu_ptr->cycles); }
+		execute_from_mem(cpu_ptr, cpu_ptr->mem, &dt, cpu_type);
 	}
     printf("\nExecution Finished.\n");
 	if (cpu_type == CPU_45GS02)
-		printf("Registers: A=%02X X=%02X Y=%02X Z=%02X B=%02X S=%02X PC=%04X\n", cpu.a, cpu.x, cpu.y, cpu.z, cpu.b, cpu.s, cpu.pc);
+		printf("Registers: A=%02X X=%02X Y=%02X Z=%02X B=%02X S=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, cpu_ptr->z, cpu_ptr->b, cpu_ptr->s, cpu_ptr->pc);
 	else
-		printf("Registers: A=%02X X=%02X Y=%02X S=%02X PC=%04X\n", cpu.a, cpu.x, cpu.y, cpu.s, cpu.pc);
+		printf("Registers: A=%02X X=%02X Y=%02X S=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, cpu_ptr->s, cpu_ptr->pc);
 
 	if (show_memory) memory_dump(&mem, mem_start, mem_end);
 	if (show_symbols) symbol_display(&symbols);
+
+	delete cpu_ptr;
+	if (mem.io_registry) delete mem.io_registry;
+
 	return 0;
 }

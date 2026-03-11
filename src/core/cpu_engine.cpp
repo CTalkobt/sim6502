@@ -48,4 +48,8 @@ void execute_from_mem(cpu_t *cpu, memory_t *mem, const dispatch_table_t *dt, cpu
 	}
 	fprintf(stderr, "[DEBUG] Executing opcode $%02X at $%04X (%s)\n", byte0, cpu->pc, e->mnemonic);
 	unsigned short arg = decode_operand(cpu, mem, e->mode); e->fn(cpu, mem, arg);
+
+	if (mem->io_registry) {
+		mem->io_registry->tick_all(cpu->cycles);
+	}
 }

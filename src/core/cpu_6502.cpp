@@ -6,6 +6,13 @@
 CPU6502::CPU6502() {
     memset(&dt, 0, sizeof(dt));
     dispatch_build(&dt, opcodes_6502, OPCODES_6502_COUNT, CPU_6502);
+    interrupt_controller_t* ic_ptr = (interrupt_controller_t*)malloc(sizeof(interrupt_controller_t));
+    interrupt_init(ic_ptr);
+    ic = ic_ptr;
+}
+
+CPU6502::~CPU6502() {
+    if (ic) free(static_cast<interrupt_controller_t*>(ic));
 }
 
 int CPU6502::step() {

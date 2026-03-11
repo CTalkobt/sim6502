@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include "cpu.h"
 #include "io_handler.h"
+#include "io_registry.h"
 
 /* Physical (raw) byte read — no MAP translation.
  * Used for far/flat 28-bit access and internally after MAP address translation. */
@@ -20,6 +21,16 @@ static inline unsigned char mem_read_phys(memory_t *mem, unsigned int phys) {
 	if (!mem->far_pages[page])
 		return 0;
 	return mem->far_pages[page][off];
+}
+
+/**
+ * Debug/Introspection Read: Returns value without side-effects.
+ */
+static inline unsigned char mem_peek(memory_t *mem, uint16_t addr) {
+    uint8_t val;
+    if (mem->io_handlers[addr] && mem->io_handlers[addr]->io_peek(mem, addr, &val))
+        return val;
+    return mem->mem[addr];
 }
 
 /* MEGA65 DMA execution */

@@ -6,6 +6,7 @@
 
 class MathCoprocessorHandler : public IOHandler {
 public:
+    virtual const char* get_handler_name() const override { return "MEGA65 Math Coprocessor"; }
     virtual bool io_write(memory_t *mem, uint16_t addr, uint8_t val) override;
 private:
     void update(memory_t *mem, uint16_t addr);
@@ -13,6 +14,7 @@ private:
 
 class DMAControllerHandler : public IOHandler {
 public:
+    virtual const char* get_handler_name() const override { return "MEGA65 DMA Controller"; }
     virtual bool io_write(memory_t *mem, uint16_t addr, uint8_t val) override;
 };
 

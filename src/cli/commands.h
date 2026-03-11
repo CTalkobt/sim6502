@@ -11,6 +11,9 @@
 
 /* --- CLI Utilities --- */
 
+extern int g_json_mode;
+void json_err(const char *cmd, const char *msg);
+
 /* Enable JSON output mode for all interactive commands (0=text, 1=JSON) */
 void cli_set_json_mode(int v);
 

@@ -12,9 +12,9 @@ CORE_SRCS = \
 	src/core/assembler.cpp \
 	src/core/disassembler.cpp \
 	src/core/condition.cpp \
-	src/core/vic2.cpp \
-	src/core/vic2_io.cpp \
-	src/core/mega65_io.cpp \
+	src/core/device/vic2.cpp \
+	src/core/device/vic2_io.cpp \
+	src/core/device/mega65_io.cpp \
 	src/core/patterns.cpp \
 	src/core/project_manager.cpp
 
@@ -38,6 +38,7 @@ CLI_COMMANDS_SRCS = \
 	src/cli/commands/StepCmd.cpp \
 	src/cli/commands/BreakCmd.cpp \
 	src/cli/commands/EnvCmd.cpp \
+	src/cli/commands/DevicesCmd.cpp \
 	src/cli/commands/CommandRegistry.cpp
 
 CLI_SRCS = src/cli/main.cpp src/cli/commands.cpp $(CLI_COMMANDS_SRCS)

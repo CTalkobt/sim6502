@@ -24,6 +24,7 @@ typedef enum {
 #define FLAG_N 0x80
 
 class IOHandler;
+class IORegistry;
 
 struct memory_t {
 	unsigned char mem[0x10000];
@@ -34,6 +35,7 @@ struct memory_t {
 	unsigned char *far_pages[FAR_NUM_PAGES];	/* sparse 28-bit page table */
 	unsigned int map_offset[8];		/* MAP: per-8KB-block physical offset added to virtual addr; 0 = passthrough */
 	IOHandler *io_handlers[0x10000];
+	IORegistry *io_registry;
 };
 
 typedef struct memory_t memory_t;
@@ -125,6 +127,7 @@ class CPU : public CPUState {
 public:
 	virtual int step() = 0; /* Returns number of cycles executed */
 	virtual void trigger_interrupt(int vector_addr) = 0;
+	virtual void* get_interrupt_controller() = 0;
 
 	CPU& operator=(const CPUState& other) {
 		a = other.a; x = other.x; y = other.y; z = other.z; b = other.b;
