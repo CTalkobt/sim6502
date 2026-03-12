@@ -5,9 +5,10 @@
 #include <stdio.h>
 #include <math.h>
 
-SIDHandler::SIDHandler(const char* chip_name) {
+SIDHandler::SIDHandler(const char* chip_name, float pan_val) {
     strncpy(name, chip_name, sizeof(name) - 1);
     name[sizeof(name) - 1] = '\0';
+    pan = pan_val;
     phase = 0;
     freq = 0;
     reset();
@@ -38,29 +39,58 @@ void SIDHandler::reset() {
 }
 
 void SIDHandler::tick(uint64_t cycles) {
-    total_clocks += cycles;
+    if (cycles <= total_clocks) return;
+    uint64_t delta = cycles - total_clocks;
+    total_clocks = cycles;
     
-    // Basic pulse oscillator for Phase 3 verification
+    // Basic pulse oscillator for verification
     if (freq > 0) {
         float step = freq / 44100.0f;
-        for (uint64_t i = 0; i < cycles; i++) {
-            // This is super inefficient but just for verification
-            // In reality we should only push samples when they are needed
-        }
         
         // Push a few samples based on cycles (assume 1MHz for now)
         // 1MHz / 44100Hz = ~22 cycles per sample
         static int cycle_acc = 0;
-        cycle_acc += (int)cycles;
-        if (cycle_acc >= 22) {
+        cycle_acc += (int)delta;
+        while (cycle_acc >= 22) {
             cycle_acc -= 22;
             phase += step;
             if (phase > 1.0f) phase -= 1.0f;
             
             float sample = (phase < 0.5f) ? 0.1f : -0.1f;
-            audio_push_sample(sample, sample);
+            
+            // Apply simple panning (-1.0 = left, 1.0 = right, 0.0 = center)
+            float left_gain = (pan < 0.0f) ? 1.0f : (1.0f - pan);
+            float right_gain = (pan > 0.0f) ? 1.0f : (1.0f + pan);
+            
+            audio_push_sample(sample * left_gain, sample * right_gain);
         }
     }
+}
+
+size_t SIDHandler::state_size() const {
+    return sizeof(regs) + sizeof(total_clocks) + sizeof(phase) + sizeof(freq);
+}
+
+void SIDHandler::save_state(uint8_t *buf) const {
+    size_t offset = 0;
+    memcpy(buf + offset, regs, sizeof(regs));
+    offset += sizeof(regs);
+    memcpy(buf + offset, &total_clocks, sizeof(total_clocks));
+    offset += sizeof(total_clocks);
+    memcpy(buf + offset, &phase, sizeof(phase));
+    offset += sizeof(phase);
+    memcpy(buf + offset, &freq, sizeof(freq));
+}
+
+void SIDHandler::load_state(const uint8_t *buf) {
+    size_t offset = 0;
+    memcpy(regs, buf + offset, sizeof(regs));
+    offset += sizeof(regs);
+    memcpy(&total_clocks, buf + offset, sizeof(total_clocks));
+    offset += sizeof(total_clocks);
+    memcpy(&phase, buf + offset, sizeof(phase));
+    offset += sizeof(phase);
+    memcpy(&freq, buf + offset, sizeof(freq));
 }
 
 static std::vector<SIDHandler*> g_sid_instances;
@@ -79,7 +109,15 @@ void sid_io_register(memory_t *mem, machine_type_t machine, std::vector<IOHandle
     for (int i = 0; i < num_sids; i++) {
         char sid_name[32];
         snprintf(sid_name, sizeof(sid_name), "SID #%d", i + 1);
-        SIDHandler* h = new SIDHandler(sid_name);
+        
+        float pan_val = 0.0f; // Center by default
+        if (machine == MACHINE_MEGA65) {
+            // SIDs 1 & 2 -> Right, SIDs 3 & 4 -> Left
+            if (i == 0 || i == 1) pan_val = 0.5f;
+            else pan_val = -0.5f;
+        }
+        
+        SIDHandler* h = new SIDHandler(sid_name, pan_val);
         dynamic_handlers.push_back(h);
         g_sid_instances.push_back(h);
         mem->io_registry->register_handler(0xD400 + (i * 0x20), 0xD41F + (i * 0x20), h);
@@ -128,4 +166,13 @@ void sid_json_regs(memory_t *mem) {
         printf("]}");
     }
     printf("]}");
+}
+
+size_t sid_get_count() {
+    return g_sid_instances.size();
+}
+
+SIDHandler* sid_get_instance(size_t index) {
+    if (index < g_sid_instances.size()) return g_sid_instances[index];
+    return nullptr;
 }

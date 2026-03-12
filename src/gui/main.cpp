@@ -40,6 +40,7 @@
 #include "cpu.h"
 #include "sim_api.h"
 #include "device/vic2.h"
+#include "device/sid_io.h"
 #include "audio.h"
 #include "patterns.h"
 #include "project_manager.h"
@@ -153,6 +154,10 @@ static bool show_patterns    = false;
 static bool show_vic_screen   = false;
 static bool show_vic_sprites  = false;
 static bool show_vic_regs     = false;
+
+/* ---- Phase 5/Audio panes ---- */
+static bool show_sid_debugger = false;
+static bool show_audio_mixer  = false;
 
 /* ---- Project Wizard state ---- */
 static bool show_new_project_wizard = false;
@@ -3121,6 +3126,92 @@ static void draw_pane_devices(void)
 }
 
 /* --------------------------------------------------------------------------
+ * Pane: SID Debugger
+ * -------------------------------------------------------------------------- */
+static void draw_pane_sid_debugger(void)
+{
+    if (!show_sid_debugger) return;
+    ImGui::Begin("SID Debugger", &show_sid_debugger);
+
+    size_t count = sid_get_count();
+    if (count == 0) {
+        ImGui::TextDisabled("No SID chips registered in the current machine.");
+        ImGui::End();
+        return;
+    }
+
+    if (ImGui::BeginTabBar("##sid_tabs")) {
+        for (size_t i = 0; i < count; i++) {
+            SIDHandler* h = sid_get_instance(i);
+            if (!h) continue;
+            
+            char title[32];
+            snprintf(title, sizeof(title), "SID #%d", (int)(i + 1));
+            
+            if (ImGui::BeginTabItem(title)) {
+                ImGui::Text("Base Address: $%04X", 0xD400 + (int)(i * 0x20));
+                ImGui::Text("Total Clocks: %lu", h->get_clocks());
+                ImGui::Separator();
+                
+                if (ImGui::BeginTable("##sid_regs", 8, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                    for (int r = 0; r < 8; r++) ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 30.0f);
+                    for (int r = 0; r < 32; r++) {
+                        if (r % 8 == 0) ImGui::TableNextRow();
+                        ImGui::TableSetColumnIndex(r % 8);
+                        uint8_t val = 0;
+                        h->io_read(nullptr, r, &val);
+                        ImGui::Text("%02X", val);
+                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Reg %02X", r);
+                    }
+                    ImGui::EndTable();
+                }
+                ImGui::EndTabItem();
+            }
+        }
+        ImGui::EndTabBar();
+    }
+    ImGui::End();
+}
+
+/* --------------------------------------------------------------------------
+ * Pane: Audio Mixer
+ * -------------------------------------------------------------------------- */
+static void draw_pane_audio_mixer(void)
+{
+    if (!show_audio_mixer) return;
+    ImGui::Begin("Audio Mixer", &show_audio_mixer);
+
+    size_t count = sid_get_count();
+    if (count == 0) {
+        ImGui::TextDisabled("No audio devices registered.");
+        ImGui::End();
+        return;
+    }
+
+    ImGui::Text("System Audio Mix");
+    ImGui::Separator();
+
+    for (size_t i = 0; i < count; i++) {
+        SIDHandler* h = sid_get_instance(i);
+        if (!h) continue;
+
+        ImGui::PushID((int)i);
+        ImGui::Text("%s", h->get_handler_name());
+        
+        float pan = h->get_pan();
+        ImGui::SetNextItemWidth(150.0f);
+        if (ImGui::SliderFloat("Pan (L-R)", &pan, -1.0f, 1.0f, "%.2f")) {
+            h->set_pan(pan);
+        }
+        
+        ImGui::PopID();
+        ImGui::Separator();
+    }
+
+    ImGui::End();
+}
+
+/* --------------------------------------------------------------------------
  * Pane: Pattern Library
  *
  * Browse and copy built-in assembly snippet templates.
@@ -5502,6 +5593,9 @@ int main(int /*argc*/, char ** /*argv*/)
                     if (ImGui::MenuItem("Add Optional Device...")) {
                         g_add_device_open = true;
                     }
+                    ImGui::Separator();
+                    ImGui::MenuItem("SID Debugger", nullptr, &show_sid_debugger);
+                    ImGui::MenuItem("Audio Mixer",  nullptr, &show_audio_mixer);
                     ImGui::EndMenu();
                 }
                 if (ImGui::BeginMenu("View")) {
@@ -5676,6 +5770,8 @@ int main(int /*argc*/, char ** /*argv*/)
         draw_pane_snap_diff();
         draw_pane_test_runner();
         draw_pane_devices();
+        draw_pane_sid_debugger();
+        draw_pane_audio_mixer();
         draw_pane_patterns();
 
         /* Phase 6 panes */
