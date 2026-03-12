@@ -14,7 +14,8 @@
 #include "memory_utils.h"
 #include "interrupts.h"
 #include "symbols.h"
-#include "assembler.h"
+#include "list_parser.h"
+#include "metadata.h"
 #include "disassembler.h"
 #include "commands.h"
 #include "cpu_engine.h"
@@ -25,7 +26,6 @@
 #include "device/sid_io.h"
 #include "device/cia_io.h"
 
-static instruction_t rom[65536];
 static std::vector<IOHandler*> g_main_dynamic_handlers;
 
 static int handle_trap_main(const symbol_table_t *st, cpu_t *cpu, memory_t *mem) {
@@ -117,10 +117,11 @@ int main(int argc, char *argv[]) {
 	float speed_scale = 1.0f; // Default to C64 speed
 	
 	symbol_table_t symbols;
+	source_map_t source_map;
 	breakpoint_init(&breakpoints);
 	trace_init(&trace_info);
 	symbol_table_init(&symbols, "Default");
-	memset(rom, 0, sizeof(rom));
+	source_map_init(&source_map);
 	
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) { print_help(argv[0]); return 0; }
@@ -220,217 +221,139 @@ int main(int argc, char *argv[]) {
 	cpu_ptr->mem = &mem;
 	cpu_ptr->debug = enable_debug != 0;
 	mem.io_registry = new IORegistry(cpu_ptr->get_interrupt_controller());
-	if (!filename) {
-		switch (machine_type) {
-			case MACHINE_RAW6502: break;
-			case MACHINE_MEGA65:  
-                mega65_io_register(&mem); 
-                sid_io_register(&mem, machine_type, g_main_dynamic_handlers);
-                cia_io_register(&mem, g_main_dynamic_handlers);
-                break;
-			case MACHINE_C64:
-			case MACHINE_C128:
-			case MACHINE_X16:
-			default:              
-                vic2_io_register(&mem); 
-                sid_io_register(&mem, machine_type, g_main_dynamic_handlers);
-                cia_io_register(&mem, g_main_dynamic_handlers);
-                mem.io_registry->rebuild_map(&mem); 
-                break;
-		}
-	}
+	
+    if (filename) {
+		/* Toolchain-based loading (replaces legacy internal assembler) */
+		char base[512];
+		strncpy(base, filename, sizeof(base)-1);
+		base[sizeof(base)-1] = 0;
+		char *dot = strrchr(base, '.');
+		if (dot && (strcasecmp(dot, ".asm") == 0 || strcasecmp(dot, ".s") == 0)) *dot = 0;
 
-	if (filename) {
-		FILE *f = fopen(filename, "r");
-		if (!f) { perror("fopen"); return 1; }
-		int pc = start_addr_provided ? start_addr : 0x0200;
-		char line[512];
-		while (fgets(line, sizeof(line), f)) {
-			const char *ptr = line; while (*ptr && isspace(*ptr)) ptr++;
-			if (!*ptr || *ptr == ';') continue;
-			const char *semi1 = strchr(ptr, ';');
-			const char *colon = strchr(ptr, ':');
-			/* Dot-prefixed local label (.name:) must be checked before pseudo-op */
-			if (*ptr == '.' && !(colon && (!semi1 || colon < semi1))) {
-				if (handle_pseudo_op(ptr, &machine_type, &cpu_type, &pc, NULL, NULL, NULL)) {
-					if (cpu_type == CPU_65C02) { handlers = opcodes_65c02; num_handlers = OPCODES_65C02_COUNT; }
-					else if (cpu_type == CPU_65CE02) { handlers = opcodes_65ce02; num_handlers = OPCODES_65CE02_COUNT; }
-					else if (cpu_type == CPU_45GS02) { handlers = opcodes_45gs02; num_handlers = OPCODES_45GS02_COUNT; }
-					else if (cpu_type == CPU_6502_UNDOCUMENTED) { handlers = opcodes_6502_undoc; num_handlers = OPCODES_6502_UNDOC_COUNT; }
-					else { handlers = opcodes_6502; num_handlers = OPCODES_6502_COUNT; }
-					continue;
-				}
-			}
-			if (colon && (!semi1 || colon < semi1)) {
-				char l[64]; int len = colon - ptr; if (len >= 64) len = 63;
-				strncpy(l, ptr, len); l[len] = 0; symbol_add(&symbols, l, pc, SYM_LABEL, "Source");
-				const char *after = colon + 1; while (*after && isspace(*after)) after++;
-				if (*after == '.') { 
-					if (handle_pseudo_op(after, &machine_type, &cpu_type, &pc, NULL, NULL, NULL)) {
-						if (cpu_type == CPU_65C02) { handlers = opcodes_65c02; num_handlers = OPCODES_65C02_COUNT; }
-						else if (cpu_type == CPU_65CE02) { handlers = opcodes_65ce02; num_handlers = OPCODES_65CE02_COUNT; }
-						else if (cpu_type == CPU_45GS02) { handlers = opcodes_45gs02; num_handlers = OPCODES_45GS02_COUNT; }
-						else { handlers = opcodes_6502; num_handlers = OPCODES_6502_COUNT; }
-						continue; 
-					}
-				}
-				if (!*after || *after == ';') continue;
-			} else {
-				/* Equate:  NAME = VALUE  (no colon, '=' before any ';') */
-				const char *eq = strchr(ptr, '=');
-				if (eq && (!semi1 || eq < semi1)) {
-					const char *nend = eq - 1; while (nend > ptr && isspace(*nend)) nend--;
-					int nlen = (int)(nend - ptr) + 1;
-					if (nlen > 0 && nlen < 64 && (isalpha(*ptr) || *ptr == '_')) {
-						char ename[64]; strncpy(ename, ptr, (size_t)nlen); ename[nlen] = 0;
-						const char *vp = eq + 1; while (*vp && isspace(*vp)) vp++;
-						unsigned long val = (unsigned long)parse_value(vp, NULL);
-						symbol_add(&symbols, ename, (int)val, SYM_LABEL, "Equate");
-						continue;
-					}
-				}
-			}
-			instruction_t instr; parse_line(line, &instr, NULL, pc);
-			if (instr.op[0]) {
-				int len = get_encoded_length(instr.op, instr.mode, handlers, num_handlers, cpu_type);
-				if (len < 0) { fprintf(stderr, "Pass 1: Error assembling '%s' at $%04X\n", line, pc); return 1; }
-				pc += len;
-			}
-		}
-		if (start_label && !start_addr_provided) { symbol_lookup_name(&symbols, start_label, &start_addr); start_addr_provided = 1; }
-		if (cpu_type == CPU_65C02) { handlers = opcodes_65c02; num_handlers = OPCODES_65C02_COUNT; }
-		else if (cpu_type == CPU_65CE02) { handlers = opcodes_65ce02; num_handlers = OPCODES_65CE02_COUNT; }
-		else if (cpu_type == CPU_45GS02) { handlers = opcodes_45gs02; num_handlers = OPCODES_45GS02_COUNT; }
-		else if (cpu_type == CPU_6502_UNDOCUMENTED) { handlers = opcodes_6502_undoc; num_handlers = OPCODES_6502_UNDOC_COUNT; }
-
-		switch (machine_type) {
-			case MACHINE_RAW6502: break;
-			case MACHINE_MEGA65:  
-                mega65_io_register(&mem); 
-                sid_io_register(&mem, machine_type, g_main_dynamic_handlers);
-                cia_io_register(&mem, g_main_dynamic_handlers);
-                break;
-			case MACHINE_C64:
-			case MACHINE_C128:
-			case MACHINE_X16:
-			default:              
-                vic2_io_register(&mem); 
-                sid_io_register(&mem, machine_type, g_main_dynamic_handlers);
-                cia_io_register(&mem, g_main_dynamic_handlers);
-                mem.io_registry->rebuild_map(&mem); 
-                break;
+		if (!load_toolchain_bundle(&mem, &symbols, &source_map, base)) {
+            /* If bundle failed, try loading as raw binary/prg if it's not .asm */
+            if (dot && (strcasecmp(dot, ".asm") == 0 || strcasecmp(dot, ".s") == 0)) {
+			    fprintf(stderr, "Error: Could not load toolchain bundle for '%s'\n", filename);
+			    return 1;
+            } else {
+                /* Try loading as PRG */
+                int prg_addr = 0;
+                if (load_prg(&mem, filename, &prg_addr) < 0) {
+                    /* Try loading as binary */
+                    int b_addr = start_addr_provided ? start_addr : 0x0200;
+                    if (load_binary(&mem, b_addr, filename) < 0) {
+                        fprintf(stderr, "Error: Could not load '%s'\n", filename);
+                        return 1;
+                    }
+                } else if (!start_addr_provided) {
+                    start_addr = (unsigned short)prg_addr;
+                    start_addr_provided = 1;
+                }
+            }
 		}
 
-		cpu_ptr->reset(); cpu_ptr->pc = start_addr_provided ? start_addr : 0x0200;
-		if (cpu_type == CPU_45GS02) set_flag(cpu_ptr, FLAG_E, 1);
-		rewind(f); pc = start_addr_provided ? start_addr : 0x0200;
-		while (fgets(line, sizeof(line), f)) {
-			const char *ptr = line; while (*ptr && isspace(*ptr)) ptr++;
-			if (!*ptr || *ptr == ';') continue;
-			const char *semi2 = strchr(ptr, ';');
-			const char *colon2 = strchr(ptr, ':');
-			/* Dot-prefixed local label (.name:) must be checked before pseudo-op */
-			if (*ptr == '.' && !(colon2 && (!semi2 || colon2 < semi2))) {
-				if (handle_pseudo_op(ptr, &machine_type, &cpu_type, &pc, &mem, &symbols, NULL)) {
-					if (cpu_type == CPU_65C02) { handlers = opcodes_65c02; num_handlers = OPCODES_65C02_COUNT; }
-					else if (cpu_type == CPU_65CE02) { handlers = opcodes_65ce02; num_handlers = OPCODES_65CE02_COUNT; }
-					else if (cpu_type == CPU_45GS02) { handlers = opcodes_45gs02; num_handlers = OPCODES_45GS02_COUNT; }
-					else if (cpu_type == CPU_6502_UNDOCUMENTED) { handlers = opcodes_6502_undoc; num_handlers = OPCODES_6502_UNDOC_COUNT; }
-					else { handlers = opcodes_6502; num_handlers = OPCODES_6502_COUNT; }
-					continue;
-				}
-			}
-			if (colon2 && (!semi2 || colon2 < semi2)) { 
-				const char *after = colon2 + 1; while (*after && isspace(*after)) after++; 
-				if (*after == '.') { 
-					if (handle_pseudo_op(after, &machine_type, &cpu_type, &pc, &mem, &symbols, NULL)) {
-						if (cpu_type == CPU_65C02) { handlers = opcodes_65c02; num_handlers = OPCODES_65C02_COUNT; }
-						else if (cpu_type == CPU_65CE02) { handlers = opcodes_65ce02; num_handlers = OPCODES_65CE02_COUNT; }
-						else if (cpu_type == CPU_45GS02) { handlers = opcodes_45gs02; num_handlers = OPCODES_45GS02_COUNT; }
-						else { handlers = opcodes_6502; num_handlers = OPCODES_6502_COUNT; }
-						continue; 
-					}
-				}
-				if (!*after || *after == ';') continue;
-			}
-			/* Skip equate lines in second pass (already in symbol table) */
-			const char *eq2 = strchr(ptr, '=');
-			if (eq2 && (!semi2 || eq2 < semi2) && (isalpha(*ptr) || *ptr == '_')) continue;
+		/* Find start address if not provided */
+        if (!start_addr_provided) {
+		    unsigned short found_addr = 0x0801;
+		    if (symbol_lookup_name(&symbols, "main", &found_addr)) {
+                start_addr = found_addr;
+                start_addr_provided = 1;
+            } else if (symbol_lookup_name(&symbols, "start", &found_addr)) {
+                start_addr = found_addr;
+                start_addr_provided = 1;
+            }
+        }
+    }
 
-			instruction_t instr; parse_line(line, &instr, &symbols, pc);
-			if (instr.op[0]) {
-				rom[pc] = instr;
-				int enc = encode_to_mem(&mem, pc, &instr, handlers, num_handlers, cpu_type);
-				if (enc < 0) { fprintf(stderr, "Pass 2: Error assembling '%s' at $%04X\n", line, pc); return 1; }
-				pc += enc;
-			}
-		}
-		fclose(f);
-	} else {
-		cpu_ptr->reset(); cpu_ptr->pc = start_addr_provided ? start_addr : 0x0200;
-		if (cpu_type == CPU_45GS02) set_flag(cpu_ptr, FLAG_E, 1);
-	}
+    /* Initialize hardware based on machine type */
+    switch (machine_type) {
+        case MACHINE_RAW6502: break;
+        case MACHINE_MEGA65:  
+            mega65_io_register(&mem); 
+            sid_io_register(&mem, machine_type, g_main_dynamic_handlers);
+            cia_io_register(&mem, g_main_dynamic_handlers);
+            break;
+        case MACHINE_C64:
+        case MACHINE_C128:
+        case MACHINE_X16:
+        default:              
+            vic2_io_register(&mem); 
+            sid_io_register(&mem, machine_type, g_main_dynamic_handlers);
+            cia_io_register(&mem, g_main_dynamic_handlers);
+            mem.io_registry->rebuild_map(&mem); 
+            break;
+    }
+
+    cpu_ptr->reset(); 
+    cpu_ptr->pc = start_addr_provided ? start_addr : (filename ? 0x0801 : 0x0200);
+    if (cpu_type == CPU_45GS02) set_flag(cpu_ptr, FLAG_E, 1);
 
 	dispatch_table_t dt; dispatch_build(&dt, handlers, num_handlers, cpu_type);
 	if (enable_trace && trace_file) trace_enable_file(&trace_info, trace_file);
 	else if (enable_trace) trace_enable_stdout(&trace_info);
 
-		if (interactive_mode || !initial_cmds.empty()) { run_interactive_mode(cpu_ptr, &mem, &handlers, &num_handlers, &cpu_type, &dt, cpu_ptr->pc, &breakpoints, &symbols, initial_cmds); return 0; }
+	if (interactive_mode || !initial_cmds.empty()) { 
+        run_interactive_mode(cpu_ptr, &mem, &handlers, &num_handlers, &cpu_type, &dt, cpu_ptr->pc, &breakpoints, &symbols, initial_cmds); 
+        return 0; 
+    }
 	
-	    int stop_reason = 0; // 0=limit, 1=brk, 2=stp, 3=bp, 4=trap
-	    struct timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0);
-	    unsigned long cyc0 = cpu_ptr->cycles;
-	    const double C64_HZ = 985248.0;
-	
-	    printf("\nStarting execution at 0x%04X...\n", cpu_ptr->pc);
-		while (cpu_ptr->cycles < cycle_limit) {
-			int tr = handle_trap_main(&symbols, cpu_ptr, cpu_ptr->mem); 
-	        if (tr < 0) { stop_reason = 4; break; } 
-	        if (tr > 0) continue;
-	
-			unsigned char opc = mem_read(cpu_ptr->mem, cpu_ptr->pc);
-			if (opc == 0x00) { stop_reason = 1; break; }
-	
-			const dispatch_entry_t *te = peek_dispatch(cpu_ptr, cpu_ptr->mem, &dt, cpu_type);
-			if (te && te->mnemonic && strcmp(te->mnemonic, "STP") == 0) { stop_reason = 2; break; }
-	
-					if (breakpoint_hit(&breakpoints, cpu_ptr)) { 
-			            printf("STOP at $%04X\n", cpu_ptr->pc); 
-			            stop_reason = 3; break; 
-			        }
-			
-					if (trace_info.enabled) { trace_instruction_full(&trace_info, cpu_ptr, te->mnemonic, mode_name(te->mode), cpu_ptr->cycles); }
-					execute_from_mem(cpu_ptr, cpu_ptr->mem, &dt, cpu_type);
-			
-			        /* Throttling */	        if (speed_scale > 0.0f && ((cpu_ptr->cycles - cyc0) & 0x3FF) < 8) {
-	            struct timespec tnow; clock_gettime(CLOCK_MONOTONIC, &tnow);
-	            double elapsed = (tnow.tv_sec - t0.tv_sec) + (tnow.tv_nsec - t0.tv_nsec) * 1e-9;
-	            double target  = (double)(cpu_ptr->cycles - cyc0) / (C64_HZ * (double)speed_scale);
-	            if (target > elapsed) {
-	                double d = target - elapsed;
-	                struct timespec ts = { (time_t)d, (long)((d - (time_t)d) * 1e9) };
-	                nanosleep(&ts, NULL);
-	            }
-	        }
-		}
-	
-	    switch(stop_reason) {
-	        case 0: printf("\nExecution Stopped: Cycle limit (%lu) reached. Use '-L <n>' or '-c run' for longer execution.\n", cycle_limit); break;
-	        case 1: printf("\nExecution Finished: BRK encountered.\n"); break;
-	        case 2: printf("\nExecution Finished: STP encountered.\n"); break;
-	        default: printf("\nExecution Finished.\n"); break;
-	    }
-	
-				if (cpu_type == CPU_45GS02)
-					printf("Registers: A=%02X X=%02X Y=%02X Z=%02X B=%02X S=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, cpu_ptr->z, cpu_ptr->b, (uint8_t)cpu_ptr->s, cpu_ptr->pc);
-				else
-					printf("Registers: A=%02X X=%02X Y=%02X S=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, (uint8_t)cpu_ptr->s, cpu_ptr->pc);		if (show_memory) memory_dump(&mem, mem_start, mem_end);
-		if (show_symbols) symbol_display(&symbols);
-	
-	    /* Allow audio to drain */
-	    usleep(100000); 
-	
-		delete cpu_ptr;
+    int stop_reason = 0; // 0=limit, 1=brk, 2=stp, 3=bp, 4=trap
+    struct timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0);
+    unsigned long cyc0 = cpu_ptr->cycles;
+    const double C64_HZ = 985248.0;
+
+    printf("\nStarting execution at 0x%04X...\n", cpu_ptr->pc);
+	while (cpu_ptr->cycles < cycle_limit) {
+		int tr = handle_trap_main(&symbols, cpu_ptr, cpu_ptr->mem); 
+        if (tr < 0) { stop_reason = 4; break; } 
+        if (tr > 0) continue;
+
+		unsigned char opc = mem_read(cpu_ptr->mem, cpu_ptr->pc);
+		if (opc == 0x00) { stop_reason = 1; break; }
+
+		const dispatch_entry_t *te = peek_dispatch(cpu_ptr, cpu_ptr->mem, &dt, cpu_type);
+		if (te && te->mnemonic && strcmp(te->mnemonic, "STP") == 0) { stop_reason = 2; break; }
+
+		if (breakpoint_hit(&breakpoints, cpu_ptr)) { 
+            printf("STOP at $%04X\n", cpu_ptr->pc); 
+            stop_reason = 3; break; 
+        }
+
+		if (trace_info.enabled) { trace_instruction_full(&trace_info, cpu_ptr, te->mnemonic, mode_name(te->mode), cpu_ptr->cycles); }
+		execute_from_mem(cpu_ptr, cpu_ptr->mem, &dt, cpu_type);
+
+        /* Throttling */
+        if (speed_scale > 0.0f && ((cpu_ptr->cycles - cyc0) & 0x3FF) < 8) {
+            struct timespec tnow; clock_gettime(CLOCK_MONOTONIC, &tnow);
+            double elapsed = (tnow.tv_sec - t0.tv_sec) + (tnow.tv_nsec - t0.tv_nsec) * 1e-9;
+            double target  = (double)(cpu_ptr->cycles - cyc0) / (C64_HZ * (double)speed_scale);
+            if (target > elapsed) {
+                double d = target - elapsed;
+                struct timespec ts = { (time_t)d, (long)((d - (time_t)d) * 1e9) };
+                nanosleep(&ts, NULL);
+            }
+        }
+	}
+
+    switch(stop_reason) {
+        case 0: printf("\nExecution Stopped: Cycle limit (%lu) reached. Use '-L <n>' or '-c run' for longer execution.\n", cycle_limit); break;
+        case 1: printf("\nExecution Finished: BRK encountered.\n"); break;
+        case 2: printf("\nExecution Finished: STP encountered.\n"); break;
+        default: printf("\nExecution Finished.\n"); break;
+    }
+
+	if (cpu_type == CPU_45GS02)
+		printf("Registers: A=%02X X=%02X Y=%02X Z=%02X B=%02X S=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, cpu_ptr->z, cpu_ptr->b, (uint8_t)cpu_ptr->s, cpu_ptr->pc);
+	else
+		printf("Registers: A=%02X X=%02X Y=%02X S=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, (uint8_t)cpu_ptr->s, cpu_ptr->pc);
+
+    if (show_memory) memory_dump(&mem, mem_start, mem_end);
+	if (show_symbols) symbol_display(&symbols);
+
+    /* Allow audio to drain */
+    usleep(100000); 
+
+	delete cpu_ptr;
 	if (mem.io_registry) delete mem.io_registry;
     for (auto h : g_main_dynamic_handlers) delete h;
     audio_close();

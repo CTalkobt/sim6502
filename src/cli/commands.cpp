@@ -243,49 +243,6 @@ static cli_diff_t s_diff_buf[CLI_DIFF_CAP];
 static int cli_diff_cmp(const void *a, const void *b) { return (int)((cli_diff_t*)a)->addr - (int)((cli_diff_t*)b)->addr; }
 
 /* --------------------------------------------------------------------------
- * Assembler command
- * -------------------------------------------------------------------------- */
-static void cmd_assemble(const char *line, memory_t *mem, symbol_table_t *symbols,
-                         opcode_handler_t *handlers, int num_handlers, cpu_type_t cpu_type, cpu_t *cpu) {
-    const char *p = line;
-    while (*p && !isspace((unsigned char)*p)) p++;
-    while (*p && isspace((unsigned char)*p)) p++;
-    
-    unsigned long tmp;
-    int asm_pc = cpu->pc;
-    if (parse_mon_value(&p, &tmp)) {
-        asm_pc = (int)tmp;
-        while (*p && isspace((unsigned char)*p)) p++;
-    }
-    
-    if (!*p) return;
-
-    int base_pc = asm_pc;
-    int enc = -1;
-
-    if (*p == '.') {
-        if (!handle_pseudo_op(p, NULL, &cpu_type, &asm_pc, mem, symbols, NULL)) enc = -1;
-        else enc = asm_pc - base_pc;
-    } else {
-        instruction_t instr; parse_line(p, &instr, symbols, asm_pc);
-        if (instr.op[0]) {
-            enc = encode_to_mem(mem, asm_pc, &instr, handlers, num_handlers, cpu_type);
-            if (enc >= 0) asm_pc += enc;
-        }
-    }
-
-    if (enc < 0) json_err("asm", "Assembly failed");
-    else {
-        char hex[32] = "";
-        for (int i = 0; i < (enc < 8 ? enc : 8); i++) {
-            char t[4]; snprintf(t, sizeof(t), "%02X", mem->mem[base_pc + i]);
-            strcat(hex, t);
-        }
-        printf("{\"cmd\":\"asm\",\"ok\":true,\"data\":{\"address\":%d,\"size\":%d,\"bytes\":\"%s\"}}\n", base_pc, enc, hex);
-    }
-}
-
-/* --------------------------------------------------------------------------
  * Validate command
  * -------------------------------------------------------------------------- */
 static void cmd_validate(const char *line, cpu_t *cpu, memory_t *mem, const dispatch_table_t *dt, cpu_type_t *p_cpu_type, breakpoint_list_t *breakpoints, symbol_table_t *symbols) {
@@ -594,10 +551,6 @@ static bool process_single_command(const std::string& line,
         }
     } else if (cmd == "validate") {
         cmd_validate(line.c_str(), cpu, mem, dt, p_cpu_type, breakpoints, symbols);
-    } else if (cmd == "asm") {
-        const char *p = line.c_str(); SKIP_CMD(p); unsigned long tmp;
-        int asm_pc = parse_mon_value(&p, &tmp) ? (int)tmp : (int)cpu->pc;
-        run_asm_mode(mem, symbols, *p_handlers, *p_num_handlers, *p_cpu_type, &asm_pc);
     } else if (cmd == "disasm") {
         const char *p = line.c_str(); SKIP_CMD(p); unsigned long tmp;
         unsigned short daddr = parse_mon_value(&p, &tmp) ? (unsigned short)tmp : cpu->pc;
@@ -631,35 +584,6 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
         printf("> "); if (!fgets(line_buf, sizeof(line_buf), stdin)) break;
         if (!process_single_command(line_buf, registry, static_cast<CPU*>(cpu), mem, p_handlers, p_num_handlers, p_cpu_type, dt, breakpoints, symbols))
             break;
-    }
-}
-
-void run_asm_mode(memory_t *mem, symbol_table_t *symbols,
-                  opcode_handler_t *handlers, int num_handlers,
-                  cpu_type_t cpu_type, int *asm_pc) {
-    char buf[512];
-    printf("Assembling from $%04X  (enter '.' on a blank line to finish)\n", (unsigned int)*asm_pc);
-    for (;;) {
-        printf("$%04X> ", (unsigned int)*asm_pc); fflush(stdout);
-        if (!fgets(buf, sizeof(buf), stdin)) break;
-        size_t blen = strlen(buf);
-        while (blen > 0 && (buf[blen-1] == '\n' || buf[blen-1] == '\r')) buf[--blen] = '\0';
-        const char *p = buf; while (*p && isspace((unsigned char)*p)) p++;
-        if (p[0] == '.' && p[1] == '\0') break;
-        if (!*p || *p == ';') continue;
-        int base_pc = *asm_pc;
-        if (*p == '.') {
-            if (!handle_pseudo_op(p, NULL, &cpu_type, asm_pc, mem, symbols, NULL)) printf("       error: pseudo-op failed\n");
-            continue;
-        }
-        instruction_t instr; parse_line(buf, &instr, symbols, *asm_pc);
-        if (!instr.op[0]) continue;
-        int enc = encode_to_mem(mem, *asm_pc, &instr, handlers, num_handlers, cpu_type);
-        if (enc < 0) { printf("       error: cannot assemble: %s\n", p); continue; }
-        *asm_pc += enc;
-        printf("$%04X:", base_pc);
-        for (int i = 0; i < (enc<4?enc:4); i++) printf(" %02X", mem->mem[base_pc + i]);
-        printf("  %s\n", p);
     }
 }
 

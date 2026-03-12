@@ -6,7 +6,8 @@
 #include "breakpoints.h"
 #include "trace.h"
 #include "symbols.h"
-#include "assembler.h"
+#include "list_parser.h"
+#include "metadata.h"
 #include "disassembler.h"
 #include "cpu_engine.h"
 #include "cpu_6502.h"
@@ -39,13 +40,13 @@ struct sim_session {
     memory_t          mem;
     dispatch_table_t  dt;
     symbol_table_t    symbols;
+    source_map_t      source_map;
     breakpoint_list_t breakpoints;
     machine_type_t    machine_type;
     cpu_type_t        cpu_type;
     sim_state_t       state;
     unsigned short    start_addr;
     unsigned short    load_size;   /* byte count of the loaded binary (best-effort) */
-    instruction_t     session_rom[65536]; /* debug overlay (parallel to mem) */
     char              filename[512];
     sim_event_cb      event_cb;
     void             *event_userdata;
@@ -235,112 +236,6 @@ void sim_destroy(sim_session_t *s) {
     free(s);
 }
 
-int sim_load_asm(sim_session_t *s, const char *path) {
-    if (!s || !path) return -1;
-    FILE *f = fopen(path, "r");
-    if (!f) return -1;
-    memset(&s->mem, 0, sizeof(s->mem));
-    s->mem.io_registry = new IORegistry(s->cpu->get_interrupt_controller());
-    memset(s->session_rom, 0, sizeof(s->session_rom));
-    symbol_table_init(&s->symbols, "Session");
-    breakpoint_init(&s->breakpoints);
-    api_history_clear(s);
-    cpu_type_t cpu_type = s->cpu_type;
-    api_select_handlers(s);
-    char line[512];
-    int pc = 0x0200;
-    while (fgets(line, sizeof(line), f)) {
-        char *ptr = line;
-        while (*ptr && isspace(*ptr)) ptr++;
-        if (!*ptr || *ptr == ';') continue;
-        if (*ptr == '.') { 
-            if (!handle_pseudo_op(ptr, &s->machine_type, &cpu_type, &pc, NULL, NULL, NULL)) {
-                fclose(f); return -1;
-            }
-            s->cpu_type = cpu_type;
-            api_select_handlers(s);
-            continue; 
-        }
-        char *semi  = strchr(ptr, ';');
-        char *colon = strchr(ptr, ':');
-        if (colon && (!semi || colon < semi)) {
-            char label_name[64]; int len = (int)(colon - ptr); if (len >= 64) len = 63;
-            strncpy(label_name, ptr, len); label_name[len] = 0;
-            symbol_add(&s->symbols, label_name, (unsigned short)pc, SYM_LABEL, "Source");
-            const char *after = colon + 1;
-            while (*after && isspace(*after)) after++;
-            if (*after == '.') { 
-                if (!handle_pseudo_op(after, &s->machine_type, &cpu_type, &pc, NULL, NULL, NULL)) {
-                    fclose(f); return -1;
-                }
-                s->cpu_type = cpu_type;
-                api_select_handlers(s);
-                continue; 
-            }
-        }
-        instruction_t instr; parse_line(line, &instr, NULL, pc);
-        if (instr.op[0]) {
-            int len;
-            if (strcmp(instr.op, "BRK") == 0) len = (cpu_type == CPU_45GS02) ? 1 : 2;
-            else {
-                len = get_encoded_length(instr.op, instr.mode, s->handlers, s->num_handlers, cpu_type);
-                if (len < 0) len = get_instruction_length(instr.mode);
-            }
-            pc += len;
-        }
-    }
-    s->cpu_type = cpu_type;
-    api_select_handlers(s);
-    machine_init_hardware(s);
-    s->cpu->reset();
-    s->cpu->pc = 0x0200;
-    s->start_addr = 0x0200;
-    if (s->cpu_type == CPU_45GS02) s->cpu->set_flag( FLAG_E, 1);
-    rewind(f);
-    pc = 0x0200;
-    while (fgets(line, sizeof(line), f)) {
-        const char *ptr = line;
-        while (*ptr && isspace(*ptr)) ptr++;
-        if (!*ptr || *ptr == ';') continue;
-        if (*ptr == '.') { 
-            if (!handle_pseudo_op(ptr, &s->machine_type, &s->cpu_type, &pc, &s->mem, &s->symbols, NULL)) {
-                fclose(f); return -1;
-            }
-            api_select_handlers(s);
-            machine_init_hardware(s);
-            continue; 
-        }
-        const char *semi2  = strchr(ptr, ';');
-        const char *colon = strchr(ptr, ':');
-        if (colon && (!semi2 || colon < semi2)) {
-            const char *after = colon + 1;
-            while (*after && isspace(*after)) after++;
-            if (*after == '.') { 
-                if (!handle_pseudo_op(after, &s->machine_type, &s->cpu_type, &pc, &s->mem, &s->symbols, NULL)) {
-                    fclose(f); return -1;
-                }
-                api_select_handlers(s);
-                machine_init_hardware(s);
-                continue; 
-            }
-        }
-        instruction_t instr; parse_line(line, &instr, &s->symbols, pc);
-        if (instr.op[0]) {
-            s->session_rom[pc] = instr;
-            int enc = encode_to_mem(&s->mem, pc, &instr, s->handlers, s->num_handlers, s->cpu_type);
-            if (strcmp(instr.op, "BRK") == 0) pc += (s->cpu_type == CPU_45GS02) ? 1 : 2;
-            else if (enc > 0) pc += enc;
-            else pc += get_instruction_length(instr.mode);
-        }
-    }
-    fclose(f);
-    dispatch_build(&s->dt, s->handlers, s->num_handlers, s->cpu_type);
-    strncpy(s->filename, path, sizeof(s->filename) - 1);
-    s->load_size = (unsigned short)(pc > s->start_addr ? pc - s->start_addr : 0);
-    s->state = SIM_READY;
-    return 0;
-}
-
 /* --------------------------------------------------------------------------
  * Binary load/save
  * -------------------------------------------------------------------------- */
@@ -357,6 +252,39 @@ static void binary_load_common(sim_session_t *s, uint16_t load_addr, int byte_co
     s->state = SIM_READY;
 }
 
+int sim_load_asm(sim_session_t *s, const char *path) {
+    if (!s || !path) return -1;
+    
+    char base[512];
+    strncpy(base, path, sizeof(base)-1);
+    base[sizeof(base)-1] = 0;
+    char *dot = strrchr(base, '.');
+    if (dot && (strcasecmp(dot, ".asm") == 0 || strcasecmp(dot, ".s") == 0)) *dot = 0;
+    
+    /* Reset session state */
+    IORegistry *old_registry = s->mem.io_registry;
+    memset(&s->mem, 0, sizeof(s->mem));
+    s->mem.io_registry = old_registry;
+    machine_init_hardware(s);
+    symbol_table_init(&s->symbols, "Toolchain");
+    source_map_init(&s->source_map);
+    breakpoint_init(&s->breakpoints);
+    api_history_clear(s);
+    
+    if (load_toolchain_bundle(&s->mem, &s->symbols, &s->source_map, base)) {
+        strncpy(s->filename, path, sizeof(s->filename) - 1);
+        /* Try to find a reasonable start address */
+        unsigned short start_addr = 0x0801;
+        symbol_lookup_name(&s->symbols, "main", &start_addr);
+        if (start_addr == 0x0801) symbol_lookup_name(&s->symbols, "start", &start_addr);
+        
+        binary_load_common(s, start_addr, 0); /* load_size will be updated if we knew it */
+        return 0;
+    }
+    
+    return -1;
+}
+
 int sim_load_bin(sim_session_t *s, const char *path, uint16_t load_addr)
 {
     if (!s || !path) return -1;
@@ -366,7 +294,6 @@ int sim_load_bin(sim_session_t *s, const char *path, uint16_t load_addr)
     memset(&s->mem, 0, sizeof(s->mem));
     s->mem.io_registry = old_registry;
     machine_init_hardware(s);
-    memset(s->session_rom, 0, sizeof(s->session_rom));
     symbol_table_init(&s->symbols, "Session");
     breakpoint_init(&s->breakpoints);
     api_history_clear(s);
@@ -397,7 +324,6 @@ int sim_load_prg(sim_session_t *s, const char *path, uint16_t override_addr)
     memset(&s->mem, 0, sizeof(s->mem));
     s->mem.io_registry = old_registry;
     machine_init_hardware(s);
-    memset(s->session_rom, 0, sizeof(s->session_rom));
     symbol_table_init(&s->symbols, "Session");
     breakpoint_init(&s->breakpoints);
     api_history_clear(s);

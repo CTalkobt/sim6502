@@ -1,5 +1,4 @@
 #include "disassembler.h"
-#include "assembler.h"
 #include <stdio.h>
 #include <string.h>
 

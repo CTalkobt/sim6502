@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "memory_types.h"
 
 /* Forward declarations */
-struct memory_t;
 class InterruptLine;
 
 /**
