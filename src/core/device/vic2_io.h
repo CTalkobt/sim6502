@@ -2,7 +2,6 @@
 #define VIC2_IO_H
 
 #include "io_handler.h"
-#include "cpu.h"
 
 class VIC2Handler : public IOHandler {
 private:

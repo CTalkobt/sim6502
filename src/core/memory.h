@@ -6,10 +6,6 @@
 #include "io_handler.h"
 #include "io_registry.h"
 
-/* MEGA65 DMA modes */
-#define DMA_MODE_LEGACY   0
-#define DMA_MODE_ENHANCED 1
-
 /* Physical (raw) byte read — no MAP translation.
  * Used for far/flat 28-bit access and internally after MAP address translation. */
 unsigned char mem_read_phys(memory_t *mem, unsigned int phys);
@@ -18,11 +14,6 @@ unsigned char mem_read_phys(memory_t *mem, unsigned int phys);
  * Debug/Introspection Read: Returns value without side-effects.
  */
 unsigned char mem_peek(memory_t *mem, uint16_t addr);
-
-/**
- * MEGA65 DMA execution
- */
-void mem_dma_execute(memory_t *mem, unsigned char val, int mode);
 
 /**
  * Physical (raw) byte write — no MAP translation.

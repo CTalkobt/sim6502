@@ -37,40 +37,6 @@ void mem_write_phys(memory_t *mem, unsigned int phys, unsigned char val) {
 	mem->far_pages[page][off] = val;
 }
 
-void mem_dma_execute(memory_t *mem, unsigned char val, int mode) {
-	unsigned int job_addr = val | (mem->mem[0xD701] << 8) | (mem->mem[0xD702] << 16) | ((mem->mem[0xD704] & 0x0F) << 24);
-	unsigned int ptr = job_addr;
-	int format = (mode == DMA_MODE_LEGACY) ? 11 : 12;
-	unsigned int src_mb = 0, dst_mb = 0;
-
-	unsigned char token = mem_read_phys(mem, ptr);
-	if (mode == DMA_MODE_ENHANCED && (token == 0x0A || token == 0x0B)) {
-		ptr++; format = (token == 0x0A) ? 11 : 12;
-		token = mem_read_phys(mem, ptr++);
-		while (token != 0x00 && ptr - job_addr < 256) {
-			if (token == 0x80) src_mb = mem_read_phys(mem, ptr++);
-			else if (token == 0x81) dst_mb = mem_read_phys(mem, ptr++);
-			else if (token & 0x80) ptr++;
-			token = mem_read_phys(mem, ptr++);
-		}
-	}
-
-	unsigned char cmd = mem_read_phys(mem, ptr);
-	unsigned int count = mem_read_phys(mem, ptr + 1) | (mem_read_phys(mem, ptr + 2) << 8);
-	if (count == 0) count = 65536;
-
-	unsigned int src = mem_read_phys(mem, ptr + 3) | (mem_read_phys(mem, ptr + 4) << 8) | 
-	                  ((mem_read_phys(mem, ptr + 5) & 0x0F) << 16) | (src_mb << 20);
-	unsigned int dst = mem_read_phys(mem, ptr + 6) | (mem_read_phys(mem, ptr + 7) << 8) | 
-	                  ((mem_read_phys(mem, ptr + 8) & 0x0F) << 16) | (dst_mb << 20);
-
-	if ((cmd & 0x03) == 0x00) {
-		for (unsigned int i = 0; i < count; i++) mem_write_phys(mem, dst + i, mem_read_phys(mem, src + i));
-	} else if ((cmd & 0x03) == 0x03 || (format == 11 && (cmd & 0x03) == 0x02)) {
-		unsigned char fill_val = mem_read_phys(mem, ptr + 3);
-		for (unsigned int i = 0; i < count; i++) mem_write_phys(mem, dst + i, fill_val);
-	}
-}
 
 unsigned char mem_read(memory_t *mem, unsigned short addr) {
 	unsigned int block = (unsigned int)addr >> 13;
