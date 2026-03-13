@@ -1,4 +1,5 @@
 #include "sim_api.h"
+#include "debug_context.h"
 #include "cpu.h"
 #include "memory.h"
 #include "opcodes.h"
@@ -21,19 +22,6 @@
 #include <ctype.h>
 #include <vector>
 
-/* --- Snapshot linked-list accumulator ---
- * One node per unique virtual address written since the last snapshot.
- * Hashed by (addr & 0xFF) for O(1) average lookup.
- * Total overhead: 256 × sizeof(ptr) = 2 KB fixed + ~12 B per written addr.
- */
-typedef struct snap_node {
-    uint16_t          addr;
-    uint8_t           before;     /* value when first written after snapshot */
-    uint8_t           after;      /* most-recent value written               */
-    uint16_t          writer_pc;  /* PC of last instruction that wrote here  */
-    struct snap_node *next;       /* collision/overflow chain                */
-} snap_node_t;
-
 /* Full definition of the opaque sim_session_t handle. */
 struct sim_session {
     CPU              *cpu;
@@ -49,24 +37,7 @@ struct sim_session {
     char              filename[512];
     sim_event_cb      event_cb;
     void             *event_userdata;
-    sim_trace_entry_t trace_buf[SIM_TRACE_DEPTH];
-    int               trace_head;
-    int               trace_count;
-    int               trace_enabled;
-    /* Memory snapshot: 256-bucket hash table of linked lists */
-    snap_node_t      *snap_buckets[256];  /* 2 KB fixed overhead */
-    int               snap_active;        /* 1 if snapshot has been taken */
-    uint32_t          prof_exec[65536];
-    uint32_t          prof_cycles[65536];
-    int               prof_enabled;
-    /* Execution history ring buffer */
-    sim_history_entry_t *hist_buf;
-    int                  hist_cap;     /* ring buffer capacity (power of two)    */
-    int                  hist_mask;    /* = hist_cap - 1                         */
-    int                  hist_write;   /* index of next write slot               */
-    int                  hist_count;   /* entries stored (0 .. hist_cap)         */
-    int                  hist_enabled; /* 1 = recording active                   */
-    int                  hist_pos;     /* 0 = present, N = N steps back          */
+    DebugContext     *debug_ctx;
     std::vector<IOHandler*> dynamic_handlers;
 };
 
@@ -93,39 +64,6 @@ static int handle_trap(const symbol_table_t *st, CPU *cpu, memory_t *mem) {
 		return 1;
 	}
 	return 0;
-}
-
-static void api_history_clear(sim_session_t *s) {
-    s->hist_write = 0;
-    s->hist_count = 0;
-    s->hist_pos   = 0;
-}
-
-/* Record one write into the snapshot accumulator.
- * On first write to addr: stores `before` as the snapshot value.
- * On subsequent writes: only updates `after` and `writer_pc`. */
-static void snap_record_write(sim_session_t *s,
-                               uint16_t addr, uint8_t before,
-                               uint8_t after,  uint16_t writer_pc)
-{
-    int bucket = addr & 0xFF;
-    snap_node_t *n = s->snap_buckets[bucket];
-    while (n) {
-        if (n->addr == addr) {
-            n->after      = after;
-            n->writer_pc  = writer_pc;
-            return;
-        }
-        n = n->next;
-    }
-    n = (snap_node_t *)malloc(sizeof(snap_node_t));
-    if (!n) return;
-    n->addr      = addr;
-    n->before    = before;
-    n->after     = after;
-    n->writer_pc = writer_pc;
-    n->next      = s->snap_buckets[bucket];
-    s->snap_buckets[bucket] = n;
 }
 
 static const char *processor_name_local(cpu_type_t type) {
@@ -198,11 +136,7 @@ sim_session_t *sim_create(const char *processor) {
     breakpoint_init(&s->breakpoints);
     s->state = SIM_IDLE;
     s->start_addr = 0x0200;
-    /* History ring buffer */
-    s->hist_cap     = SIM_HIST_DEFAULT_DEPTH;
-    s->hist_mask    = s->hist_cap - 1;
-    s->hist_buf     = (sim_history_entry_t *)calloc((size_t)s->hist_cap, sizeof(sim_history_entry_t));
-    s->hist_enabled = (s->hist_buf != NULL);
+    s->debug_ctx = new DebugContext();
     return s;
 }
 
@@ -211,11 +145,7 @@ void sim_destroy(sim_session_t *s) {
     for (int i = 0; i < FAR_NUM_PAGES; i++) {
         if (s->mem.far_pages[i]) { free(s->mem.far_pages[i]); s->mem.far_pages[i] = NULL; }
     }
-    for (int i = 0; i < 256; i++) {
-        snap_node_t *n = s->snap_buckets[i];
-        while (n) { snap_node_t *nx = n->next; free(n); n = nx; }
-    }
-    free(s->hist_buf);
+    delete s->debug_ctx;
     for (auto h : s->dynamic_handlers) delete h;
     if (s->mem.io_registry) delete s->mem.io_registry;
     delete s->cpu;
@@ -254,7 +184,7 @@ int sim_load_asm(sim_session_t *s, const char *path) {
     symbol_table_init(&s->symbols, "Toolchain");
     source_map_init(&s->source_map);
     breakpoint_init(&s->breakpoints);
-    api_history_clear(s);
+    s->debug_ctx->clear_history();
     
     int bundle_load_addr = 0x0801;
     if (load_toolchain_bundle(&s->mem, &s->symbols, &s->source_map, base, &bundle_load_addr)) {
@@ -282,7 +212,7 @@ int sim_load_bin(sim_session_t *s, const char *path, uint16_t load_addr)
     machine_init_hardware(s);
     symbol_table_init(&s->symbols, "Session");
     breakpoint_init(&s->breakpoints);
-    api_history_clear(s);
+    s->debug_ctx->clear_history();
     int n = 0, c;
     while ((c = fgetc(f)) != EOF) {
         uint32_t dst = (uint32_t)load_addr + (uint32_t)n;
@@ -312,7 +242,7 @@ int sim_load_prg(sim_session_t *s, const char *path, uint16_t override_addr)
     machine_init_hardware(s);
     symbol_table_init(&s->symbols, "Session");
     breakpoint_init(&s->breakpoints);
-    api_history_clear(s);
+    s->debug_ctx->clear_history();
     int n = 0, c;
     while ((c = fgetc(f)) != EOF) {
         uint32_t dst = (uint32_t)load_addr + (uint32_t)n;
@@ -387,48 +317,13 @@ int sim_step(sim_session_t *s, int count) {
         }
 
         uint16_t pre_pc = s->cpu->pc;
-        unsigned long pre_cycles = s->cpu->cycles;
-        CPUState pre_cpu_state = *static_cast<CPUState*>(s->cpu);
+        uint64_t pre_cycles = s->cpu->cycles;
+        CPUState pre_state = *static_cast<CPUState*>(s->cpu);
 
         s->cpu->step();
-        /* Update snapshot accumulator */
-        if (s->snap_active) {
-            int _nw = s->mem.mem_writes < 256 ? s->mem.mem_writes : 256;
-            for (int _d = 0; _d < _nw; _d++)
-                snap_record_write(s, s->mem.mem_addr[_d], s->mem.mem_old_val[_d],
-                                  s->mem.mem_val[_d], pre_pc);
-        }
-        /* Push history entry */
-        if (s->hist_enabled && s->hist_buf) {
-            if (s->hist_pos > 0) {
-                /* Branched off history: truncate "future" entries */
-                s->hist_write = (s->hist_write - s->hist_pos + s->hist_cap * 2) % s->hist_cap;
-                s->hist_count -= s->hist_pos;
-                if (s->hist_count < 0) s->hist_count = 0;
-                s->hist_pos = 0;
-            }
-            sim_history_entry_t *he = &s->hist_buf[s->hist_write];
-            he->pre_cpu = pre_cpu_state;
-            he->pc      = pre_pc;
-            int dc = s->mem.mem_writes < 16 ? s->mem.mem_writes : 16;
-            he->delta_count = (uint8_t)dc;
-            for (int d = 0; d < dc; d++) {
-                he->delta_addr[d] = s->mem.mem_addr[d];
-                he->delta_old[d]  = s->mem.mem_old_val[d];
-            }
-            s->hist_write = (s->hist_write + 1) & s->hist_mask;
-            if (s->hist_count < s->hist_cap) s->hist_count++;
-        }
-        if (s->trace_enabled) {
-            sim_trace_entry_t *tr_entry = &s->trace_buf[s->trace_head];
-            tr_entry->pc = pre_pc;
-            tr_entry->cpu = *static_cast<CPUState*>(s->cpu);
-            tr_entry->cycles_delta = (int)(s->cpu->cycles - pre_cycles);
-            // disasm_one(&s->mem, &s->dt, s->cpu_type, pre_pc, tr_entry->disasm, (int)sizeof(tr_entry->disasm));
-            s->trace_head = (s->trace_head + 1) % SIM_TRACE_DEPTH;
-            if (s->trace_count < SIM_TRACE_DEPTH) s->trace_count++;
-        }
-        if (s->prof_enabled) { s->prof_exec[pre_pc]++; s->prof_cycles[pre_pc] += (uint32_t)(s->cpu->cycles - pre_cycles); }
+        s->debug_ctx->on_after_execute(pre_pc, pre_state,
+                                        *static_cast<CPUState*>(s->cpu),
+                                        s->cpu->cycles - pre_cycles, &s->mem);
     }
     s->state = SIM_PAUSED;
     return 0;
@@ -451,45 +346,12 @@ int sim_step_cycles(sim_session_t *s, unsigned long max_cycles) {
             return SIM_EVENT_BRK;
         }
         uint16_t pre_pc = s->cpu->pc;
-        unsigned long pre_cycles = s->cpu->cycles;
-        CPUState pre_cpu_state = *static_cast<CPUState*>(s->cpu);
+        uint64_t pre_cycles = s->cpu->cycles;
+        CPUState pre_state = *static_cast<CPUState*>(s->cpu);
         s->cpu->step();
-        /* Update snapshot accumulator */
-        if (s->snap_active) {
-            int _nw = s->mem.mem_writes < 256 ? s->mem.mem_writes : 256;
-            for (int _d = 0; _d < _nw; _d++)
-                snap_record_write(s, s->mem.mem_addr[_d], s->mem.mem_old_val[_d],
-                                  s->mem.mem_val[_d], pre_pc);
-        }
-        if (s->hist_enabled && s->hist_buf) {
-            if (s->hist_pos > 0) {
-                s->hist_write = (s->hist_write - s->hist_pos + s->hist_cap * 2) % s->hist_cap;
-                s->hist_count -= s->hist_pos;
-                if (s->hist_count < 0) s->hist_count = 0;
-                s->hist_pos = 0;
-            }
-            sim_history_entry_t *he = &s->hist_buf[s->hist_write];
-            he->pre_cpu = pre_cpu_state;
-            he->pc      = pre_pc;
-            int dc = s->mem.mem_writes < 16 ? s->mem.mem_writes : 16;
-            he->delta_count = (uint8_t)dc;
-            for (int d = 0; d < dc; d++) {
-                he->delta_addr[d] = s->mem.mem_addr[d];
-                he->delta_old[d]  = s->mem.mem_old_val[d];
-            }
-            s->hist_write = (s->hist_write + 1) & s->hist_mask;
-            if (s->hist_count < s->hist_cap) s->hist_count++;
-        }
-        if (s->trace_enabled) {
-            sim_trace_entry_t *te2 = &s->trace_buf[s->trace_head];
-            te2->pc = pre_pc;
-            te2->cpu = *static_cast<CPUState*>(s->cpu);
-            te2->cycles_delta = (int)(s->cpu->cycles - pre_cycles);
-            // disasm_one(&s->mem, &s->dt, s->cpu_type, pre_pc, te2->disasm, (int)sizeof(te2->disasm));
-            s->trace_head = (s->trace_head + 1) % SIM_TRACE_DEPTH;
-            if (s->trace_count < SIM_TRACE_DEPTH) s->trace_count++;
-        }
-        if (s->prof_enabled) { s->prof_exec[pre_pc]++; s->prof_cycles[pre_pc] += (uint32_t)(s->cpu->cycles - pre_cycles); }
+        s->debug_ctx->on_after_execute(pre_pc, pre_state,
+                                        *static_cast<CPUState*>(s->cpu),
+                                        s->cpu->cycles - pre_cycles, &s->mem);
     }
     s->state = SIM_PAUSED;
     return 0;
@@ -597,14 +459,12 @@ void sim_break_clear(sim_session_t *s, uint16_t addr) { if (s) breakpoint_remove
 const char *sim_sym_by_addr(sim_session_t *s, uint16_t addr) { return s ? symbol_lookup_addr_name(&s->symbols, addr) : NULL; }
 int sim_break_is_enabled(sim_session_t *s, int idx) { if (!s || idx < 0 || idx >= s->breakpoints.count) return 0; return s->breakpoints.breakpoints[idx].enabled; }
 int sim_break_toggle(sim_session_t *s, int idx) { if (!s || idx < 0 || idx >= s->breakpoints.count) return -1; s->breakpoints.breakpoints[idx].enabled = !s->breakpoints.breakpoints[idx].enabled; return s->breakpoints.breakpoints[idx].enabled; }
-void sim_trace_enable(sim_session_t *s, int enable) { if (s) s->trace_enabled = enable; }
-int sim_trace_is_enabled(sim_session_t *s) { return s ? s->trace_enabled : 0; }
-void sim_trace_clear(sim_session_t *s) { if (s) { s->trace_head = 0; s->trace_count = 0; } }
-int sim_trace_count(sim_session_t *s) { return s ? s->trace_count : 0; }
+void sim_trace_enable(sim_session_t *s, int enable) { if (s) s->debug_ctx->enable_trace(enable); }
+int sim_trace_is_enabled(sim_session_t *s) { return s ? s->debug_ctx->trace_is_enabled() : 0; }
+void sim_trace_clear(sim_session_t *s) { if (s) s->debug_ctx->clear_trace(); }
+int sim_trace_count(sim_session_t *s) { return s ? s->debug_ctx->trace_count() : 0; }
 int sim_trace_get(sim_session_t *s, int slot, sim_trace_entry_t *entry) {
-    if (!s || slot < 0 || slot >= s->trace_count) return 0;
-    int idx = (s->trace_head - 1 - slot + SIM_TRACE_DEPTH) % SIM_TRACE_DEPTH;
-    *entry = s->trace_buf[idx]; return 1;
+    return s ? s->debug_ctx->get_trace(slot, entry) : 0;
 }
 int sim_has_breakpoint(sim_session_t *s, uint16_t addr) { if (!s) return 0; for (int i = 0; i < s->breakpoints.count; i++) if (s->breakpoints.breakpoints[i].address == addr) return 1; return 0; }
 int sim_get_opcode_cycles(sim_session_t *s, uint16_t addr) {
@@ -670,95 +530,47 @@ int sim_sym_add(sim_session_t *s, uint16_t addr, const char *name, const char *t
 int sim_sym_load_file(sim_session_t *s, const char *path) { return s ? symbol_load_file(&s->symbols, path) : 0; }
 /* --- Execution History --- */
 
-void sim_history_enable(sim_session_t *s, int enable) { if (s) s->hist_enabled = enable; }
-int  sim_history_is_enabled(sim_session_t *s)         { return s ? s->hist_enabled : 0; }
-void sim_history_clear(sim_session_t *s)               { if (s) api_history_clear(s); }
-int  sim_history_depth(sim_session_t *s)               { return s ? s->hist_cap   : 0; }
-int  sim_history_count(sim_session_t *s)               { return s ? s->hist_count : 0; }
-int  sim_history_position(sim_session_t *s)            { return s ? s->hist_pos   : 0; }
+void sim_history_enable(sim_session_t *s, int enable) { if (s) s->debug_ctx->enable_history(enable); }
+int  sim_history_is_enabled(sim_session_t *s)         { return s ? s->debug_ctx->history_is_enabled() : 0; }
+void sim_history_clear(sim_session_t *s)               { if (s) s->debug_ctx->clear_history(); }
+int  sim_history_depth(sim_session_t *s)               { return s ? s->debug_ctx->history_depth()    : 0; }
+int  sim_history_count(sim_session_t *s)               { return s ? s->debug_ctx->history_count()    : 0; }
+int  sim_history_position(sim_session_t *s)            { return s ? s->debug_ctx->history_pos()      : 0; }
 
 int sim_history_step_back(sim_session_t *s) {
-    if (!s || !s->hist_buf || s->hist_pos >= s->hist_count) return 0;
-    /* Index of the entry to undo (most recent unvisited) */
-    unsigned idx = ((unsigned)s->hist_write - 1u - (unsigned)s->hist_pos) & (unsigned)s->hist_mask;
-    sim_history_entry_t *he = &s->hist_buf[idx];
-    /* Restore CPU */
-    *static_cast<CPUState*>(s->cpu) = he->pre_cpu;
-    /* Restore memory: write old values directly (no write-log side effect) */
-    for (int d = 0; d < he->delta_count; d++)
-        s->mem.mem[he->delta_addr[d]] = he->delta_old[d];
-    s->hist_pos++;
-    s->state = SIM_PAUSED;
-    return 1;
+    if (!s) return 0;
+    int r = s->debug_ctx->step_back(s->cpu, &s->mem);
+    if (r) s->state = SIM_PAUSED;
+    return r;
 }
 
 int sim_history_step_fwd(sim_session_t *s) {
-    if (!s || !s->hist_buf || s->hist_pos == 0) return 0;
-    /* Index of the entry to re-execute */
-    unsigned idx = ((unsigned)s->hist_write - (unsigned)s->hist_pos) & (unsigned)s->hist_mask;
-    sim_history_entry_t *he = &s->hist_buf[idx];
-    /* Restore CPU to pre-execution state, then re-execute */
-    *static_cast<CPUState*>(s->cpu) = he->pre_cpu;
-    s->mem.mem_writes = 0;
-    s->cpu->step();
-    s->hist_pos--;
-    s->state = SIM_PAUSED;
-    return 1;
+    if (!s) return 0;
+    int r = s->debug_ctx->step_fwd(s->cpu, &s->mem);
+    if (r) s->state = SIM_PAUSED;
+    return r;
 }
 
 int sim_history_get(sim_session_t *s, int slot, sim_history_entry_t *entry) {
-    if (!s || !s->hist_buf || !entry || slot < 0 || slot >= s->hist_count) return 0;
-    unsigned idx = ((unsigned)s->hist_write - 1u - (unsigned)slot) & (unsigned)s->hist_mask;
-    *entry = s->hist_buf[idx];
-    return 1;
+    return s ? s->debug_ctx->get_history(slot, entry) : 0;
 }
 
 /* --- Profiler --- */
 
-void sim_profiler_enable(sim_session_t *s, int enable) { if (s) s->prof_enabled = enable; }
-int sim_profiler_is_enabled(sim_session_t *s) { return s ? s->prof_enabled : 0; }
-void sim_profiler_clear(sim_session_t *s) { if (s) { memset(s->prof_exec, 0, sizeof(s->prof_exec)); memset(s->prof_cycles, 0, sizeof(s->prof_cycles)); } }
-uint32_t sim_profiler_get_exec(sim_session_t *s, uint16_t addr) { return s ? s->prof_exec[addr] : 0; }
-uint32_t sim_profiler_get_cycles(sim_session_t *s, uint16_t addr) { return s ? s->prof_cycles[addr] : 0; }
+void sim_profiler_enable(sim_session_t *s, int enable) { if (s) s->debug_ctx->enable_profiler(enable); }
+int sim_profiler_is_enabled(sim_session_t *s) { return s ? s->debug_ctx->profiler_is_enabled() : 0; }
+void sim_profiler_clear(sim_session_t *s) { if (s) s->debug_ctx->clear_profiler(); }
+uint32_t sim_profiler_get_exec(sim_session_t *s, uint16_t addr) { return s ? s->debug_ctx->profiler_exec(addr) : 0; }
+uint32_t sim_profiler_get_cycles(sim_session_t *s, uint16_t addr) { return s ? s->debug_ctx->profiler_cycles(addr) : 0; }
 int sim_profiler_top_exec(sim_session_t *s, uint16_t *out_addrs, uint32_t *out_counts, int max_n) { (void)s; (void)out_addrs; (void)out_counts; (void)max_n; return 0; }
 const char *sim_mode_name(unsigned char mode) { return mode_name(mode); }
 
 /* --- Memory Snapshot & Diff --- */
 
-static int diff_entry_cmp(const void *a, const void *b) {
-    return (int)((const sim_diff_entry_t *)a)->addr - (int)((const sim_diff_entry_t *)b)->addr;
-}
-
-void sim_snapshot_take(sim_session_t *s) {
-    if (!s) return;
-    for (int i = 0; i < 256; i++) {
-        snap_node_t *n = s->snap_buckets[i];
-        while (n) { snap_node_t *nx = n->next; free(n); n = nx; }
-        s->snap_buckets[i] = NULL;
-    }
-    s->snap_active = 1;
-}
-
-int sim_snapshot_valid(sim_session_t *s) { return s ? s->snap_active : 0; }
-
-int sim_snapshot_diff(sim_session_t *s, sim_diff_entry_t *entries, int entries_cap) {
-    if (!s || !s->snap_active || !entries || entries_cap <= 0) return -1;
-    int count = 0;
-    for (int i = 0; i < 256; i++) {
-        snap_node_t *n = s->snap_buckets[i];
-        while (n) {
-            if (n->before != n->after && count < entries_cap) {
-                entries[count].addr      = n->addr;
-                entries[count].before    = n->before;
-                entries[count].after     = n->after;
-                entries[count].writer_pc = n->writer_pc;
-                count++;
-            }
-            n = n->next;
-        }
-    }
-    qsort(entries, (size_t)count, sizeof(sim_diff_entry_t), diff_entry_cmp);
-    return count;
+void sim_snapshot_take(sim_session_t *s) { if (s) s->debug_ctx->take_snapshot(); }
+int  sim_snapshot_valid(sim_session_t *s) { return s ? s->debug_ctx->snapshot_is_valid() : 0; }
+int  sim_snapshot_diff(sim_session_t *s, sim_diff_entry_t *entries, int entries_cap) {
+    return s ? s->debug_ctx->snapshot_diff(entries, entries_cap) : -1;
 }
 
 /* --- Trace Run --- */
@@ -803,16 +615,14 @@ int sim_trace_run(sim_session_t *s,
             break;  /* always stop at BRK (recording it) regardless of stop_on_brk */
         }
 
-        unsigned long pre_cycles = s->cpu->cycles;
+        uint64_t pre_cycles = s->cpu->cycles;
+        CPUState pre_state = *static_cast<CPUState*>(s->cpu);
         s->cpu->step();
         entries[n].cpu = *static_cast<CPUState*>(s->cpu);
         entries[n].cycles_delta = (int)(s->cpu->cycles - pre_cycles);
-        if (s->snap_active) {
-            int _nw = s->mem.mem_writes < 256 ? s->mem.mem_writes : 256;
-            for (int _d = 0; _d < _nw; _d++)
-                snap_record_write(s, s->mem.mem_addr[_d], s->mem.mem_old_val[_d],
-                                  s->mem.mem_val[_d], pre_pc);
-        }
+        s->debug_ctx->on_after_execute(pre_pc, pre_state,
+                                        *static_cast<CPUState*>(s->cpu),
+                                        s->cpu->cycles - pre_cycles, &s->mem);
         n++;
     }
 

@@ -11,6 +11,7 @@ CORE_SRCS = \
 	src/core/metadata.cpp \
 	src/core/cpu_engine.cpp \
 	src/core/cpu_6502.cpp \
+	src/core/debug_context.cpp \
 	src/core/sim_api.cpp \
 	src/core/interrupts.cpp \
 	src/core/disassembler.cpp \

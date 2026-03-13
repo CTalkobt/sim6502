@@ -5,6 +5,7 @@
 #include "cpu_state.h"
 #include "memory_types.h"
 #include "dispatch.h"
+#include "cpu_observer.h"
 
 #define FLAG_C 0x01
 #define FLAG_Z 0x02
@@ -24,6 +25,7 @@ class CPU : public CPUState {
 public:
 	bool debug;
 	memory_t *mem;
+	ExecutionObserver *observer = nullptr;
 
 	CPU() : debug(false), mem(nullptr) { reset(); }
 	virtual ~CPU() {}
