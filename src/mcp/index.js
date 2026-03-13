@@ -15,7 +15,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SIMULATOR_PATH = process.env.SIM6502_PATH || path.resolve(__dirname, '..', 'sim6502');
+const SIMULATOR_PATH = process.env.SIM6502_PATH || path.resolve(__dirname, '../..', 'sim6502');
 
 // Create a unique temporary directory for this session to avoid collisions
 const sessionTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), '6502-mcp-'));

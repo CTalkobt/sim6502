@@ -15,3 +15,8 @@ src/gui/imgui
 .plan/
 ref/
 .idea
+AGENTS.md
+.bug
+src/mcp/node_modules/
+sim6502
+sim6502-gui

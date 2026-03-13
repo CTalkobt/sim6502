@@ -1,44 +1,96 @@
 CC       = gcc
 CXX      = g++
-CFLAGS   = -Wall -Wextra -O2 -I src -I src/core -I src/core/opcodes
-CXXFLAGS = -pthread  -Wall -Wextra -O2 -I src -I src/core -I src/core/opcodes
+CFLAGS   = -Wall -Wextra -O2
+CXXFLAGS = -pthread -Wall -Wextra -O2
 
-# --- Core Engine (Static Library) ---
+# Include paths for library code (no src/ prefix — each lib is its own root)
+LIB_IFLAGS = \
+	-I src/lib6502-core \
+	-I src/lib6502-core/opcodes \
+	-I src/lib6502-mem \
+	-I src/lib6502-devices \
+	-I src/lib6502-debug \
+	-I src/lib6502-toolchain
+
+# Frontends also see src/ (for sim_api.h)
+FRONT_IFLAGS = $(LIB_IFLAGS) -I src
+
+# --- lib6502-core ---
 CORE_SRCS = \
-	src/core/memory.cpp \
-	src/core/symbols.cpp \
-	src/core/list_parser.cpp \
-	src/core/metadata.cpp \
-	src/core/cpu_engine.cpp \
-	src/core/cpu_6502.cpp \
-	src/core/debug_context.cpp \
-	src/core/sim_api.cpp \
-	src/core/interrupts.cpp \
-	src/core/disassembler.cpp \
-	src/core/condition.cpp \
-	src/core/device/vic2.cpp \
-	src/core/device/vic2_io.cpp \
-	src/core/device/sid_io.cpp \
-	src/core/audio.cpp \
-	src/core/device/mega65_io.cpp \
-	src/core/device/cia_io.cpp \
-	src/core/patterns.cpp \
-	src/core/project_manager.cpp
+	src/lib6502-core/cpu_engine.cpp \
+	src/lib6502-core/cpu_6502.cpp \
+	src/lib6502-core/opcodes/6502.cpp \
+	src/lib6502-core/opcodes/6502_undoc.cpp \
+	src/lib6502-core/opcodes/65c02.cpp \
+	src/lib6502-core/opcodes/65ce02.cpp \
+	src/lib6502-core/opcodes/45gs02.cpp
 
-OPCODE_SRCS = \
-	src/core/opcodes/6502.cpp \
-	src/core/opcodes/6502_undoc.cpp \
-	src/core/opcodes/65c02.cpp \
-	src/core/opcodes/65ce02.cpp \
-	src/core/opcodes/45gs02.cpp
+# --- lib6502-mem ---
+MEM_SRCS = \
+	src/lib6502-mem/memory.cpp \
+	src/lib6502-mem/interrupts.cpp
 
-CORE_OBJS = $(CORE_SRCS:.cpp=.o) $(OPCODE_SRCS:.cpp=.o)
+# --- lib6502-devices ---
+DEV_SRCS = \
+	src/lib6502-devices/audio.cpp \
+	src/lib6502-devices/device/vic2.cpp \
+	src/lib6502-devices/device/vic2_io.cpp \
+	src/lib6502-devices/device/sid_io.cpp \
+	src/lib6502-devices/device/mega65_io.cpp \
+	src/lib6502-devices/device/cia_io.cpp
+
+# --- lib6502-toolchain ---
+TOOL_SRCS = \
+	src/lib6502-toolchain/symbols.cpp \
+	src/lib6502-toolchain/list_parser.cpp \
+	src/lib6502-toolchain/disassembler.cpp \
+	src/lib6502-toolchain/metadata.cpp \
+	src/lib6502-toolchain/patterns.cpp \
+	src/lib6502-toolchain/project_manager.cpp
+
+# --- lib6502-debug ---
+DBG_SRCS = \
+	src/lib6502-debug/condition.cpp \
+	src/lib6502-debug/debug_context.cpp
+
+# --- sim_api (front-facing) ---
+API_SRCS = src/sim_api.cpp
+
+ALL_LIB_SRCS = $(CORE_SRCS) $(MEM_SRCS) $(DEV_SRCS) $(TOOL_SRCS) $(DBG_SRCS) $(API_SRCS)
+ALL_LIB_OBJS = $(ALL_LIB_SRCS:.cpp=.o)
+
 LIB_TARGET = libsim6502.a
 
 all: sim6502 gui
 
-$(LIB_TARGET): $(CORE_OBJS)
+$(LIB_TARGET): $(ALL_LIB_OBJS)
 	ar rcs $@ $^
+
+# Library objects compiled with LIB_IFLAGS (sim_api.cpp needs FRONT_IFLAGS)
+src/lib6502-core/%.o: src/lib6502-core/%.cpp
+	$(CXX) $(CXXFLAGS) $(LIB_IFLAGS) -c -o $@ $<
+
+src/lib6502-core/opcodes/%.o: src/lib6502-core/opcodes/%.cpp
+	$(CXX) $(CXXFLAGS) $(LIB_IFLAGS) -c -o $@ $<
+
+src/lib6502-mem/%.o: src/lib6502-mem/%.cpp
+	$(CXX) $(CXXFLAGS) $(LIB_IFLAGS) -c -o $@ $<
+
+src/lib6502-devices/%.o: src/lib6502-devices/%.cpp
+	$(CXX) $(CXXFLAGS) $(LIB_IFLAGS) -c -o $@ $<
+
+src/lib6502-devices/device/%.o: src/lib6502-devices/device/%.cpp
+	$(CXX) $(CXXFLAGS) $(LIB_IFLAGS) -c -o $@ $<
+
+src/lib6502-toolchain/%.o: src/lib6502-toolchain/%.cpp
+	$(CXX) $(CXXFLAGS) $(LIB_IFLAGS) -c -o $@ $<
+
+src/lib6502-debug/%.o: src/lib6502-debug/%.cpp
+	$(CXX) $(CXXFLAGS) $(LIB_IFLAGS) -c -o $@ $<
+
+# sim_api.cpp needs FRONT_IFLAGS (sees both sim_api.h and all libs)
+src/sim_api.o: src/sim_api.cpp
+	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) -c -o $@ $<
 
 # --- CLI Frontend ---
 CLI_COMMANDS_SRCS = \
@@ -54,6 +106,12 @@ TARGET   = sim6502
 
 $(TARGET): $(CLI_OBJS) $(LIB_TARGET)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(SDL2_LIBS)
+
+src/cli/%.o: src/cli/%.cpp
+	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) -c -o $@ $<
+
+src/cli/commands/%.o: src/cli/commands/%.cpp
+	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) -c -o $@ $<
 
 # --- GUI Frontend ---
 IMGUI_DIR  = src/gui/imgui
@@ -72,24 +130,16 @@ IMGUI_SRCS = \
 	$(IMGUI_BACK)/imgui_impl_opengl3.cpp
 IMGUI_OBJS = $(IMGUI_SRCS:.cpp=.o)
 
-GUI_CXXFLAGS = -pthread  $(CXXFLAGS) $(SDL2_CFLAGS) -I $(IMGUI_DIR) -I $(IMGUI_BACK)
-GUI_TARGET   = sim6502-gui
+GUI_TARGET = sim6502-gui
 
 src/gui/main.o: src/gui/main.cpp $(IMGUI_DIR)/imgui.h src/sim_api.h src/gui/imgui_filedlg.h
-	$(CXX) $(GUI_CXXFLAGS) -c -o $@ $<
+	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) $(SDL2_CFLAGS) -I $(IMGUI_DIR) -I $(IMGUI_BACK) -c -o $@ $<
 
 .PHONY: gui
 gui: $(IMGUI_DIR)/imgui.h $(GUI_TARGET)
 
 $(GUI_TARGET): src/gui/main.o $(LIB_TARGET) $(IMGUI_OBJS)
 	$(CXX) -o $@ $^ $(SDL2_LIBS) $(GL_LIBS)
-
-# --- Generic Rules ---
-src/%.o: src/%.c
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-src/%.o: src/%.cpp
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 $(IMGUI_DIR)/%.o: $(IMGUI_DIR)/%.cpp
 	$(CXX) -O2 -I $(IMGUI_DIR) -I $(IMGUI_BACK) -c -o $@ $<
@@ -104,7 +154,7 @@ $(IMGUI_DIR)/imgui.h:
 
 # --- Housekeeping ---
 clean:
-	rm -f $(CORE_OBJS) $(CLI_OBJS) $(TARGET) src/gui/main.o $(IMGUI_OBJS) $(GUI_TARGET) $(LIB_TARGET)
+	rm -f $(ALL_LIB_OBJS) $(CLI_OBJS) $(TARGET) src/gui/main.o $(IMGUI_OBJS) $(GUI_TARGET) $(LIB_TARGET)
 
 test: $(TARGET)
 	./tools/run_tests.py

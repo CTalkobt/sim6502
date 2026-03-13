@@ -1,5 +1,5 @@
 #include "cia_io.h"
-#include "../memory.h"
+#include "memory.h"
 #include <stdio.h>
 
 CIAHandler::CIAHandler(const char* chip_name, bool nmi) 

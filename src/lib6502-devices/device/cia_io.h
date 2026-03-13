@@ -1,7 +1,7 @@
 #ifndef CIA_IO_H
 #define CIA_IO_H
 
-#include "../io_handler.h"
+#include "io_handler.h"
 #include <stdint.h>
 #include <string.h>
 #include <vector>

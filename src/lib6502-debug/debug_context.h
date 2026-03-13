@@ -2,11 +2,11 @@
 #define DEBUG_CONTEXT_H
 
 #include "cpu_observer.h"
-#include "sim_api.h"    /* sim_history_entry_t, sim_trace_entry_t, sim_diff_entry_t,
-                           SIM_TRACE_DEPTH, SIM_HIST_DEFAULT_DEPTH               */
+#include "debug_types.h"
 #include <stdint.h>
 
 struct SnapNode;  /* Defined in debug_context.cpp */
+class CPU;        /* Defined in cpu.h */
 
 /*
  * DebugContext — owns all debug/instrumentation state for a sim session.

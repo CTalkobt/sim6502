@@ -10,6 +10,7 @@
 #include "cpu.h"
 #include "memory.h"
 #include "machine.h"
+#include "debug_types.h"
 
 /* --------------------------------------------------------------------------
  * Execution state machine
@@ -99,14 +100,7 @@ int sim_sym_remove_idx(sim_session_t *s, int idx);
 int sim_sym_add(sim_session_t *s, uint16_t addr, const char *name, const char *type_str);
 int sim_sym_load_file(sim_session_t *s, const char *path);
 
-/* Trace */
-#define SIM_TRACE_DEPTH 256
-typedef struct {
-    uint16_t pc;
-    char     disasm[64];
-    CPUState cpu;
-    int      cycles_delta;
-} sim_trace_entry_t;
+/* Trace — types defined in debug_types.h */
 
 void sim_trace_enable(sim_session_t *s, int enable);
 int sim_trace_is_enabled(sim_session_t *s);
@@ -121,15 +115,7 @@ void sim_set_reg_byte(sim_session_t *s, const char *name, uint8_t val);
 int sim_get_opcode_cycles(sim_session_t *s, uint16_t addr);
 int sim_get_last_writes(sim_session_t *s, uint16_t *addrs, int max_count);
 
-/* History */
-#define SIM_HIST_DEFAULT_DEPTH (1 << 17)
-typedef struct {
-    CPUState pre_cpu;
-    uint16_t pc;
-    uint8_t  delta_count;
-    uint16_t delta_addr[16];
-    uint8_t  delta_old[16];
-} sim_history_entry_t;
+/* History — types defined in debug_types.h */
 
 void sim_history_enable(sim_session_t *s, int enable);
 int  sim_history_is_enabled(sim_session_t *s);
@@ -141,13 +127,7 @@ int sim_history_step_back(sim_session_t *s);
 int sim_history_step_fwd(sim_session_t *s);
 int sim_history_get(sim_session_t *s, int slot, sim_history_entry_t *entry);
 
-/* Snapshots */
-typedef struct {
-    uint16_t addr;
-    uint8_t  before;
-    uint8_t  after;
-    uint16_t writer_pc;
-} sim_diff_entry_t;
+/* Snapshots — types defined in debug_types.h */
 
 void sim_snapshot_take(sim_session_t *s);
 int  sim_snapshot_valid(sim_session_t *s);
