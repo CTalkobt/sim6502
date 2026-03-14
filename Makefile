@@ -65,7 +65,7 @@ ALL_LIB_OBJS = $(ALL_LIB_SRCS:.cpp=.o)
 
 LIB_TARGET = libsim6502.a
 
-all: sim6502 gui
+all: sim6502 gui gui-wx
 
 $(LIB_TARGET): $(ALL_LIB_OBJS)
 	ar rcs $@ $^
@@ -129,6 +129,9 @@ SDL2_CFLAGS := $(shell pkg-config --cflags sdl2 2>/dev/null)
 SDL2_LIBS   := $(shell pkg-config --libs   sdl2 2>/dev/null)
 GL_LIBS      = -lGL -lpthread
 
+WX_CFLAGS   := $(shell wx-config --cflags)
+WX_LIBS     := $(shell wx-config --libs std,aui,gl)
+
 IMGUI_SRCS = \
 	$(IMGUI_DIR)/imgui.cpp \
 	$(IMGUI_DIR)/imgui_draw.cpp \
@@ -138,16 +141,32 @@ IMGUI_SRCS = \
 	$(IMGUI_BACK)/imgui_impl_opengl3.cpp
 IMGUI_OBJS = $(IMGUI_SRCS:.cpp=.o)
 
-GUI_TARGET = sim6502-gui
+GUI_TARGET    = sim6502-gui
+GUI_WX_TARGET = sim6502-gui-wx
 
 src/gui/main.o: src/gui/main.cpp $(IMGUI_DIR)/imgui.h src/sim_api.h src/gui/imgui_filedlg.h
 	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) $(SDL2_CFLAGS) -I $(IMGUI_DIR) -I $(IMGUI_BACK) -c -o $@ $<
 
-.PHONY: gui
+.PHONY: gui gui-wx
 gui: $(IMGUI_DIR)/imgui.h $(GUI_TARGET)
+
+gui-wx: $(GUI_WX_TARGET)
 
 $(GUI_TARGET): src/gui/main.o $(LIB_TARGET) $(IMGUI_OBJS)
 	$(CXX) -o $@ $^ $(SDL2_LIBS) $(GL_LIBS)
+
+# --- wxWidgets GUI ---
+GUI_WX_SRCS = \
+	src/gui/app.cpp \
+	src/gui/main_frame.cpp
+
+GUI_WX_OBJS = $(GUI_WX_SRCS:.cpp=.o)
+
+$(GUI_WX_TARGET): $(GUI_WX_OBJS) $(LIB_TARGET)
+	$(CXX) -o $@ $^ $(WX_LIBS) $(SDL2_LIBS)
+
+src/gui/%.o: src/gui/%.cpp
+	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) $(WX_CFLAGS) -c -o $@ $<
 
 $(IMGUI_DIR)/%.o: $(IMGUI_DIR)/%.cpp
 	$(CXX) -O2 -I $(IMGUI_DIR) -I $(IMGUI_BACK) -c -o $@ $<
@@ -178,7 +197,7 @@ unit-test: $(UNIT_TEST_TARGET)
 
 # --- Housekeeping ---
 clean:
-	rm -f $(ALL_LIB_OBJS) $(CLI_OBJS) $(TARGET) src/gui/main.o $(IMGUI_OBJS) $(GUI_TARGET) $(LIB_TARGET) $(UNIT_TEST_OBJS) $(UNIT_TEST_TARGET)
+	rm -f $(ALL_LIB_OBJS) $(CLI_OBJS) $(TARGET) src/gui/main.o $(IMGUI_OBJS) $(GUI_TARGET) $(GUI_WX_OBJS) $(GUI_WX_TARGET) $(LIB_TARGET) $(UNIT_TEST_OBJS) $(UNIT_TEST_TARGET)
 
 test: $(TARGET) $(UNIT_TEST_TARGET)
 	./$(UNIT_TEST_TARGET)
