@@ -35,6 +35,7 @@ struct sim_session {
     unsigned short    start_addr;
     unsigned short    load_size;   /* byte count of the loaded binary (best-effort) */
     char              filename[512];
+    char              last_error[2048];
     sim_event_cb      event_cb;
     void             *event_userdata;
     DebugContext     *debug_ctx;
@@ -256,9 +257,10 @@ int sim_load_asm(sim_session_t *s, const char *path) {
     source_map_init(&s->source_map);
     breakpoint_init(&s->breakpoints);
     s->debug_ctx->clear_history();
+    s->last_error[0] = '\0';
     
     int bundle_load_addr = 0x0801;
-    if (load_toolchain_bundle(&s->mem, &s->symbols, &s->source_map, base, &bundle_load_addr)) {
+    if (load_toolchain_bundle(&s->mem, &s->symbols, &s->source_map, base, &bundle_load_addr, s->last_error, sizeof(s->last_error))) {
         strncpy(s->filename, path, sizeof(s->filename) - 1);
         /* Apply cpu/machine type from SIM_CPU/SIM_MACHINE markers in the metadata pipeline.
          * This overrides the early detect_asm_cpu_type() scan when the metadata is definitive. */
@@ -459,6 +461,7 @@ uint8_t sim_mem_read_byte(sim_session_t *s, uint16_t addr) { return s ? mem_read
 void sim_mem_write_byte(sim_session_t *s, uint16_t addr, uint8_t val) { if (s) mem_write(&s->mem, addr, val); }
 sim_state_t sim_get_state(sim_session_t *s) { return s ? s->state : SIM_IDLE; }
 const char *sim_get_filename(sim_session_t *s) { return (s && s->filename[0]) ? s->filename : "(none)"; }
+const char *sim_get_last_error(sim_session_t *s) { return (s && s->last_error[0]) ? s->last_error : NULL; }
 const char *sim_processor_name(sim_session_t *s) { return s ? processor_name_local(s->cpu_type) : "6502"; }
 
 machine_type_t sim_get_machine_type(sim_session_t *s) { return s ? s->machine_type : MACHINE_RAW6502; }

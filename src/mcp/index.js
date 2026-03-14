@@ -60,30 +60,36 @@ function startSimulator(asmCode, machine = null) {
   // -I = interactive mode, -J = JSON output for all commands
   simulatorProcess = spawn(SIMULATOR_PATH, args);
   simulatorBuffer  = '';
+  let stderrBuffer = '';
 
-  simulatorProcess.stdout.on('data', (data) => {
-    simulatorBuffer += data.toString();
-    if (simulatorBuffer.includes('> ') && simulatorResolve) {
-      const output = simulatorBuffer.replace(/>\s*$/, '').trim();
-      simulatorResolve(output);
-      simulatorResolve  = null;
-      simulatorBuffer   = '';
-    }
+  return new Promise((resolve, reject) => {
+    simulatorResolve = resolve;
+
+    simulatorProcess.stdout.on('data', (data) => {
+      simulatorBuffer += data.toString();
+      if (simulatorBuffer.includes('> ') && simulatorResolve) {
+        const output = simulatorBuffer.replace(/>\s*$/, '').trim();
+        simulatorResolve(output);
+        simulatorResolve  = null;
+        simulatorBuffer   = '';
+      }
+    });
+
+    simulatorProcess.stderr.on('data', (data) => {
+      const s = data.toString();
+      stderrBuffer += s;
+      console.error(`Simulator: ${s}`);
+    });
+
+    simulatorProcess.on('exit', (code) => {
+      if (simulatorResolve) {
+        const err = stderrBuffer.trim() || `exited with code ${code}`;
+        reject(new Error(`Assembly/Startup failed:\n${err}`));
+        simulatorResolve = null;
+      }
+      simulatorProcess = null;
+    });
   });
-
-  simulatorProcess.stderr.on('data', (data) => {
-    console.error(`Simulator: ${data}`);
-  });
-
-  simulatorProcess.on('exit', (code) => {
-    if (simulatorResolve) {
-      simulatorResolve(`Simulator exited with code ${code}`);
-      simulatorResolve = null;
-    }
-    simulatorProcess = null;
-  });
-
-  return new Promise((resolve) => { simulatorResolve = resolve; });
 }
 
 function sendCommand(cmd) {

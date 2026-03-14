@@ -18,8 +18,9 @@ int load_binary(memory_t *mem, int addr, const char *filename);
 int load_prg(memory_t *mem, const char *filename, int *out_load_addr);
 
 /* Load a toolchain bundle: .bin/.prg + .list + .sym
-   If out_load_addr is non-NULL, receives the PRG load address. */
-bool load_toolchain_bundle(memory_t *mem, symbol_table_t *st, source_map_t *sm, const char *base_path, int *out_load_addr);
+   If out_load_addr is non-NULL, receives the PRG load address.
+   If err_msg is non-NULL, receives any error message on failure. */
+bool load_toolchain_bundle(memory_t *mem, symbol_table_t *st, source_map_t *sm, const char *base_path, int *out_load_addr, char *err_msg, int err_sz);
 
 /* Scan an .asm source file for the first .cpu or //.cpu directive and return
    the corresponding cpu_type_t.  Returns CPU_6502 if no directive is found.

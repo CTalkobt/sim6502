@@ -610,12 +610,15 @@ static void open_binload_dialog(const char *path)
     }
     g_binload_open = true;
 }
+static bool g_asm_error_open = false;
+
 static void do_load(void)
 {
     if (g_filename_buf[0] == '\0') return;
     g_running = false;
     if (sim_load_asm(g_sim, g_filename_buf) != 0) {
         fprintf(stderr, "sim6502-gui: failed to load '%s'\n", g_filename_buf);
+        g_asm_error_open = true;
     } else {
         fprintf(stdout, "sim6502-gui: loaded '%s'\n", g_filename_buf);
         g_prev_cpu_valid   = false;
@@ -4572,6 +4575,42 @@ static void draw_pane_console(void)
 }
 
 /* --------------------------------------------------------------------------
+ * Assembly error popup
+ * -------------------------------------------------------------------------- */
+static void draw_asm_error_popup(void)
+{
+    if (g_asm_error_open) {
+        ImGui::OpenPopup("Assembly Error");
+        g_asm_error_open = false;
+    }
+
+    if (ImGui::BeginPopupModal("Assembly Error", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Failed to assemble source file.");
+        ImGui::Text("File: %s", g_filename_buf);
+        ImGui::Separator();
+
+        const char *err = sim_get_last_error(g_sim);
+        if (err) {
+            ImGui::Text("Error output:");
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.1f, 0.1f, 0.1f, 1.0f));
+            if (ImGui::BeginChild("err_scroll", ImVec2(600, 300), true)) {
+                ImGui::TextUnformatted(err);
+            }
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
+        } else {
+            ImGui::Text("Unknown error during assembly (check console/stderr).");
+        }
+
+        ImGui::Separator();
+        if (ImGui::Button("Close", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+/* --------------------------------------------------------------------------
  * Binary load popup (.bin / .prg)
  * -------------------------------------------------------------------------- */
 static void draw_binload_popup(void)
@@ -5801,6 +5840,7 @@ int main(int /*argc*/, char ** /*argv*/)
         draw_pane_vic_regs();
 
         /* Popups */
+        draw_asm_error_popup();
         draw_binload_popup();
         draw_binsave_popup();
         draw_add_device_popup();

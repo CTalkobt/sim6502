@@ -259,10 +259,12 @@ int main(int argc, char *argv[]) {
 
         LOG_V2("DEBUG: Calling load_toolchain_bundle with base: %s\n", base);
         int bundle_load_addr = 0x0801;
-		if (!load_toolchain_bundle(mem, symbols, source_map, base, &bundle_load_addr)) {
+        char load_err[2048] = "";
+		if (!load_toolchain_bundle(mem, symbols, source_map, base, &bundle_load_addr, load_err, sizeof(load_err))) {
             /* If bundle failed, try loading as raw binary/prg if it's not .asm */
             if (dot && (strcasecmp(dot, ".asm") == 0 || strcasecmp(dot, ".s") == 0)) {
 			    fprintf(stderr, "Error: Could not load toolchain bundle for '%s'\n", filename);
+                if (load_err[0]) fprintf(stderr, "%s", load_err);
                 delete mem; delete symbols; delete source_map;
 			    return 1;
             } else {

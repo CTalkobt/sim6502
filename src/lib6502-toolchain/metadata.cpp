@@ -329,9 +329,11 @@ static void apply_pseudoop_output(symbol_table_t *st, const char *output_file) {
     fclose(f);
 }
 
-bool load_toolchain_bundle(memory_t *mem, symbol_table_t *st, source_map_t *sm, const char *base_path, int *out_load_addr) {
+bool load_toolchain_bundle(memory_t *mem, symbol_table_t *st, source_map_t *sm, const char *base_path, int *out_load_addr, char *err_msg, int err_sz) {
     LOG_V2("DEBUG: ENTER load_toolchain_bundle mem=%p base=%s\n", (void*)mem, base_path);
     char path[512];
+
+    if (err_msg && err_sz > 0) err_msg[0] = '\0';
 
     int load_addr = 0x0801;
     int n = -1;
@@ -395,15 +397,19 @@ bool load_toolchain_bundle(memory_t *mem, symbol_table_t *st, source_map_t *sm, 
                     rename(tmp_sym, sym_dest);
                 }
             } else {
-                fprintf(stderr, "Warning: assembly of '%s' failed (rc=%d)\n", asm_path, rc);
-                if (g_verbose >= 1) {
-                    FILE *ef = fopen(tmp_out, "r");
-                    if (ef) {
-                        char ebuf[512];
-                        while (fgets(ebuf, sizeof(ebuf), ef))
-                            fprintf(stderr, "  %s", ebuf);
-                        fclose(ef);
+                fprintf(stderr, "Error: assembly of '%s' failed (rc=%d)\n", asm_path, rc);
+                FILE *ef = fopen(tmp_out, "r");
+                if (ef) {
+                    char ebuf[512];
+                    while (fgets(ebuf, sizeof(ebuf), ef)) {
+                        fprintf(stderr, "  %s", ebuf);
+                        if (err_msg && err_sz > 0) {
+                            int len = (int)strlen(err_msg);
+                            if (len + (int)strlen(ebuf) < err_sz - 1)
+                                strcat(err_msg, ebuf);
+                        }
                     }
+                    fclose(ef);
                 }
             }
             if (has_pseudoops) remove(tmp_asm);
