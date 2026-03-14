@@ -66,6 +66,63 @@ static int handle_trap(const symbol_table_t *st, CPU *cpu, memory_t *mem) {
 	return 0;
 }
 
+static void machine_init_hardware(sim_session_t *s); /* forward decl */
+
+/* Return the most appropriate machine type for a given CPU when no explicit
+ * machine has been specified.  Mirrors the defaults used in sim_create(). */
+static machine_type_t default_machine_for_cpu(cpu_type_t cpu) {
+    switch (cpu) {
+    case CPU_45GS02:
+    case CPU_65CE02:  return MACHINE_MEGA65;
+    case CPU_65C02:   return MACHINE_X16;
+    default:          return MACHINE_C64;
+    }
+}
+
+/* Replace the CPU object when the processor type changes.
+ * Preserves the memory pointer; call before machine_init_hardware. */
+static void apply_cpu_type(sim_session_t *s, cpu_type_t new_type) {
+    if (s->cpu && new_type == s->cpu_type) return;
+    s->cpu_type = new_type;
+    delete s->cpu;
+    s->cpu = CPUFactory::create(new_type);
+    s->cpu->mem = &s->mem;
+}
+
+/* After loading, scan the symbol table for SYM_PROCESSOR symbols emitted by the
+ * metadata pipeline (SIM_CPU / SIM_MACHINE markers from .print injection or .sym_add).
+ * Applies any cpu/machine type changes found, re-initialising hardware if needed.
+ * When only sim_cpu is present (no explicit sim_machine), the machine type is
+ * derived automatically via default_machine_for_cpu(). */
+static void apply_session_processor_symbols(sim_session_t *s) {
+    bool has_cpu_sym = false, has_machine_sym = false;
+    for (int i = 0; i < s->symbols.count; i++) {
+        const symbol_t *sym = &s->symbols.symbols[i];
+        if (sym->type != SYM_PROCESSOR) continue;
+        if (strcmp(sym->name, "sim_cpu")     == 0) has_cpu_sym     = true;
+        if (strcmp(sym->name, "sim_machine") == 0) has_machine_sym = true;
+    }
+    bool cpu_changed = false, machine_changed = false;
+    if (has_cpu_sym) {
+        cpu_type_t t = cpu_type_from_symbols(&s->symbols);
+        if (t != s->cpu_type) { apply_cpu_type(s, t); cpu_changed = true; }
+    }
+    if (has_machine_sym) {
+        machine_type_t m = machine_type_from_symbols(&s->symbols);
+        if (m != s->machine_type) { s->machine_type = m; machine_changed = true; }
+    } else if (has_cpu_sym) {
+        /* No explicit machine directive — derive a sensible default for the CPU.
+         * Uses has_cpu_sym (not cpu_changed) so this fires even when the CPU type
+         * was already set by an early detect_asm_cpu_type() scan. */
+        machine_type_t m = default_machine_for_cpu(s->cpu_type);
+        if (m != s->machine_type) { s->machine_type = m; machine_changed = true; }
+    }
+    if (cpu_changed || machine_changed) {
+        s->cpu->mem = &s->mem;
+        machine_init_hardware(s);
+    }
+}
+
 static const char *processor_name_local(cpu_type_t type) {
 	switch (type) {
 	case CPU_6502: return "6502";
@@ -176,10 +233,24 @@ int sim_load_asm(sim_session_t *s, const char *path) {
     char *dot = strrchr(base, '.');
     if (dot && (strcasecmp(dot, ".asm") == 0 || strcasecmp(dot, ".s") == 0)) *dot = 0;
     
+    /* Detect processor type from .cpu / //.cpu directive before hardware init.
+     * Also derive the machine type so it is correct even when a cached .prg
+     * exists and the assembly step (which would inject SIM_CPU: markers) is skipped. */
+    {
+        char asm_check[512];
+        snprintf(asm_check, sizeof(asm_check), "%s.asm", base);
+        cpu_type_t detected = detect_asm_cpu_type(asm_check);
+        apply_cpu_type(s, detected);
+        machine_type_t derived_machine = default_machine_for_cpu(s->cpu_type);
+        if (derived_machine != s->machine_type)
+            s->machine_type = derived_machine;
+    }
+
     /* Reset session state */
     IORegistry *old_registry = s->mem.io_registry;
     memset(&s->mem, 0, sizeof(s->mem));
     s->mem.io_registry = old_registry;
+    s->cpu->mem = &s->mem;
     machine_init_hardware(s);
     symbol_table_init(&s->symbols, "Toolchain");
     source_map_init(&s->source_map);
@@ -189,6 +260,9 @@ int sim_load_asm(sim_session_t *s, const char *path) {
     int bundle_load_addr = 0x0801;
     if (load_toolchain_bundle(&s->mem, &s->symbols, &s->source_map, base, &bundle_load_addr)) {
         strncpy(s->filename, path, sizeof(s->filename) - 1);
+        /* Apply cpu/machine type from SIM_CPU/SIM_MACHINE markers in the metadata pipeline.
+         * This overrides the early detect_asm_cpu_type() scan when the metadata is definitive. */
+        apply_session_processor_symbols(s);
         /* Try to find a reasonable start address; fall back to PRG load address */
         unsigned short start_addr = (unsigned short)bundle_load_addr;
         symbol_lookup_name(&s->symbols, "main", &start_addr);
@@ -260,6 +334,8 @@ int sim_load_prg(sim_session_t *s, const char *path, uint16_t override_addr)
     char *dot = strrchr(base, '.');
     if (dot) *dot = 0;
     load_companion_files(&s->symbols, &s->source_map, base);
+    /* Apply cpu/machine type from SIM_CPU/SIM_MACHINE markers in companion files */
+    apply_session_processor_symbols(s);
 
     return 0;
 }
@@ -376,8 +452,7 @@ void sim_reset(sim_session_t *s) {
 int sim_disassemble_one(sim_session_t *s, uint16_t addr, char *buf, size_t len) {
     if (!s || !buf || len == 0) return 1;
     if (s->state == SIM_IDLE) { snprintf(buf, len, "%04X: --", addr); return 1; }
-    // return disasm_one(&s->mem, &s->dt, s->cpu_type, addr, buf, (int)len);
-    return 1;
+    return disasm_one(&s->mem, s->cpu->dispatch_table(), s->cpu_type, addr, buf, (int)len);
 }
 
 cpu_t          *sim_get_cpu(sim_session_t *s)    { return s ? s->cpu : NULL; }
@@ -454,11 +529,13 @@ const char *sim_state_name(sim_state_t state) {
 }
 void sim_set_processor(sim_session_t *s, const char *name) {
     if (!s || !name) return;
-    if      (strcmp(name, "6502") == 0) s->cpu_type = CPU_6502;
-    else if (strcmp(name, "6502-undoc") == 0) s->cpu_type = CPU_6502_UNDOCUMENTED;
-    else if (strcmp(name, "65c02") == 0) s->cpu_type = CPU_65C02;
-    else if (strcmp(name, "65ce02") == 0) s->cpu_type = CPU_65CE02;
-    else if (strcmp(name, "45gs02") == 0) s->cpu_type = CPU_45GS02;
+    cpu_type_t new_type = s->cpu_type;
+    if      (strcmp(name, "6502") == 0)       new_type = CPU_6502;
+    else if (strcmp(name, "6502-undoc") == 0) new_type = CPU_6502_UNDOCUMENTED;
+    else if (strcmp(name, "65c02") == 0)      new_type = CPU_65C02;
+    else if (strcmp(name, "65ce02") == 0)     new_type = CPU_65CE02;
+    else if (strcmp(name, "45gs02") == 0)     new_type = CPU_45GS02;
+    apply_cpu_type(s, new_type);
 }
 cpu_type_t sim_get_cpu_type(sim_session_t *s) { return s ? s->cpu_type : CPU_6502; }
 void sim_set_debug(sim_session_t *s, bool debug) { if (s && s->cpu) s->cpu->debug = debug; }

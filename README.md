@@ -53,7 +53,7 @@ Assembly is performed by **KickAssembler** (`tools/KickAss65CE02.jar`) — a 65C
 Key syntax conventions:
 - **Comments**: `//` single-line; `/* */` block.
 - **Origin**: `* = $0200`
-- **CPU selection**: `.cpu _45gs02`, `.cpu _65ce02`, `.cpu _65c02`, `.cpu _6502`
+- **CPU selection**: `.cpu _45gs02`, `.cpu _65ce02`, `.cpu _65c02`, `.cpu _6502` — the simulator reads this directive and auto-selects the matching processor; no `-p` flag is needed.
 - **Mnemonics**: lowercase (`lda`, `sta`, `jsr`, …)
 - **Pseudo-ops**: `.byte`, `.word`, `.text`, `.align`, `.fill`, `.import`; KickAssembler macros and functions are supported.
 - **Simulator pseudo-ops**: Embedded in `//` comments so files assemble cleanly without the simulator; see [Simulator Pseudo-ops](#simulator-pseudo-ops) below.
@@ -173,8 +173,11 @@ make clean    # remove object files and binaries
 # Assemble and run a file
 ./sim6502 examples/hello.asm
 
-# Choose a processor variant
+# Choose a processor variant explicitly
 ./sim6502 -p 45gs02 examples/45gs02_test.asm
+
+# Processor auto-detected from .cpu directive — no -p needed
+./sim6502 examples/45gs02_z_register.asm
 
 # Launch the Graphical Debugger
 ./sim6502-gui
@@ -333,11 +336,27 @@ CHROUT = $FFD2
     //.trap "CHROUT"
 ```
 
+#### `//.cpu "variant"`
+Override or explicitly declare the target processor variant through the metadata pipeline. Useful in `.sym_add` companion files or when you want the simulator to select the correct CPU independent of the `-p` flag.
+```asm
+//.cpu "45gs02"
+```
+Accepted values: `45gs02`, `65ce02`, `65c02`, `6502`.
+
+**Note:** For `.asm` files, use the native KickAssembler `.cpu _45gs02` directive at the top of the file — the simulator detects it automatically and the preprocessor additionally injects a `SIM_CPU:` marker so the type flows through the metadata pipeline. The `//.cpu` comment form is primarily useful in `.sym_add` companion files alongside pre-assembled `.prg`/`.bin` binaries.
+
+#### `//.machine "type"`
+Set the target machine profile (controls which I/O devices are mapped into the address space).
+```asm
+//.machine "mega65"
+```
+Accepted values: `mega65`, `x16`, `c64`, `c128`, `raw6502`.
+
 #### `.sym_add` companion files
 
 For programs loaded directly as `.prg` or `.bin` (built by any assembler), a `.sym_add` file with the same base name can carry supplemental annotations. The simulator loads it automatically alongside `.sym` and `.list`.
 
-A `.sym_add` file may contain **either or both** of the following formats on any line:
+A `.sym_add` file may contain any of the following formats:
 
 ```
 ; KickAssembler symbol format
@@ -346,14 +365,20 @@ A `.sym_add` file may contain **either or both** of the following formats on any
 ; Simulator pseudo-op markers (same format emitted by KickAssembler stdout)
 SIM_INSPECT:0222:SID #1
 SIM_TRAP:FFD2:CHROUT
+
+; Processor / machine type metadata
+SIM_CPU:45gs02
+SIM_MACHINE:mega65
 ```
+
+`SIM_CPU:` and `SIM_MACHINE:` cause the simulator to switch to the named processor variant and machine profile when the file is loaded — identical to the effect of `//.cpu` and `//.machine` pseudo-ops in `.asm` source.
 
 Produce a `.sym_add` from a KickAssembler build by redirecting stdout:
 ```bash
 java -jar tools/KickAss65CE02.jar prog.asm -symbolfile -o prog.prg > prog.sym_add
 ```
 
-This allows any external toolchain to annotate `.prg`/`.bin` files with `.inspect` and `.trap` metadata without requiring re-assembly through the simulator.
+This allows any external toolchain to annotate `.prg`/`.bin` files with `.inspect`, `.trap`, and processor metadata without requiring re-assembly through the simulator.
 
 ---
 
@@ -437,9 +462,9 @@ When any program is loaded the simulator looks for side-files sharing the same b
 |-----------|----------|---------|
 | `.sym` | KickAssembler symbol file | Labels and constants |
 | `.list` | ACME-format listing | Source-to-address map |
-| `.sym_add` | Supplemental annotations | Additional symbols **and/or** `SIM_INSPECT:`/`SIM_TRAP:` lines |
+| `.sym_add` | Supplemental annotations | Additional symbols, `SIM_INSPECT:`/`SIM_TRAP:` markers, and `SIM_CPU:`/`SIM_MACHINE:` processor metadata |
 
-`.sym_add` is useful for `.prg`/`.bin` files produced outside the simulator — place it next to the binary and the simulator picks it up automatically on load.
+`.sym_add` is useful for `.prg`/`.bin` files produced outside the simulator — place it next to the binary and the simulator picks it up automatically on load, applying all processor and machine-type metadata it contains.
 
 ### TRAP Symbols
 
@@ -509,8 +534,8 @@ The engine is split into focused static libraries that are linked into a single 
     - `audio.cpp/h`: SID audio output.
     - `device/`: VIC-II, SID I/O, CIA, MEGA65 I/O device implementations.
 - `src/lib6502-toolchain/`: Source-level tools.
-    - `metadata.cpp/h`: `.prg`/`.bin`/`.asm` loading, KickAssembler auto-assembly, simulator pseudo-op preprocessing, `.sym_add` companion file loading.
-    - `symbols.cpp/h`: Symbol table (labels, constants, `SYM_INSPECT`, `SYM_TRAP`).
+    - `metadata.cpp/h`: `.prg`/`.bin`/`.asm` loading, KickAssembler auto-assembly, simulator pseudo-op preprocessing (`//.inspect`, `//.trap`, `//.cpu`, `//.machine`), native `.cpu`/`.processor` directive injection, `.sym_add` companion file loading, `detect_asm_cpu_type()`.
+    - `symbols.cpp/h`: Symbol table (labels, constants, `SYM_INSPECT`, `SYM_TRAP`, `SYM_PROCESSOR`).
     - `list_parser.cpp/h`: Source-map and ACME-list parsing.
     - `disassembler.cpp/h`: Disassembly for all processor variants.
     - `patterns.cpp/h`: Built-in assembly snippet library.
@@ -537,6 +562,7 @@ The engine is split into focused static libraries that are linked into a single 
 - **Assembler**: No macro support yet. Complex expressions in operands are not supported beyond single values and symbol references.
 - **Cycle Counts**: While provided, counts may not be 100% cycle-accurate for all addressing modes and page-crossing penalties in all variants.
 - **Decimal Mode**: BCD flag behavior matches correct arithmetic output but does not currently emulate NMOS-specific undefined N/V/Z flag quirks.
+- **CLI processor auto-detection for `.prg`/`.bin`**: The CLI creates the CPU before loading, so `SIM_CPU:` in a `.sym_add` companion file does not take effect at the CLI level — use `-p <variant>` explicitly. The GUI and MCP paths (via `sim_api`) apply companion-file processor metadata correctly.
 
 ---
 

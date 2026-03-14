@@ -15,7 +15,9 @@ typedef enum {
 	SYM_IO_PORT = 4,
 	SYM_MEMORY_REGION = 5,
 	SYM_TRAP = 6,		/* Intercept JSR/JMP/RTS/RTN to this address; dump state and simulate RTS */
-	SYM_INSPECT = 7		/* Print device/memory state when PC hits this address */
+	SYM_INSPECT = 7,	/* Print device/memory state when PC hits this address */
+	SYM_PROCESSOR = 8	/* Metadata: cpu/machine type detected from source (.cpu / .machine directives).
+	                       address=0, name="sim_cpu" or "sim_machine", comment=type string */
 } symbol_type_t;
 
 typedef struct {

@@ -1179,11 +1179,23 @@ All flags can appear in any order before the filename.
 
 ### Processor Selection
 
+**Auto-detection from `.cpu` directive**
+
+When a `.asm` file contains a `.cpu _45gs02` (or `.cpu _65ce02`, `.cpu _65c02`, `.cpu _6502`)
+directive, the simulator detects it automatically and selects the correct processor — no `-p`
+flag is needed:
+
+```
+$ ./sim6502 examples/45gs02_z_register.asm
+```
+
+The preprocessor also injects a `SIM_CPU:` marker into the KickAssembler output so the
+processor type flows through the metadata pipeline along with symbol and annotation data.
+
 **`-p <variant>` / `--processor <variant>`**
 
-Select the active processor. Overrides any `.processor` directive in the source file for the
-*default* at startup. If the file contains `.processor 45gs02` the file's directive wins for
-the instructions in that file.
+Explicitly select the processor variant. Use this when loading a `.prg` or `.bin` that has
+no source file, or to override the auto-detected type:
 
 Compare the same program on two CPUs:
 
@@ -1703,7 +1715,7 @@ d020  border      IO     VIC border color register
 ffd2  MYOUT       TRAP   Custom output routine
 ```
 
-**The seven symbol types:**
+**The symbol types:**
 
 | Type | Meaning |
 |------|---------|
@@ -1714,6 +1726,7 @@ ffd2  MYOUT       TRAP   Custom output routine
 | IO | Memory-mapped I/O register |
 | REGION | Named range of memory |
 | TRAP | Intercept point; JSR here is simulated |
+| PROCESSOR | Metadata: cpu/machine type from `.cpu` directive or `.sym_add` companion file |
 
 Load with `--symbols my.sym`. Combine with a preset:
 
@@ -1722,6 +1735,80 @@ $ ./sim6502 --preset c64 --symbols my.sym program.asm
 ```
 
 Verify the file loaded with `--show-symbols`.
+
+### Simulator Pseudo-ops
+
+Simulator pseudo-ops are embedded in `//` comments so the `.asm` file assembles cleanly with
+KickAssembler directly. When the simulator loads the file it preprocesses these lines into
+KickAssembler `.print` statements, captures the assembler's stdout, and registers the
+pseudo-ops at the correct assembled addresses.
+
+#### `//.inspect "device"`
+
+When execution reaches this address, the simulator prints the state of the named device.
+
+```asm
+    sta $D401            // write note frequency
+    //.inspect "SID #1"  // show SID state here
+    lda #20
+    jsr wait_frames
+```
+
+#### `//.trap "label"`
+
+When a `JSR` targets this address, the call is logged and a synthetic `RTS` is executed —
+useful for intercepting Kernal/ROM routines without loading ROM.
+
+```asm
+CHROUT = $FFD2
+    //.trap "CHROUT"
+```
+
+#### `//.cpu "variant"` and `//.machine "type"`
+
+Declare the target processor and machine profile through the metadata pipeline. The effect is
+identical to the `-p` flag but travels with the file.
+
+```asm
+//.cpu "45gs02"
+//.machine "mega65"
+```
+
+Accepted CPU values: `45gs02`, `65ce02`, `65c02`, `6502`.
+Accepted machine values: `mega65`, `x16`, `c64`, `c128`, `raw6502`.
+
+For `.asm` files the native KickAssembler `.cpu _45gs02` directive is preferred — the
+simulator reads it directly for early processor setup *and* the preprocessor injects a
+`SIM_CPU:` marker so the type is also captured through the metadata pipeline. The `//.cpu`
+comment form is most useful in `.sym_add` companion files (see below).
+
+### `.sym_add` Companion Files
+
+A `.sym_add` file with the same base name as a `.prg` or `.bin` is loaded automatically
+and may contain any combination of:
+
+```
+; KickAssembler symbol format
+.label sid_freq_hi=$0222
+
+; Simulator annotation markers
+SIM_INSPECT:0222:SID #1
+SIM_TRAP:FFD2:CHROUT
+
+; Processor / machine metadata
+SIM_CPU:45gs02
+SIM_MACHINE:mega65
+```
+
+`SIM_CPU:` and `SIM_MACHINE:` cause the simulator (GUI and MCP paths) to switch to the
+named processor variant and machine profile on load, so pre-assembled `.prg`/`.bin` files
+built by any external toolchain can carry full processor and annotation metadata.
+
+Generate a `.sym_add` from a KickAssembler build by capturing stdout:
+
+```bash
+java -jar tools/KickAss65CE02.jar prog.asm -symbolfile -o prog.prg > prog.sym_add
+```
 
 ---
 

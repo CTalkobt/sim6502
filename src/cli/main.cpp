@@ -103,6 +103,7 @@ static int handle_trap_main(const symbol_table_t *st, cpu_t *cpu, memory_t *mem)
 int main(int argc, char *argv[]) {
 	machine_type_t machine_type = MACHINE_C64;
 	cpu_type_t cpu_type = CPU_6502;
+	int cpu_type_provided = 0;
 	const char *filename = NULL;
 	int interactive_mode = 0;
 	breakpoint_list_t breakpoints;
@@ -203,6 +204,7 @@ int main(int argc, char *argv[]) {
 				else if (strcmp(p, "65c02") == 0) cpu_type = CPU_65C02;
 				else if (strcmp(p, "65ce02") == 0) cpu_type = CPU_65CE02;
 				else if (strcmp(p, "45gs02") == 0) cpu_type = CPU_45GS02;
+				cpu_type_provided = 1;
 			}
 		} else if (strcmp(argv[i], "--debug") == 0) {
 			enable_debug = 1;
@@ -228,17 +230,24 @@ int main(int argc, char *argv[]) {
     memset(mem->map_offset, 0, sizeof(mem->map_offset));
     mem->io_registry = nullptr;
     
+    /* Auto-detect processor type from .cpu directive when -p was not given */
+    if (!cpu_type_provided && filename) {
+        const char *dot = strrchr(filename, '.');
+        if (dot && (strcasecmp(dot, ".asm") == 0 || strcasecmp(dot, ".s") == 0))
+            cpu_type = detect_asm_cpu_type(filename);
+    }
+
     LOG_V2("DEBUG: Creating CPU...\n");
 	CPU *cpu_ptr = CPUFactory::create(cpu_type);
     if (!cpu_ptr) { fprintf(stderr, "ERROR: Failed to create CPU\n"); delete mem; delete symbols; delete source_map; return 1; }
-    
+
 	cpu_ptr->mem = mem;
 	cpu_ptr->debug = enable_debug != 0 || g_verbose >= 3;
-    
-    LOG_V2("DEBUG: Initializing IORegistry...\n");
-	mem->io_registry = new IORegistry(cpu_ptr->get_interrupt_controller());
-    LOG_V2("DEBUG: IORegistry initialized at %p\n", (void*)mem->io_registry);
-	
+
+    /* NOTE: IORegistry is created AFTER file loading so that post-load CPU
+     * type detection (from SYM_PROCESSOR symbols) can replace the CPU object
+     * before the IORegistry binds to its interrupt controller. */
+
     if (filename) {
         LOG_V2("DEBUG: Loading filename: %s\n", filename);
 		/* Toolchain-based loading (replaces legacy internal assembler) */
@@ -274,6 +283,42 @@ int main(int argc, char *argv[]) {
             }
 		}
 
+        /* Post-load: apply SYM_PROCESSOR symbols from the metadata pipeline.
+         * Handles //.cpu comment pseudo-ops and SIM_CPU: in .sym_add companion
+         * files.  Respects -p: only auto-applies when the user did not specify. */
+        if (!cpu_type_provided) {
+            bool has_cpu_sym = false, has_machine_sym = false;
+            for (int i = 0; i < symbols->count; i++) {
+                if (symbols->symbols[i].type != SYM_PROCESSOR) continue;
+                if (strcmp(symbols->symbols[i].name, "sim_cpu")     == 0) has_cpu_sym     = true;
+                if (strcmp(symbols->symbols[i].name, "sim_machine") == 0) has_machine_sym = true;
+            }
+            bool cpu_changed = false;
+            if (has_cpu_sym) {
+                cpu_type_t sym_cpu = cpu_type_from_symbols(symbols);
+                if (sym_cpu != cpu_type) {
+                    cpu_type = sym_cpu;
+                    delete cpu_ptr;
+                    cpu_ptr = CPUFactory::create(cpu_type);
+                    cpu_ptr->mem = mem;
+                    cpu_ptr->debug = enable_debug != 0 || g_verbose >= 3;
+                    cpu_changed = true;
+                }
+            }
+            if (has_machine_sym) {
+                machine_type = machine_type_from_symbols(symbols);
+            } else if (has_cpu_sym) {
+                /* No explicit machine directive — derive a sensible default for the CPU.
+                 * Uses has_cpu_sym (not cpu_changed) to cover pre-detected CPU types. */
+                switch (cpu_type) {
+                case CPU_45GS02:
+                case CPU_65CE02:  machine_type = MACHINE_MEGA65; break;
+                case CPU_65C02:   machine_type = MACHINE_X16;    break;
+                default:          machine_type = MACHINE_C64;    break;
+                }
+            }
+        }
+
 		/* Find start address if not provided */
         if (!start_addr_provided) {
 		    unsigned short found_addr = 0x0801;
@@ -290,6 +335,11 @@ int main(int argc, char *argv[]) {
             }
         }
     }
+
+    /* Create IORegistry now that the final CPU object is established */
+    LOG_V2("DEBUG: Initializing IORegistry...\n");
+	mem->io_registry = new IORegistry(cpu_ptr->get_interrupt_controller());
+    LOG_V2("DEBUG: IORegistry initialized at %p\n", (void*)mem->io_registry);
 
     /* Initialize hardware based on machine type */
     switch (machine_type) {

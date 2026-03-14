@@ -8,6 +8,83 @@ int g_verbose = 0;
 #define LOG_V2(...) if (g_verbose >= 2) fprintf(stderr, __VA_ARGS__)
 #define LOG_V3(...) if (g_verbose >= 3) fprintf(stderr, __VA_ARGS__)
 
+/* Map a cpu name string (sim form: "45gs02", "65ce02", "6502-undoc", etc.) to cpu_type_t. */
+static cpu_type_t cpu_type_from_name(const char *s) {
+    if (!s) return CPU_6502;
+    if (strcmp(s, "45gs02")    == 0) return CPU_45GS02;
+    if (strcmp(s, "65ce02")    == 0) return CPU_65CE02;
+    if (strcmp(s, "65c02")     == 0) return CPU_65C02;
+    if (strcmp(s, "6502-undoc")== 0) return CPU_6502_UNDOCUMENTED;
+    return CPU_6502;
+}
+
+/* Map a machine name string ("mega65", "c64", etc.) to machine_type_t. */
+static machine_type_t machine_type_from_name(const char *s) {
+    if (!s) return MACHINE_C64;
+    if (strcmp(s, "mega65")  == 0) return MACHINE_MEGA65;
+    if (strcmp(s, "c128")    == 0) return MACHINE_C128;
+    if (strcmp(s, "x16")     == 0) return MACHINE_X16;
+    if (strcmp(s, "raw6502") == 0) return MACHINE_RAW6502;
+    return MACHINE_C64;
+}
+
+cpu_type_t detect_asm_cpu_type(const char *asm_path) {
+    FILE *f = fopen(asm_path, "r");
+    if (!f) return CPU_6502;
+    char line[256];
+    cpu_type_t result = CPU_6502;
+    while (fgets(line, sizeof(line), f)) {
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+
+        /* Native KickAssembler directive: .cpu _45gs02 */
+        if (strncasecmp(p, ".cpu", 4) == 0 && (p[4] == ' ' || p[4] == '\t')) {
+            char *q = p + 4;
+            while (*q == ' ' || *q == '\t') q++;
+            if      (strncmp(q, "_45gs02", 7) == 0) { result = CPU_45GS02; break; }
+            else if (strncmp(q, "_65ce02", 7) == 0) { result = CPU_65CE02; break; }
+            else if (strncmp(q, "_65c02",  6) == 0) { result = CPU_65C02;  break; }
+            else if (strncmp(q, "_6502",   5) == 0) { result = CPU_6502;   break; }
+            continue;
+        }
+
+        /* Comment pseudo-op: //.cpu "45gs02" */
+        if (p[0] == '/' && p[1] == '/') {
+            char *q = p + 2;
+            while (*q == ' ' || *q == '\t') q++;
+            if (strncmp(q, ".cpu", 4) == 0 && (q[4] == ' ' || q[4] == '\t')) {
+                q += 4;
+                while (*q == ' ' || *q == '\t') q++;
+                if (*q == '"') q++;
+                result = cpu_type_from_name(q);
+                break;
+            }
+        }
+    }
+    fclose(f);
+    return result;
+}
+
+cpu_type_t cpu_type_from_symbols(const symbol_table_t *st) {
+    if (!st) return CPU_6502;
+    for (int i = 0; i < st->count; i++) {
+        const symbol_t *sym = &st->symbols[i];
+        if (sym->type == SYM_PROCESSOR && strcmp(sym->name, "sim_cpu") == 0)
+            return cpu_type_from_name(sym->comment);
+    }
+    return CPU_6502;
+}
+
+machine_type_t machine_type_from_symbols(const symbol_table_t *st) {
+    if (!st) return MACHINE_C64;
+    for (int i = 0; i < st->count; i++) {
+        const symbol_t *sym = &st->symbols[i];
+        if (sym->type == SYM_PROCESSOR && strcmp(sym->name, "sim_machine") == 0)
+            return machine_type_from_name(sym->comment);
+    }
+    return MACHINE_C64;
+}
+
 int load_binary(memory_t *mem, int addr, const char *filename) {
 	FILE *bf = fopen(filename, "rb");
 	if (!bf) {
@@ -101,17 +178,46 @@ static void strip_arg_quotes(const char *in, char *out, int outlen) {
  * p must point to the start of the non-whitespace portion of the line.
  * If matched, sets *keyword to the keyword start and *kw_len to its length, returns true.
  */
+/* Detect a simulator pseudo-op embedded in a comment: "//.inspect", "//.trap",
+ * "//.cpu", "//.machine".  p must point to the non-whitespace start of the line.
+ * Returns 1 if matched; sets *keyword and *kw_len. */
 static int detect_pseudoop(char *p, const char **keyword, int *kw_len) {
     if (p[0] != '/' || p[1] != '/') return 0;
     char *q = p + 2;
     while (*q == ' ' || *q == '\t') q++;
-    if (strncmp(q, ".inspect", 8) == 0 && (!q[8] || q[8]==' ' || q[8]=='\t' || q[8]=='"')) {
-        *keyword = q; *kw_len = 8; return 1;
-    }
-    if (strncmp(q, ".trap", 5) == 0 && (!q[5] || q[5]==' ' || q[5]=='\t' || q[5]=='"')) {
-        *keyword = q; *kw_len = 5; return 1;
-    }
+#define MATCH_KW(str, n) (strncmp(q, str, n) == 0 && (!q[n] || q[n]==' ' || q[n]=='\t' || q[n]=='"'))
+    if (MATCH_KW(".inspect", 8)) { *keyword = q; *kw_len = 8; return 1; }
+    if (MATCH_KW(".trap",    5)) { *keyword = q; *kw_len = 5; return 1; }
+    if (MATCH_KW(".cpu",     4)) { *keyword = q; *kw_len = 4; return 1; }
+    if (MATCH_KW(".machine", 8)) { *keyword = q; *kw_len = 8; return 1; }
+#undef MATCH_KW
     return 0;
+}
+
+/* Detect a native KickAssembler / ACME .cpu or .processor directive (not a comment).
+ * p must point to the non-whitespace start of the line.
+ * If matched, writes the sim-format cpu name (e.g. "45gs02") into cpu_out (size outlen)
+ * and returns 1.  The original line should be KEPT and a SIM_CPU print injected after it. */
+static int detect_native_cpu_directive(const char *p, char *cpu_out, int outlen) {
+    const char *directive = NULL;
+    int dlen = 0;
+    if (strncasecmp(p, ".cpu",       4) == 0 && (p[4]==' '||p[4]=='\t')) { directive=p+4; dlen=4; }
+    else if (strncasecmp(p, ".processor", 10) == 0 && (p[10]==' '||p[10]=='\t')) { directive=p+10; dlen=10; }
+    if (!directive) return 0;
+    (void)dlen;
+    /* Skip whitespace after directive */
+    while (*directive == ' ' || *directive == '\t') directive++;
+    /* Strip leading underscore (KickAssembler uses _45gs02, ACME may not) */
+    if (*directive == '_') directive++;
+    /* Copy the cpu name, stopping at whitespace/newline */
+    int i = 0;
+    while (i < outlen - 1 && directive[i] && directive[i] != ' ' && directive[i] != '\t'
+           && directive[i] != '\r' && directive[i] != '\n') {
+        cpu_out[i] = directive[i];
+        i++;
+    }
+    cpu_out[i] = '\0';
+    return (i > 0) ? 1 : 0;
 }
 
 /*
@@ -127,14 +233,16 @@ static int preprocess_asm_pseudoops(const char *asm_path, const char *tmp_path) 
     FILE *in = fopen(asm_path, "r");
     if (!in) return 0;
 
-    /* First pass: count pseudo-ops */
+    /* First pass: count lines that need transformation */
     int count = 0;
     char line[4096];
     while (fgets(line, sizeof(line), in)) {
         char *p = line;
         while (*p == ' ' || *p == '\t') p++;
         const char *kw; int kw_len;
+        char cpu_name[32];
         if (detect_pseudoop(p, &kw, &kw_len)) count++;
+        else if (detect_native_cpu_directive(p, cpu_name, sizeof(cpu_name))) count++;
     }
     if (count == 0) { fclose(in); return 0; }
 
@@ -147,13 +255,33 @@ static int preprocess_asm_pseudoops(const char *asm_path, const char *tmp_path) 
         char *p = line;
         while (*p == ' ' || *p == '\t') p++;
         const char *kw; int kw_len;
+        char cpu_name[32];
+
         if (detect_pseudoop(p, &kw, &kw_len)) {
             char *arg = (char *)kw + kw_len;
             while (*arg == ' ' || *arg == '\t') arg++;
             char clean[256];
             strip_arg_quotes(arg, clean, sizeof(clean));
-            const char *tag = (kw_len == 8) ? "SIM_INSPECT" : "SIM_TRAP";
-            fprintf(out, "    .print \"%s:\"+toHexString(*)+\":%s\"\n", tag, clean);
+            /* Map keyword length to output tag:
+             *   8 = .inspect → SIM_INSPECT (needs PC address)
+             *   5 = .trap    → SIM_TRAP    (needs PC address)
+             *   4 = .cpu     → SIM_CPU     (no address — metadata only)
+             *   8 = .machine → SIM_MACHINE (no address — metadata only)
+             * .inspect and .machine both have kw_len==8; disambiguate by keyword text. */
+            if (strncmp(kw, ".inspect", 8) == 0) {
+                fprintf(out, "    .print \"SIM_INSPECT:\"+toHexString(*)+\":%s\"\n", clean);
+            } else if (strncmp(kw, ".trap", 5) == 0) {
+                fprintf(out, "    .print \"SIM_TRAP:\"+toHexString(*)+\":%s\"\n", clean);
+            } else if (strncmp(kw, ".cpu", 4) == 0) {
+                fprintf(out, "    .print \"SIM_CPU:%s\"\n", clean);
+            } else if (strncmp(kw, ".machine", 8) == 0) {
+                fprintf(out, "    .print \"SIM_MACHINE:%s\"\n", clean);
+            }
+        } else if (detect_native_cpu_directive(p, cpu_name, sizeof(cpu_name))) {
+            /* Keep the original .cpu / .processor line for KickAssembler, then
+             * inject a SIM_CPU print so the metadata pipeline captures the type. */
+            fputs(line, out);
+            fprintf(out, "    .print \"SIM_CPU:%s\"\n", cpu_name);
         } else {
             fputs(line, out);
         }
@@ -188,6 +316,14 @@ static void apply_pseudoop_output(symbol_table_t *st, const char *output_file) {
             char name[64];
             snprintf(name, sizeof(name), "trap_%04X", addr);
             symbol_add(st, name, (unsigned short)addr, SYM_TRAP, device);
+        } else if (strncmp(p, "SIM_CPU:", 8) == 0) {
+            char type[32];
+            if (sscanf(p + 8, "%31[^\n\r]", type) == 1)
+                symbol_add(st, "sim_cpu", 0, SYM_PROCESSOR, type);
+        } else if (strncmp(p, "SIM_MACHINE:", 12) == 0) {
+            char type[32];
+            if (sscanf(p + 12, "%31[^\n\r]", type) == 1)
+                symbol_add(st, "sim_machine", 0, SYM_PROCESSOR, type);
         }
     }
     fclose(f);

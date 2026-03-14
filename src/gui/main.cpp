@@ -80,6 +80,23 @@ static const char *g_mach_labels[] = { "raw6502", "c64", "c128", "mega65", "x16"
 static machine_type_t g_mach_ids[] = { MACHINE_RAW6502, MACHINE_C64, MACHINE_C128, MACHINE_MEGA65, MACHINE_X16 };
 static int         g_mach_idx      = 1; // default c64
 
+/* Sync the processor/machine dropdown indices from the live session state.
+ * Call after any load operation that may have changed cpu_type or machine_type. */
+static void sync_session_ui_state(void) {
+    cpu_type_t     ct = sim_get_cpu_type(g_sim);
+    machine_type_t mt = sim_get_machine_type(g_sim);
+    switch (ct) {
+    case CPU_6502_UNDOCUMENTED: g_proc_idx = 1; break;
+    case CPU_65C02:             g_proc_idx = 2; break;
+    case CPU_65CE02:            g_proc_idx = 3; break;
+    case CPU_45GS02:            g_proc_idx = 4; break;
+    default:                    g_proc_idx = 0; break;
+    }
+    for (int i = 0; i < (int)(sizeof(g_mach_ids)/sizeof(g_mach_ids[0])); i++) {
+        if (g_mach_ids[i] == mt) { g_mach_idx = i; break; }
+    }
+}
+
 /* Pane visibility */
 static bool show_registers   = true;
 static bool show_disassembly = true;
@@ -603,6 +620,8 @@ static void do_load(void)
         fprintf(stdout, "sim6502-gui: loaded '%s'\n", g_filename_buf);
         g_prev_cpu_valid   = false;
         g_last_write_count = 0;
+        /* Sync processor/machine dropdowns from the session (may have changed via .cpu) */
+        sync_session_ui_state();
         /* Re-seed watch values from the newly loaded program */
         for (int i = 0; i < g_watch_count; i++) g_watches[i].valid = false;
         update_watches();
@@ -1035,6 +1054,7 @@ static void con_exec(const char *cmd)
         if (ok == 0) {
             g_prev_cpu_valid   = false;
             g_last_write_count = 0;
+            sync_session_ui_state();
             for (int i = 0; i < g_watch_count; i++) g_watches[i].valid = false;
             update_watches();
             uint16_t laddr = 0, lsize = 0;
@@ -4602,6 +4622,7 @@ static void draw_binload_popup(void)
             if (ok == 0) {
                 g_prev_cpu_valid   = false;
                 g_last_write_count = 0;
+                sync_session_ui_state();
                 for (int i = 0; i < g_watch_count; i++) g_watches[i].valid = false;
                 update_watches();
                 uint16_t laddr = 0, lsize = 0;
