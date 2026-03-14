@@ -399,12 +399,6 @@ int sim_step(sim_session_t *s, int count) {
             return SIM_EVENT_BRK;
         }
 
-        CPU6502* cpu_6502 = dynamic_cast<CPU6502*>(s->cpu);
-        if (!cpu_6502) {
-            s->state = SIM_FINISHED;
-            return -1;
-        }
-
         uint16_t pre_pc = s->cpu->pc;
         uint64_t pre_cycles = s->cpu->cycles;
         CPUState pre_state = *static_cast<CPUState*>(s->cpu);
@@ -514,6 +508,7 @@ const memory_t *sim_get_memory(sim_session_t *s) { return s ? &s->mem : NULL; }
 uint8_t sim_mem_read_byte(sim_session_t *s, uint16_t addr) { return s ? mem_read(&s->mem, addr) : 0; }
 void sim_mem_write_byte(sim_session_t *s, uint16_t addr, uint8_t val) { if (s) mem_write(&s->mem, addr, val); }
 sim_state_t sim_get_state(sim_session_t *s) { return s ? s->state : SIM_IDLE; }
+void sim_set_state(sim_session_t *s, sim_state_t state) { if (s) s->state = state; }
 const char *sim_get_filename(sim_session_t *s) { return (s && s->filename[0]) ? s->filename : "(none)"; }
 const char *sim_get_last_error(sim_session_t *s) { return (s && s->last_error[0]) ? s->last_error : NULL; }
 const char *sim_processor_name(sim_session_t *s) { return s ? processor_name_local(s->cpu_type) : "6502"; }

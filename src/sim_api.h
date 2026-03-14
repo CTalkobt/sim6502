@@ -68,6 +68,7 @@ void    sim_mem_write_byte(sim_session_t *s, uint16_t addr, uint8_t val);
 
 /* Session metadata */
 sim_state_t  sim_get_state(sim_session_t *s);
+void         sim_set_state(sim_session_t *s, sim_state_t state);
 const char  *sim_get_filename(sim_session_t *s);
 const char  *sim_get_last_error(sim_session_t *s);
 const char  *sim_processor_name(sim_session_t *s);

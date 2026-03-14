@@ -9,6 +9,7 @@ LIB_IFLAGS = \
 	-I src/lib6502-core/opcodes \
 	-I src/lib6502-mem \
 	-I src/lib6502-devices \
+	-I src/lib6502-devices/device \
 	-I src/lib6502-debug \
 	-I src/lib6502-toolchain
 
@@ -156,7 +157,7 @@ $(IMGUI_DIR)/imgui.h:
 	git clone --depth 1 --branch docking https://github.com/ocornut/imgui.git $(IMGUI_DIR)
 
 # --- Unit Testing ---
-UNIT_TEST_SRCS = tests/unit/test_main.cpp tests/unit/test_cpu_arithmetic.cpp tests/unit/test_cpu_opcodes.cpp tests/unit/test_cpu_45gs02.cpp tests/unit/test_cpu_decode.cpp tests/unit/test_memory.cpp tests/unit/test_toolchain.cpp
+UNIT_TEST_SRCS = tests/unit/test_main.cpp tests/unit/test_cpu_arithmetic.cpp tests/unit/test_cpu_opcodes.cpp tests/unit/test_cpu_45gs02.cpp tests/unit/test_cpu_decode.cpp tests/unit/test_memory.cpp tests/unit/test_toolchain.cpp tests/unit/test_debug.cpp tests/unit/test_sim_api.cpp tests/unit/test_devices.cpp
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.cpp=.o)
 UNIT_TEST_TARGET = unit-tests
 

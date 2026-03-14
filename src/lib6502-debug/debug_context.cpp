@@ -167,8 +167,10 @@ void DebugContext::on_after_execute(uint16_t pre_pc,
 
     /* --- History ring buffer --- */
     if (hist_enabled_ && hist_buf_) {
+        // If we were in the middle of history and we execute a NEW instruction,
+        // we must discard the "future" history that was stepped back from.
         if (hist_pos_ > 0) {
-            hist_write_ = (hist_write_ - hist_pos_ + hist_cap_ * 2) % hist_cap_;
+            hist_write_ = ((unsigned)hist_write_ - (unsigned)hist_pos_) & (unsigned)hist_mask_;
             hist_count_ -= hist_pos_;
             if (hist_count_ < 0) hist_count_ = 0;
             hist_pos_ = 0;
