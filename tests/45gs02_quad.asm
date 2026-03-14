@@ -45,4 +45,4 @@
 
     deq
 
-    brk
+    rts

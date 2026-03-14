@@ -27,4 +27,4 @@
     lda #$42
     sta $0206
     lda #$ff
-    brk
+    rts

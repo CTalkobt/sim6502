@@ -4,4 +4,4 @@ lda #$42
 sta $80
 inc $80
 dec $80
-brk
+rts

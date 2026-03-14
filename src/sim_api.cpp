@@ -388,8 +388,7 @@ int sim_step(sim_session_t *s, int count) {
         if (tr > 0) continue;
         if (breakpoint_hit(&s->breakpoints, s->cpu)) { s->state = SIM_PAUSED; if (s->event_cb) s->event_cb(s, SIM_EVENT_BREAK, s->event_userdata); return SIM_EVENT_BREAK; }
         unsigned char opc = mem_read(&s->mem, s->cpu->pc);
-        if (opc == 0x00) {
-            s->cpu->pc += (s->cpu_type == CPU_45GS02) ? 1 : 2;
+        if (opc == 0x60 && (uint8_t)s->cpu->s == 0xFF) {
             s->state = SIM_FINISHED;
             if (s->event_cb) s->event_cb(s, SIM_EVENT_BRK, s->event_userdata);
             return SIM_EVENT_BRK;
@@ -424,8 +423,7 @@ int sim_step_cycles(sim_session_t *s, unsigned long max_cycles) {
         if (tr > 0) continue;
         if (breakpoint_hit(&s->breakpoints, s->cpu)) { s->state = SIM_PAUSED; if (s->event_cb) s->event_cb(s, SIM_EVENT_BREAK, s->event_userdata); return SIM_EVENT_BREAK; }
         unsigned char opc = mem_read(&s->mem, s->cpu->pc);
-        if (opc == 0x00) {
-            s->cpu->pc += (s->cpu_type == CPU_45GS02) ? 1 : 2;
+        if (opc == 0x60 && (uint8_t)s->cpu->s == 0xFF) {
             s->state = SIM_FINISHED;
             if (s->event_cb) s->event_cb(s, SIM_EVENT_BRK, s->event_userdata);
             return SIM_EVENT_BRK;
@@ -692,13 +690,13 @@ int sim_trace_run(sim_session_t *s,
                 //    (int)sizeof(entries[n].disasm));
         entries[n].pc = pre_pc;
 
-        if (opc == 0x00) {
+        if (opc == 0x60 && (uint8_t)s->cpu->s == 0xFF) {
             entries[n].cpu = *static_cast<CPUState*>(s->cpu);
             entries[n].cycles_delta = 0;
             n++;
             reason = "brk";
             s->state = SIM_FINISHED;
-            break;  /* always stop at BRK (recording it) regardless of stop_on_brk */
+            break;  /* stop at top-level RTS (program returned to simulator) */
         }
 
         uint64_t pre_cycles = s->cpu->cycles;
@@ -739,11 +737,11 @@ int sim_validate_routine(sim_session_t          *s,
     uint8_t saved[4];
     for (int i = 0; i < 4; i++) saved[i] = s->mem.mem[(scratch_addr + i) & 0xFFFF];
 
-    /* Write: JSR routine_addr (3 bytes) + BRK (1 byte) */
+    /* Write: JSR routine_addr (3 bytes) + RTS (1 byte) */
     s->mem.mem[(scratch_addr    ) & 0xFFFF] = 0x20;
     s->mem.mem[(scratch_addr + 1) & 0xFFFF] = (uint8_t)(routine_addr & 0xFF);
     s->mem.mem[(scratch_addr + 2) & 0xFFFF] = (uint8_t)(routine_addr >> 8);
-    s->mem.mem[(scratch_addr + 3) & 0xFFFF] = 0x00;
+    s->mem.mem[(scratch_addr + 3) & 0xFFFF] = 0x60;
 
     CPUState saved_cpu_state = *static_cast<CPUState*>(s->cpu);
     sim_state_t saved_state = s->state;

@@ -173,4 +173,4 @@
 
     ldx #$07
     ldy #$03
-    brk
+    rts

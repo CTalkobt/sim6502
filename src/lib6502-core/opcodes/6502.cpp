@@ -738,6 +738,7 @@ void op_brk(CPU *cpu, memory_t *mem, unsigned short arg) {
 	mem_write(mem, 0x100 + cpu->s, cpu->p);
 	cpu->s--;
 	cpu->set_flag(FLAG_I, 1);
+	cpu->pc = (unsigned short)(mem_read(mem, 0xFFFE) | (mem_read(mem, 0xFFFF) << 8));
 }
 
 void op_rti(CPU *cpu, memory_t *mem, unsigned short arg) {

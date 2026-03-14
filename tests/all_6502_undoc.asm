@@ -10,7 +10,7 @@
     lda $1234,x
     lda ($12,x)
     lda ($12),y
-    brk
+    nop
     nop
 
     // Illegal Mnemonics from Table A.4
@@ -109,4 +109,4 @@
     xaa #$8b
     ane #$8b
 
-    .byte 0 // BRK
+    rts

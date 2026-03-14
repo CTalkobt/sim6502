@@ -390,7 +390,7 @@ int main(int argc, char *argv[]) {
 
 		unsigned char opc = mem_read(cpu_ptr->mem, cpu_ptr->pc);
 		LOG_V3("DEBUG: PC=$%04X opc=$%02X cycles=%lu\n", cpu_ptr->pc, opc, cpu_ptr->cycles);
-		if (opc == 0x00) { stop_reason = 1; break; }
+		if (opc == 0x60 && (uint8_t)cpu_ptr->s == 0xFF) { stop_reason = 1; break; }
 
 		const dispatch_entry_t *te = peek_dispatch(cpu_ptr, cpu_ptr->mem, cpu_ptr->dispatch_table(), cpu_type);
 		if (te && te->mnemonic && strcmp(te->mnemonic, "STP") == 0) { stop_reason = 2; break; }
@@ -418,7 +418,7 @@ int main(int argc, char *argv[]) {
 
     switch(stop_reason) {
         case 0: printf("\nExecution Stopped: Cycle limit (%lu) reached. Use '-L <n>' or '-c run' for longer execution.\n", cycle_limit); break;
-        case 1: printf("\nExecution Finished: BRK encountered.\n"); break;
+        case 1: printf("\nExecution Finished: Program returned (RTS).\n"); break;
         case 2: printf("\nExecution Finished: STP encountered.\n"); break;
         default: printf("\nExecution Finished.\n"); break;
     }

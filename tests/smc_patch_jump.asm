@@ -32,6 +32,6 @@
     sta $0206
     jmp wrong
     wrong: lda #$ff
-    brk
+    rts
     right: lda #$42
-    brk
+    rts

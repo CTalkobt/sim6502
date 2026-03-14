@@ -161,9 +161,9 @@
     ply
     php
     plp
-    brk
-    rti
+    nop
+    nop
     eom
 
-    .byte 0 // BRK
+    rts
 

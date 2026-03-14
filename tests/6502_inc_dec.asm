@@ -8,4 +8,4 @@
     inx
     ldy #$05
     dey
-    brk
+    rts

@@ -25,4 +25,4 @@
     * = $0400
     target:
     lda #$42
-    brk
+    rts

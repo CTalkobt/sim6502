@@ -52,4 +52,4 @@
     stx $0207
     cpx #$05
     bne loop
-    brk
+    rts

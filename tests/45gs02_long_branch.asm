@@ -5,7 +5,7 @@
     clc
     lbcc target
     lda #$ff
-    brk
+    rts
     target:
     lda #$01
-    brk
+    rts

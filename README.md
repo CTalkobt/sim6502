@@ -234,7 +234,7 @@ OTHER
 
 Programs run from address `$0200` by default unless overridden with `-a`.
 
-Execution stops at a `BRK` instruction, `STP`, a breakpoint, or after 100 000 cycles.
+Execution stops when the program executes `RTS` with an empty stack (returning to the simulator), at `STP`, a breakpoint, or after 100 000 cycles. `BRK` now executes fully — pushing state and jumping through the IRQ vector at `$FFFE/$FFFF`.
 
 ---
 
@@ -393,7 +393,7 @@ Enter the monitor with `-I`. Pressing Enter on a blank line executes a single st
 | `step [n]` | Execute `n` instructions (default 1) |
 | `stepback` / `sb` | Step backward 1 instruction in history |
 | `stepfwd` / `sf` | Step forward (re-execute) in history |
-| `run` | Run until BRK, STP, or a breakpoint |
+| `run` | Run until top-level RTS, STP, or a breakpoint |
 | `trace [on\|off\|file <path>]` | Enable/disable execution trace, or redirect to a file |
 | `break <addr> [cond]` | Set a breakpoint with an optional condition (e.g., `A == $00 && .Z == 1`) |
 | `clear <addr>` | Remove a breakpoint |
@@ -485,7 +485,7 @@ TRAPs simulate Kernal/ROM routines without requiring the actual ROM to be loaded
 |------|-------------|
 | `load_program` | Assemble and load 6502 source code |
 | `step_instruction` | Execute N instructions |
-| `run_program` | Run until breakpoint / BRK / STP |
+| `run_program` | Run until breakpoint / top-level RTS / STP |
 | `trace_run` | Execute N instructions and return a compact per-instruction log (address, disassembly, register state after each step) |
 | `read_registers` | Return current CPU register state |
 | `read_memory` | Read a range of memory bytes |

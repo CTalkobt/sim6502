@@ -14,5 +14,5 @@
 
     jsr $ffd2 // CHROUT — 3 bytes at $0002-$0004; trap simulates RTS → PC=$0005
 
-    brk // 1 byte at $0005 — halts
+    rts // 1 byte at $0005 — returns
 

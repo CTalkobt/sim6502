@@ -26,4 +26,4 @@
 
     pla // pop from addr 0x00FF, A = 0x10, S -> FF
 
-    brk
+    rts

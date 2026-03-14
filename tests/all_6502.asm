@@ -156,9 +156,9 @@
     pla
     php
     plp
-    brk
-    rti
+    nop
+    nop
     nop
 
-    .byte 0 // BRK
+    rts
 

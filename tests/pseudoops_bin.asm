@@ -8,7 +8,7 @@
     * = $0200
     lda bin_data // first byte of included binary = $42
 
-    brk
+    rts
 
     bin_data:
     .import binary "tests/data/three_bytes.bin"

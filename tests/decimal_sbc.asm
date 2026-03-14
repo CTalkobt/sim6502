@@ -7,4 +7,4 @@
     sed
     lda #$20
     sbc #$05
-    brk
+    rts

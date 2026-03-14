@@ -1,5 +1,5 @@
 * = $0200
- // EXPECT: A=80 X=00 Y=00 Z=00 B=00 S=FD PC=0230
+ // EXPECT: A=12 X=00 Y=00 Z=00 B=00 S=FF PC=0232
 
     .cpu _45gs02
 
@@ -52,4 +52,7 @@
 
     lda $1003 // Should be $80
 
-    brk
+ // Pop PHW'd bytes off stack (S: $FD -> $FF)
+    pla
+    pla
+    rts

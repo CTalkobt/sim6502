@@ -269,7 +269,7 @@ circ_padd:
     jmp circle_loop
 
 circ_done:
-    brk
+    rts
 
 //======================================================================
 // plot_pixel -- set one pixel in the standard bitmap

@@ -8,7 +8,7 @@
 
     ldx wordlo // load lo byte of .word 10 = $0A
 
-    brk
+    rts
 
     bytedata:
     .byte $48 // ASCII 'H' = $48 at $0208

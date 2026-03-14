@@ -27,7 +27,7 @@
     lda #$aa
     pha
     jsr subr
-    brk
+    rts
 
     subr: lda #$42
     rtn #$01

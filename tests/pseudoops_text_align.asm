@@ -24,7 +24,7 @@
 
     ldx aligned_val // $42
 
-    brk
+    rts
 
     .align 16 // $0208 -> $0210 (pad 8 zero bytes)
 

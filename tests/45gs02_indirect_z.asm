@@ -80,4 +80,4 @@
  // Expect A = $FF ^ $AA = $55
 
 
-    brk
+    rts

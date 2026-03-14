@@ -133,4 +133,4 @@
     ldx #$00
     ldy #$00
     ldz #$01
-    brk
+    rts

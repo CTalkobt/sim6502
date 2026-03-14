@@ -4,4 +4,4 @@
     lda #$42
     ldx #$10
     ldy #$20
-    brk
+    rts

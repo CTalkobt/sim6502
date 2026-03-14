@@ -8,4 +8,4 @@
     label:
     clc
     adc #$01
-    brk
+    rts

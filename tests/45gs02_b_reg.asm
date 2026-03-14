@@ -6,4 +6,4 @@
     tab
     lda #$00
     tba
-    brk
+    rts

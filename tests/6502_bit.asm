@@ -7,7 +7,7 @@
     bit $10
     beq error
     lda #$01
-    brk
+    rts
     error:
     lda #$ff
-    brk
+    rts

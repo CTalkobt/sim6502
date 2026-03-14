@@ -5,4 +5,4 @@
     pha
     lda #$00
     pla
-    brk
+    rts

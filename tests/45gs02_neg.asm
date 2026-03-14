@@ -4,4 +4,4 @@
     .cpu _45gs02
     lda #$01
     neg
-    brk
+    rts

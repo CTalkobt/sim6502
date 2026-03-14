@@ -5,4 +5,4 @@
     lda #$42
     taz
     lda #$00
-    brk
+    rts

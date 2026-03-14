@@ -1,5 +1,5 @@
 * = $0200
- // EXPECT: A=AA X=F0 Y=02 Z=00 B=00 S=F0 PC=021F
+ // EXPECT: A=AA X=F0 Y=02 Z=00 B=00 S=FF PC=0224
 
     .cpu _45gs02
  // Pointer at $01F0 = $2000
@@ -30,4 +30,8 @@
  // Check $2002
 
     lda $2002
-    brk
+ // Restore S to $FF for exit detection
+    ldx #$ff
+    txs
+    ldx #$f0
+    rts

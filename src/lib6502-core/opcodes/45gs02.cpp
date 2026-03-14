@@ -2084,6 +2084,7 @@ static void brk_45gs02(cpu_t *cpu, memory_t *mem, unsigned short arg) {
 	mem_write(mem, stack45_addr(cpu), cpu->p);
 	stack45_push(cpu);
 	cpu->set_flag(FLAG_I, 1);
+	cpu->pc = (unsigned short)(mem_read(mem, 0xFFFE) | (mem_read(mem, 0xFFFF) << 8));
 }
 
 static void rti_45gs02(cpu_t *cpu, memory_t *mem, unsigned short arg) {

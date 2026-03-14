@@ -4,4 +4,4 @@
     clc
     lda #$01
     adc #$02
-    brk
+    rts

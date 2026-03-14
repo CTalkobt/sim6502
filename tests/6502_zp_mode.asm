@@ -10,4 +10,4 @@
     lda #$42
     sta $10
     lda $10
-    brk
+    rts

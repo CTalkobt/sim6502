@@ -5,4 +5,4 @@
 
     sec
     lda #$01
-    brk
+    rts

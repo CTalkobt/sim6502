@@ -25,4 +25,4 @@
     lda #$02
     sta $1005
     jsr ($1004)
-    brk
+    rts

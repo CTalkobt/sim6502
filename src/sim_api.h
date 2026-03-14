@@ -19,12 +19,12 @@ typedef enum {
     SIM_IDLE,      /* no program loaded                                    */
     SIM_READY,     /* program loaded, not yet stepped                      */
     SIM_PAUSED,    /* stepped at least once; stopped (breakpoint/manual)   */
-    SIM_FINISHED,  /* reached BRK, STP, or cycle limit                    */
+    SIM_FINISHED,  /* program returned (top-level RTS), STP, or cycle limit */
 } sim_state_t;
 
 /* Event codes returned by sim_step() and passed to sim_event_cb */
 #define SIM_EVENT_BREAK  1   /* execution stopped at a breakpoint            */
-#define SIM_EVENT_BRK    2   /* BRK instruction reached                      */
+#define SIM_EVENT_BRK    2   /* program returned via top-level RTS            */
 #define SIM_EVENT_STP    3   /* STP instruction reached                      */
 #define SIM_EVENT_STEP   4   /* single step completed (informational)        */
 

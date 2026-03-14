@@ -7,4 +7,4 @@
 
     php
     pla
-    brk
+    rts

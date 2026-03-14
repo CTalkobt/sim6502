@@ -9,4 +9,4 @@
 
     lda #$41 // character 'A' = $41
 
-    brk
+    rts

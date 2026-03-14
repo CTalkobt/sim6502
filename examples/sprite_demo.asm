@@ -8,7 +8,7 @@
 //   Sprite 1 (Green)  -- Ball  shape, moves diagonally RIGHT+DOWN (+1,+1)
 //   Sprite 2 (Yellow) -- Diamond shape, moves LEFT  (-1 per frame)
 //
-// After 60 animation frames the program halts at BRK.
+// After 60 animation frames the program returns (RTS).
 // Open View -> VIC-II Sprites and View -> VIC-II Screen in the GUI,
 // then press Run to see the final positions, or Step to watch movement.
 //
@@ -160,7 +160,7 @@ anim_loop:
     bne anim_loop
 
 done:
-    brk
+    rts
 
 // ------------------------------------------------------------------
 // Sprite bitmaps

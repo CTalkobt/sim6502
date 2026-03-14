@@ -95,7 +95,7 @@ fill_colors_tail:
     sta $D018
 
 done:
-    brk
+    rts
 
 // ------------------------------------------------------------------
 // Character data at $1000 (char generator base for D018=$14, bank 0)

@@ -30,4 +30,4 @@
     sta $0207
     ldx #$05
     inx
-    brk
+    rts

@@ -6,7 +6,7 @@
     * = $0200
     lda data // forward ref, resolved to $0800 in pass 2
 
-    brk
+    rts
 
     * = $0800
     data:

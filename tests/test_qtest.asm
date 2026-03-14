@@ -14,9 +14,9 @@
     beq sec_path // Z=0 after LDX, not taken — falls to CLC
 
     clc
-    brk
+    rts
 
     sec_path:
     sec // branch target at $000C (not reached)
 
-    brk
+    rts

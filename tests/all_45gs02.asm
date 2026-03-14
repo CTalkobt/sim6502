@@ -273,8 +273,8 @@
     ply
     php
     plp
-    brk
-    rti
+    nop
+    nop
     eom
     ldq $12
     ldq $1234
@@ -344,5 +344,5 @@
     orq ($12)
     orq ($12)
 
-    .byte 0 // BRK
+    rts
 
