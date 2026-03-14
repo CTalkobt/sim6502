@@ -116,7 +116,7 @@ def run_test(asm_file):
         return False, '\n'.join(out)
 
 def main():
-    test_dir = 'tests'
+    test_dir = 'tests/code'
     if not os.path.exists(test_dir):
         print(f"Test directory '{test_dir}' not found.")
         return 1

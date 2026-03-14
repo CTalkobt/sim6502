@@ -155,12 +155,28 @@ $(IMGUI_DIR)/imgui.h:
 	@echo "--- Dear ImGui not found; fetching docking branch ---"
 	git clone --depth 1 --branch docking https://github.com/ocornut/imgui.git $(IMGUI_DIR)
 
+# --- Unit Testing ---
+UNIT_TEST_SRCS = tests/unit/test_main.cpp tests/unit/test_cpu_arithmetic.cpp tests/unit/test_cpu_opcodes.cpp tests/unit/test_cpu_45gs02.cpp tests/unit/test_cpu_decode.cpp
+UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.cpp=.o)
+UNIT_TEST_TARGET = unit-tests
+
+$(UNIT_TEST_TARGET): $(UNIT_TEST_OBJS) $(LIB_TARGET)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(SDL2_LIBS) $(GL_LIBS)
+
+tests/unit/%.o: tests/unit/%.cpp tests/unit/catch.hpp
+	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) -I tests/unit -c -o $@ $<
+
+.PHONY: unit-test
+unit-test: $(UNIT_TEST_TARGET)
+	./$(UNIT_TEST_TARGET)
+
 # --- Housekeeping ---
 clean:
-	rm -f $(ALL_LIB_OBJS) $(CLI_OBJS) $(TARGET) src/gui/main.o $(IMGUI_OBJS) $(GUI_TARGET) $(LIB_TARGET)
+	rm -f $(ALL_LIB_OBJS) $(CLI_OBJS) $(TARGET) src/gui/main.o $(IMGUI_OBJS) $(GUI_TARGET) $(LIB_TARGET) $(UNIT_TEST_OBJS) $(UNIT_TEST_TARGET)
 
-test: $(TARGET)
+test: $(TARGET) $(UNIT_TEST_TARGET)
+	./$(UNIT_TEST_TARGET)
 	./tools/run_tests.py
 	./tools/test_patterns.py
 
-.PHONY: all clean gui test
+.PHONY: all clean gui test unit-test

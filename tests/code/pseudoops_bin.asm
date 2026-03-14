@@ -11,4 +11,4 @@
     rts
 
     bin_data:
-    .import binary "tests/data/three_bytes.bin"
+    .import binary "tests/code/data/three_bytes.bin"
