@@ -20,17 +20,28 @@ void json_ok(const char *cmd) { (void)cmd; }
 int cli_hist_step_back(CPU *cpu, memory_t *mem) { (void)cpu; (void)mem; return 0; }
 int cli_hist_step_fwd(CPU *cpu, memory_t *mem, dispatch_table_t *dt, cpu_type_t cpu_type) { (void)cpu; (void)mem; (void)dt; (void)cpu_type; return 0; }
 
-TEST_CASE("CLI - Command Registry", "[cli][registry]") {
+TEST_CASE("CLI - Command Coverage", "[cli][registry]") {
     CommandRegistry registry;
     
-    SECTION("Registration and Lookup") {
-        registry.registerCommand(std::make_unique<StepCmd>());
-        registry.registerCommand(std::make_unique<BreakCmd>());
-        
-        CHECK(registry.getCommand("step") != nullptr);
-        CHECK(registry.getCommand("break") != nullptr);
-        CHECK(registry.getCommand("unknown") == nullptr);
-    }
+    // Core Navigation & Execution
+    CHECK(registry.getCommand("step") != nullptr);
+    CHECK(registry.getCommand("next") != nullptr);
+    CHECK(registry.getCommand("finish") != nullptr);
+    CHECK(registry.getCommand("history") != nullptr);
+    CHECK(registry.getCommand("sb") != nullptr);
+    CHECK(registry.getCommand("sf") != nullptr);
+    
+    // Debugging
+    CHECK(registry.getCommand("break") != nullptr);
+    
+    // System & Environment
+    CHECK(registry.getCommand("env") != nullptr);
+    CHECK(registry.getCommand("devices") != nullptr);
+    
+    // Idioms / Patterns
+    CHECK(registry.getCommand("idioms") != nullptr);
+    CHECK(registry.getCommand("list_patterns") != nullptr);
+    CHECK(registry.getCommand("get_pattern") != nullptr);
 }
 
 TEST_CASE("CLI - Step Command Logic", "[cli][step]") {

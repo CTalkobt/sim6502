@@ -6,6 +6,7 @@
 #include "BreakCmd.h"
 #include "EnvCmd.h"
 #include "DevicesCmd.h"
+#include "IdiomsCmd.h"
 
 CommandRegistry::CommandRegistry() {
     registerCommand(std::make_unique<StepCmd>());
@@ -22,6 +23,11 @@ CommandRegistry::CommandRegistry() {
     registerCommand(std::make_unique<BreakCmd>());
     registerCommand(std::make_unique<EnvCmd>());
     registerCommand(std::make_unique<DevicesCmd>());
+    registerCommand(std::make_unique<IdiomsCmd>());
+
+    /* Legacy aliases */
+    commands["list_patterns"] = std::make_unique<IdiomsCmd>();
+    commands["get_pattern"] = std::make_unique<IdiomsCmd>();
 }
 
 void CommandRegistry::registerCommand(std::unique_ptr<CLICommand> cmd) {

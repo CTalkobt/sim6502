@@ -1,7 +1,9 @@
 CC       = gcc
 CXX      = g++
-CFLAGS   = -Wall -Wextra -O2
-CXXFLAGS = -pthread -Wall -Wextra -O2
+# Disable warnings for strncpy/strncat output truncation (e.g. copying x bytes from a string 
+# of length y where x < y). This occurs when the destination buffer may not be null-terminated.
+CFLAGS   = -Wall -Wextra -O2 -Wno-stringop-truncation
+CXXFLAGS = -pthread -Wall -Wextra -O2 -Wno-stringop-truncation
 
 # Include paths for library code (no src/ prefix — each lib is its own root)
 LIB_IFLAGS = \
@@ -103,6 +105,7 @@ CLI_COMMANDS_SRCS = \
 	src/cli/commands/BreakCmd.cpp \
 	src/cli/commands/EnvCmd.cpp \
 	src/cli/commands/DevicesCmd.cpp \
+	src/cli/commands/IdiomsCmd.cpp \
 	src/cli/commands/CommandRegistry.cpp
 
 CLI_SRCS = src/cli/main.cpp src/cli/commands.cpp $(CLI_COMMANDS_SRCS)
@@ -158,7 +161,7 @@ $(IMGUI_DIR)/imgui.h:
 	git clone --depth 1 --branch docking https://github.com/ocornut/imgui.git $(IMGUI_DIR)
 
 # --- Unit Testing ---
-UNIT_TEST_SRCS = tests/unit/test_main.cpp tests/unit/test_cpu_arithmetic.cpp tests/unit/test_cpu_opcodes.cpp tests/unit/test_cpu_45gs02.cpp tests/unit/test_cpu_decode.cpp tests/unit/test_memory.cpp tests/unit/test_toolchain.cpp tests/unit/test_debug.cpp tests/unit/test_sim_api.cpp tests/unit/test_devices.cpp tests/unit/test_integration.cpp tests/unit/test_fuzz.cpp tests/unit/test_cli.cpp tests/unit/test_regression.cpp
+UNIT_TEST_SRCS = tests/unit/test_main.cpp tests/unit/test_cpu_arithmetic.cpp tests/unit/test_cpu_opcodes.cpp tests/unit/test_cpu_45gs02.cpp tests/unit/test_cpu_decode.cpp tests/unit/test_memory.cpp tests/unit/test_toolchain.cpp tests/unit/test_debug.cpp tests/unit/test_sim_api.cpp tests/unit/test_devices.cpp tests/unit/test_integration.cpp tests/unit/test_fuzz.cpp tests/unit/test_cli.cpp tests/unit/test_regression.cpp tests/unit/test_patterns_logic.cpp tests/unit/test_templates_logic.cpp
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.cpp=.o)
 UNIT_TEST_CLI_OBJS = $(CLI_COMMANDS_SRCS:.cpp=.o)
 UNIT_TEST_TARGET = unit-tests

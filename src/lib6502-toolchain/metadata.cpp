@@ -8,6 +8,22 @@ int g_verbose = 0;
 #define LOG_V2(...) if (g_verbose >= 2) fprintf(stderr, __VA_ARGS__)
 #define LOG_V3(...) if (g_verbose >= 3) fprintf(stderr, __VA_ARGS__)
 
+/* Strip surrounding quotes and trailing whitespace: "SID #1"\n -> SID #1 */
+static void strip_arg_quotes(const char *in, char *out, int outlen) {
+    const char *p = in;
+    while (*p == ' ' || *p == '\t') p++;
+    const char *start = (*p == '"') ? p + 1 : p;
+    strncpy(out, start, (size_t)outlen - 1);
+    out[outlen - 1] = '\0';
+    /* Trim trailing whitespace first */
+    int len = (int)strlen(out);
+    while (len > 0 && (out[len-1] == ' ' || out[len-1] == '\t' ||
+                       out[len-1] == '\r' || out[len-1] == '\n'))
+        out[--len] = '\0';
+    /* Then remove closing quote if present */
+    if (len > 0 && out[len-1] == '"') out[--len] = '\0';
+}
+
 /* Map a cpu name string (sim form: "45gs02", "65ce02", "6502-undoc", etc.) to cpu_type_t. */
 static cpu_type_t cpu_type_from_name(const char *s) {
     if (!s) return CPU_6502;
@@ -29,8 +45,12 @@ static machine_type_t machine_type_from_name(const char *s) {
 }
 
 cpu_type_t detect_asm_cpu_type(const char *asm_path) {
+    LOG_V2("DEBUG: detect_asm_cpu_type probe: %s\n", asm_path);
     FILE *f = fopen(asm_path, "r");
-    if (!f) return CPU_6502;
+    if (!f) {
+        LOG_V2("DEBUG: detect_asm_cpu_type: could not open %s\n", asm_path);
+        return CPU_6502;
+    }
     char line[256];
     cpu_type_t result = CPU_6502;
     while (fgets(line, sizeof(line), f)) {
@@ -41,10 +61,11 @@ cpu_type_t detect_asm_cpu_type(const char *asm_path) {
         if (strncasecmp(p, ".cpu", 4) == 0 && (p[4] == ' ' || p[4] == '\t')) {
             char *q = p + 4;
             while (*q == ' ' || *q == '\t') q++;
-            if      (strncmp(q, "_45gs02", 7) == 0) { result = CPU_45GS02; break; }
-            else if (strncmp(q, "_65ce02", 7) == 0) { result = CPU_65CE02; break; }
-            else if (strncmp(q, "_65c02",  6) == 0) { result = CPU_65C02;  break; }
-            else if (strncmp(q, "_6502",   5) == 0) { result = CPU_6502;   break; }
+            if      (strncmp(q, "_45gs02", 7) == 0) result = CPU_45GS02;
+            else if (strncmp(q, "_65ce02", 7) == 0) result = CPU_65CE02;
+            else if (strncmp(q, "_65c02",  6) == 0) result = CPU_65C02;
+            else if (strncmp(q, "_6502_undoc", 11) == 0) result = CPU_6502_UNDOCUMENTED;
+            else if (strncmp(q, "_6502",   5) == 0) result = CPU_6502;
             continue;
         }
 
@@ -53,15 +74,16 @@ cpu_type_t detect_asm_cpu_type(const char *asm_path) {
             char *q = p + 2;
             while (*q == ' ' || *q == '\t') q++;
             if (strncmp(q, ".cpu", 4) == 0 && (q[4] == ' ' || q[4] == '\t')) {
-                q += 4;
-                while (*q == ' ' || *q == '\t') q++;
-                if (*q == '"') q++;
-                result = cpu_type_from_name(q);
+                char clean[64];
+                strip_arg_quotes(q + 4, clean, sizeof(clean));
+                result = cpu_type_from_name(clean);
+                LOG_V2("DEBUG: detect_asm_cpu_type: found pseudo-op, result=%d\n", (int)result);
                 break;
             }
         }
     }
     fclose(f);
+    LOG_V2("DEBUG: detect_asm_cpu_type final: %d\n", (int)result);
     return result;
 }
 
@@ -150,20 +172,6 @@ static int file_exists(const char *path) {
     return 1;
 }
 
-/* Strip surrounding quotes and trailing whitespace: "SID #1"\n -> SID #1 */
-static void strip_arg_quotes(const char *in, char *out, int outlen) {
-    const char *start = (*in == '"') ? in + 1 : in;
-    strncpy(out, start, outlen - 1);
-    out[outlen - 1] = '\0';
-    /* Trim trailing whitespace first */
-    int len = (int)strlen(out);
-    while (len > 0 && (out[len-1] == ' ' || out[len-1] == '\t' ||
-                       out[len-1] == '\r' || out[len-1] == '\n'))
-        out[--len] = '\0';
-    /* Then remove closing quote if present */
-    if (len > 0 && out[len-1] == '"') out[--len] = '\0';
-}
-
 /*
  * Preprocess a .asm source file: replace simulator pseudo-ops (.inspect, .trap)
  * with KickAssembler .print statements that embed the current PC in their output.
@@ -217,6 +225,10 @@ static int detect_native_cpu_directive(const char *p, char *cpu_out, int outlen)
         i++;
     }
     cpu_out[i] = '\0';
+    
+    /* Handle specific KickAss naming -> sim naming mapping if needed */
+    if (strcmp(cpu_out, "6502_undoc") == 0) strcpy(cpu_out, "6502-undoc");
+
     return (i > 0) ? 1 : 0;
 }
 

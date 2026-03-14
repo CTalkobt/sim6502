@@ -22,6 +22,9 @@
 #include <ctype.h>
 #include <vector>
 
+extern int g_verbose;
+#define LOG_V2(...) if (g_verbose >= 2) fprintf(stderr, __VA_ARGS__)
+
 /* Full definition of the opaque sim_session_t handle. */
 struct sim_session {
     CPU              *cpu;
@@ -225,6 +228,7 @@ static void binary_load_common(sim_session_t *s, uint16_t load_addr, int byte_co
 
 int sim_load_asm(sim_session_t *s, const char *path) {
     if (!s || !path) return -1;
+    if (g_verbose >= 2) fprintf(stderr, "[DEBUG] sim_load_asm: %s (g_verbose=%d)\n", path, g_verbose);
     
     char base[512];
     strncpy(base, path, sizeof(base)-1);
@@ -232,17 +236,19 @@ int sim_load_asm(sim_session_t *s, const char *path) {
     char *dot = strrchr(base, '.');
     if (dot && (strcasecmp(dot, ".asm") == 0 || strcasecmp(dot, ".s") == 0)) *dot = 0;
     
-    /* Detect processor type from .cpu / //.cpu directive before hardware init.
-     * Also derive the machine type so it is correct even when a cached .prg
-     * exists and the assembly step (which would inject SIM_CPU: markers) is skipped. */
+    /* Detect processor type from .cpu / //.cpu directive before hardware init. */
+    cpu_type_t detected_type = s->cpu_type;
     {
         char asm_check[512];
         snprintf(asm_check, sizeof(asm_check), "%s.asm", base);
-        cpu_type_t detected = detect_asm_cpu_type(asm_check);
-        apply_cpu_type(s, detected);
-        machine_type_t derived_machine = default_machine_for_cpu(s->cpu_type);
-        if (derived_machine != s->machine_type)
-            s->machine_type = derived_machine;
+        if (g_verbose >= 2) fprintf(stderr, "DEBUG: sim_load_asm checking for asm: %s\n", asm_check);
+        
+        FILE *f = fopen(asm_check, "r");
+        if (f) {
+            fclose(f);
+            detected_type = detect_asm_cpu_type(asm_check);
+            if (g_verbose >= 2) fprintf(stderr, "DEBUG: sim_load_asm detected type: %d\n", (int)detected_type);
+        }
     }
 
     /* Reset session state */
@@ -250,7 +256,19 @@ int sim_load_asm(sim_session_t *s, const char *path) {
     mem_free_far_pages(&s->mem);
     memset(&s->mem, 0, sizeof(s->mem));
     s->mem.io_registry = old_registry;
+    
+    /* Apply detected or preserved CPU type BEFORE machine_init_hardware */
+    if (detected_type != s->cpu_type) {
+        apply_cpu_type(s, detected_type);
+    }
     s->cpu->mem = &s->mem;
+
+    /* Derive and apply machine type */
+    machine_type_t derived_machine = default_machine_for_cpu(s->cpu_type);
+    if (derived_machine != s->machine_type) {
+        s->machine_type = derived_machine;
+    }
+
     machine_init_hardware(s);
     symbol_table_init(&s->symbols, "Toolchain");
     source_map_init(&s->source_map);
@@ -264,6 +282,14 @@ int sim_load_asm(sim_session_t *s, const char *path) {
         /* Apply cpu/machine type from SIM_CPU/SIM_MACHINE markers in the metadata pipeline.
          * This overrides the early detect_asm_cpu_type() scan when the metadata is definitive. */
         apply_session_processor_symbols(s);
+
+        /* FINAL OVERRIDE: If detect_asm_cpu_type found an explicit pseudo-op that is 
+         * more specific than what was in the symbols, re-apply it. */
+        if (detected_type != CPU_6502 && detected_type != s->cpu_type) {
+            if (g_verbose >= 2) fprintf(stderr, "DEBUG: sim_load_asm re-applying detected type: %d\n", (int)detected_type);
+            apply_cpu_type(s, detected_type);
+        }
+
         /* Try to find a reasonable start address; fall back to PRG load address */
         unsigned short start_addr = (unsigned short)bundle_load_addr;
         symbol_lookup_name(&s->symbols, "main", &start_addr);

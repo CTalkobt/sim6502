@@ -584,30 +584,6 @@ static bool process_single_command(const std::string& line,
         if (sscanf(p, " %f", &s) == 1) g_cli_speed = s >= 0.0f ? s : 0.0f;
         if (g_json_mode) printf("{\"cmd\":\"speed\",\"ok\":true,\"data\":{\"scale\":%.4f}}\n", g_cli_speed);
         else printf("Speed: %.4fx\n", g_cli_speed);
-    } else if (cmd == "list_patterns") {
-        if (g_json_mode) {
-            printf("{\"cmd\":\"list_patterns\",\"ok\":true,\"data\":{\"patterns\":[");
-            for (int i = 0; i < g_snippet_count; i++) {
-                if (i > 0) printf(",");
-                printf("{\"name\":\"%s\",\"category\":\"%s\",\"processor\":\"%s\",\"summary\":\"%s\"}",
-                       g_snippets[i].name, g_snippets[i].category, g_snippets[i].processor, g_snippets[i].summary);
-            }
-            printf("]}}\n");
-        } else {
-            for (int i = 0; i < g_snippet_count; i++) printf("  %-22s  %-8s  %s\n", g_snippets[i].name, g_snippets[i].processor, g_snippets[i].summary);
-        }
-    } else if (cmd == "get_pattern") {
-        const char *p = line.c_str(); SKIP_CMD(p); while (*p && isspace((unsigned char)*p)) p++;
-        char pname[64] = ""; if (*p) { int n = (int)strlen(p); while (n > 0 && isspace((unsigned char)p[n-1])) n--; if (n > 63) n = 63; memcpy(pname, p, (size_t)n); pname[n] = '\0'; }
-        const snippet_t *sn = pname[0] ? snippet_find(pname) : NULL;
-        if (!sn) { if (g_json_mode) json_err("get_pattern", "Pattern not found"); else printf("Pattern not found.\n"); }
-        else if (g_json_mode) {
-            printf("{\"cmd\":\"get_pattern\",\"ok\":true,\"data\":{\"name\":\"%s\",\"body\":\"", sn->name);
-            for (const char *c = sn->body; *c; c++) {
-                if (*c == '"') printf("\\\""); else if (*c == '\\') printf("\\\\"); else if (*c == '\n') printf("\\n"); else putchar(*c);
-            }
-            printf("\"}}\n");
-        } else printf("%s", sn->body);
     } else if (cmd == "snapshot") {
         cli_snap_reset(); s_snap_active = 1; if (g_json_mode) json_ok("snapshot"); else printf("Memory snapshot taken.\n");
     } else if (cmd == "diff") {

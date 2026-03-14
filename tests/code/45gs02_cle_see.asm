@@ -1,5 +1,5 @@
 * = $0200
- // EXPECT: A=10 X=00 Y=00 Z=00 B=00 S=FF PC=0206
+ // EXPECT: A=14 X=00 Y=00 Z=00 B=00 S=FF PC=0206
 
     .cpu _45gs02
  // CLE/SEE control the E flag (bit 5 of P), switching between:
@@ -12,18 +12,18 @@
 
  // SEE first: emulation mode (E=1), page-1 stack
 
-    see // P = 0x20 (FLAG_E set)
+    see // P = 0x24 (FLAG_I|FLAG_E already set on reset, SEE is a no-op here)
 
-    php // push P|FLAG_B = 0x30 to addr 0x01FF, S -> FE
+    php // push P|FLAG_B = 0x34 to addr 0x01FF, S -> FE
 
-    pla // pop from addr 0x01FF, A = 0x30, S -> FF
+    pla // pop from addr 0x01FF, A = 0x34, S -> FF
 
  // CLE: extended mode (E=0), full 16-bit stack
 
-    cle // P = 0x00 (FLAG_E clear)
+    cle // P = 0x04 (FLAG_E cleared, FLAG_I remains)
 
-    php // push P|FLAG_B = 0x10 to addr 0x00FF, S -> FE
+    php // push P|FLAG_B = 0x14 to addr 0x00FF, S -> FE
 
-    pla // pop from addr 0x00FF, A = 0x10, S -> FF
+    pla // pop from addr 0x00FF, A = 0x14, S -> FF
 
     rts

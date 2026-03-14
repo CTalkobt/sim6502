@@ -32,7 +32,7 @@ public:
 
 	virtual void reset() {
 		a = 0; x = 0; y = 0; z = 0; b = 0;
-		s = 0xFF; pc = 0; p = 0;
+		s = 0xFF; pc = 0; p = FLAG_I | FLAG_U;
 		cycles = 0; eom_prefix = 0;
 	}
 

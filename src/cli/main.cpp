@@ -201,6 +201,7 @@ int main(int argc, char *argv[]) {
 			if (i + 1 < argc) {
 				const char *p = argv[++i];
 				if (strcmp(p, "6502") == 0) cpu_type = CPU_6502;
+				else if (strcmp(p, "6502-undoc") == 0) cpu_type = CPU_6502_UNDOCUMENTED;
 				else if (strcmp(p, "65c02") == 0) cpu_type = CPU_65C02;
 				else if (strcmp(p, "65ce02") == 0) cpu_type = CPU_65CE02;
 				else if (strcmp(p, "45gs02") == 0) cpu_type = CPU_45GS02;
@@ -428,7 +429,7 @@ int main(int argc, char *argv[]) {
 	if (cpu_type == CPU_45GS02)
 		printf("Registers: A=%02X X=%02X Y=%02X Z=%02X B=%02X S=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, cpu_ptr->z, cpu_ptr->b, (uint8_t)cpu_ptr->s, cpu_ptr->pc);
 	else
-		printf("Registers: A=%02X X=%02X Y=%02X S=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, (uint8_t)cpu_ptr->s, cpu_ptr->pc);
+		printf("Registers: A=%02X X=%02X Y=%02X S=%02X P=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, (uint8_t)cpu_ptr->s, cpu_ptr->p, cpu_ptr->pc);
 
     if (show_memory) memory_dump(mem, mem_start, mem_end);
 	if (show_symbols) symbol_display(symbols);
