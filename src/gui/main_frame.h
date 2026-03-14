@@ -20,6 +20,8 @@ public:
     void ApplyCycleLimit(unsigned long limit);
     void ApplySpeedScale(float scale);
     void ApplyDebug();
+    void LoadConfiguredROMs();
+    void BootMachine();
     void NavigateDisassembly(uint16_t addr);
     void NavigateMemory(uint16_t addr);
     void AddWatch(uint16_t addr, const wxString& label = "");
@@ -41,6 +43,7 @@ private:
     void OnStepInto(wxCommandEvent& event);
     void OnStepOver(wxCommandEvent& event);
     void OnReset(wxCommandEvent& event);
+    void OnBoot(wxCommandEvent& event);
     void OnClearCycles(wxCommandEvent& event);
     void OnToggleBreakpoint(wxCommandEvent& event);
     void OnStepBack(wxCommandEvent& event);
@@ -68,8 +71,10 @@ private:
     void OnTimer(wxTimerEvent& event);
     void OnQuit(wxCommandEvent& event);
     void OnAbout(wxCommandEvent& event);
+    void OnSettings(wxCommandEvent& event);
 
     void ApplyTheme();
+    void ApplyFontSize();
     void LoadSettings();
     void SaveSettings();
     void UpdateStatus();
@@ -90,7 +95,8 @@ private:
     float         m_ui_scale;
     bool          m_running;      // UI-level "Run" state; true if the timer is actively calling sim_step()
     bool          m_initial_layout_done;
-    unsigned long m_cycle_limit;  // 0 = no limit
+    unsigned long m_cycle_limit;       // 0 = no limit
+    uint64_t      m_cycle_run_start;   // cpu->cycles snapshot taken when Run begins
     float         m_speed_scale;  // 0.0 = unlimited
 
     wxDECLARE_EVENT_TABLE();

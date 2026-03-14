@@ -28,16 +28,18 @@ const char *vic2_color_names[16] = {
     "Orange", "Brown", "Lt Red", "Dk Grey", "Grey", "Lt Green", "Lt Blue", "Lt Grey"
 };
 
-/* Read one byte from VIC-II address space with hardwired charset ROM exceptions.
- * On the C64, the character generator ROM is visible to the VIC in:
- *   Bank 0 ($0000–$3FFF): addresses $1000–$1FFF → char_rom[addr - $1000]
- *   Bank 2 ($8000–$BFFF): addresses $9000–$9FFF → char_rom[addr - $9000]
- * All other addresses read from RAM/I/O via mem_peek. */
+/* Read one byte from VIC-II address space via the overlay table.
+ * VIC-visible active overlays (vic_visible=1, active=1) shadow RAM at their
+ * registered address ranges — used for hardwired C64 charset ROM windows at
+ * $1000–$1FFF (bank 0) and $9000–$9FFF (bank 2). */
 static inline uint8_t vic_read(const memory_t *mem, uint32_t addr)
 {
-    if ((addr >= 0x1000u && addr < 0x2000u) ||
-        (addr >= 0x9000u && addr < 0xA000u))
-        return mem->char_rom[addr & 0x0FFFu];
+    for (int i = 0; i < mem->overlay_count; i++) {
+        const mem_overlay_t *ov = &mem->overlays[i];
+        if (!ov->active || !ov->vic_visible || !ov->data) continue;
+        if (addr >= ov->phys_base && addr < ov->phys_base + ov->size)
+            return ov->data[addr - ov->phys_base];
+    }
     return mem_peek(mem, (uint16_t)(addr & 0xFFFFu));
 }
 

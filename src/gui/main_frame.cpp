@@ -48,6 +48,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU(ID_SIM_STEP_INTO, MainFrame::OnStepInto)
     EVT_MENU(ID_SIM_STEP_OVER, MainFrame::OnStepOver)
     EVT_MENU(ID_SIM_RESET, MainFrame::OnReset)
+    EVT_MENU(ID_SIM_BOOT,  MainFrame::OnBoot)
     EVT_MENU(ID_SIM_CLEAR_CYCLES, MainFrame::OnClearCycles)
     EVT_MENU(ID_SIM_TOGGLE_BREAKPOINT, MainFrame::OnToggleBreakpoint)
     EVT_MENU(ID_SIM_STEP_BACK, MainFrame::OnStepBack)
@@ -63,6 +64,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_COMBOBOX(ID_TOOLBAR_MACH_COMBO, MainFrame::OnSelectMachine)
 
     EVT_MENU(ID_VIEW_GO_TO_ADDRESS, MainFrame::OnGoToAddress)
+    EVT_MENU(ID_SETTINGS_DIALOG, MainFrame::OnSettings)
     EVT_MENU(ID_MACH_ADD_DEVICE, MainFrame::OnAddDevice)
     EVT_MENU_RANGE(ID_VIEW_PANE_REGISTERS, ID_VIEW_PANE_AUDIO_MIXER, MainFrame::OnTogglePane)
     EVT_MENU(ID_VIEW_LAYOUT_SAVE, MainFrame::OnTogglePane)
@@ -84,12 +86,31 @@ MainFrame::MainFrame(const wxString& title)
       m_running(false),
       m_initial_layout_done(false),
       m_cycle_limit(0),
+      m_cycle_run_start(0),
       m_speed_scale(0.0f)
 {
     m_sim = sim_create("6502");
 
     // Initialize AUI
     m_aui.SetManagedWindow(this);
+
+    // Read font settings before InitPanes() so all child widgets inherit the correct font.
+    // SIM6502_SCALE env var takes priority over config even at this early stage.
+    {
+        wxConfigBase *cfg = wxConfigBase::Get();
+        if (cfg) {
+            cfg->Read("Settings/FontSize", &m_base_font_size, 13);
+            double s = 1.0;
+            if (cfg->Read("Settings/UIScale", &s) && s >= 0.5 && s <= 8.0)
+                m_ui_scale = (float)s;
+        }
+        wxString env_scale;
+        if (wxGetEnv("SIM6502_SCALE", &env_scale)) {
+            double v;
+            if (env_scale.ToDouble(&v) && v >= 0.5 && v <= 8.0) m_ui_scale = (float)v;
+        }
+        ApplyFontSize();
+    }
 
     InitMenuBar();
     InitToolBar();
@@ -320,8 +341,11 @@ void MainFrame::OnTimer(wxTimerEvent& WXUNUSED(event)) {
             m_running = false;
         } else if (m_cycle_limit > 0) {
             const CPU *cpu = sim_get_cpu(m_sim);
-            if (cpu && (unsigned long)cpu->cycles >= m_cycle_limit)
+            uint64_t elapsed = cpu ? (cpu->cycles - m_cycle_run_start) : 0;
+            if (elapsed >= (uint64_t)m_cycle_limit)
                 m_running = false;
+        } else if (ev < 0) {
+            m_running = false;
         }
     }
     
@@ -343,6 +367,8 @@ void MainFrame::OnTimer(wxTimerEvent& WXUNUSED(event)) {
 
 void MainFrame::OnRun(wxCommandEvent& WXUNUSED(event)) {
     m_running = true;
+    const CPU *cpu = sim_get_cpu(m_sim);
+    m_cycle_run_start = cpu ? cpu->cycles : 0;
     UpdateStatus();
 }
 
@@ -367,10 +393,87 @@ void MainFrame::OnStepOver(wxCommandEvent& WXUNUSED(event)) {
 
 void MainFrame::OnReset(wxCommandEvent& WXUNUSED(event)) {
     if (m_sim) {
-        sim_reset(m_sim);
         m_running = false;
+        /* Ensure ROMs are loaded (duplicate guard in LoadConfiguredROMs makes this safe
+         * to call repeatedly; on a fresh start this is the first load). */
+        LoadConfiguredROMs();
+        /* For machines with a KERNAL ROM, simulate pressing the reset button:
+         * re-trigger the PLA and jump to the reset vector.
+         * Falls back to sim_reset() (PC = start_addr) when no KERNAL is loaded. */
+        if (sim_boot(m_sim) != 0)
+            sim_reset(m_sim);
         UpdateStatus();
     }
+}
+
+void MainFrame::LoadConfiguredROMs() {
+    if (!m_sim) return;
+    wxConfigBase *cfg = wxConfigBase::Get();
+    if (!cfg) return;
+
+    static const char* const kTargetIds[]       = { "raw6502", "c64", "c128", "mega65", "x16" };
+    static const machine_type_t kMachTypes[]    = { MACHINE_RAW6502, MACHINE_C64, MACHINE_C128,
+                                                     MACHINE_MEGA65, MACHINE_X16 };
+    machine_type_t mach = sim_get_machine_type(m_sim);
+    int t = 0;
+    for (int i = 0; i < 5; i++) { if (kMachTypes[i] == mach) { t = i; break; } }
+
+    wxString base = wxString::Format("ROMs/%s/", kTargetIds[t]);
+    int count = 0;
+    cfg->Read(base + "Count", &count, 0);
+
+    for (int i = 0; i < count; i++) {
+        wxString eb = wxString::Format("%s%d/", base, i);
+        wxString addrStr, typeStr, fileStr;
+        cfg->Read(eb + "Addr", &addrStr, "");
+        cfg->Read(eb + "Type", &typeStr, "");
+        cfg->Read(eb + "File", &fileStr, "");
+        if (addrStr.IsEmpty() || fileStr.IsEmpty() || !wxFileExists(fileStr)) continue;
+
+        wxString hex = addrStr.StartsWith("$") ? addrStr.Mid(1) : addrStr;
+        unsigned long physAddr = 0;
+        if (!hex.ToULong(&physAddr, 16)) continue;
+
+        /* Skip if an overlay is already registered at this address
+         * (prevents stacking duplicates on repeated calls). */
+        if (sim_overlay_find(m_sim, (uint32_t)physAddr) >= 0) continue;
+
+        int romType = ROM_TYPE_OTHER;
+        if      (typeStr == "Kernal")    romType = ROM_TYPE_KERNAL;
+        else if (typeStr == "Basic")     romType = ROM_TYPE_BASIC;
+        else if (typeStr == "Character") romType = ROM_TYPE_CHARACTER;
+        else if (typeStr == "Expansion") romType = ROM_TYPE_EXPANSION;
+
+        /* KERNAL, BASIC, and CHARACTER are PLA-controlled — start inactive.
+         * sim_boot() will trigger C64PlaHandler to activate them correctly.
+         * EXPANSION and OTHER are always visible. */
+        int active = (romType == ROM_TYPE_KERNAL || romType == ROM_TYPE_BASIC ||
+                      romType == ROM_TYPE_CHARACTER) ? 0 : 1;
+
+        sim_overlay_load(m_sim, (uint32_t)physAddr, fileStr.mb_str(),
+                         romType, /*cpu_visible*/1, /*vic_visible*/0, active);
+    }
+}
+
+void MainFrame::BootMachine() {
+    if (!m_sim) return;
+    m_running = false;
+    /* Reinitialise hardware: clears all overlays and re-registers built-in
+     * char ROM overlays and CIA/VIC/SID handlers cleanly. */
+    sim_set_machine_type(m_sim, sim_get_machine_type(m_sim));
+    LoadConfiguredROMs();
+    if (sim_boot(m_sim) != 0) {
+        wxMessageBox(
+            "Boot failed: reset vector at $FFFC/$FFFD is $0000.\n"
+            "Configure a KERNAL ROM in Settings > ROM Mapping.",
+            "Boot Error", wxOK | wxICON_ERROR);
+        return;
+    }
+    UpdateStatus();
+}
+
+void MainFrame::OnBoot(wxCommandEvent& WXUNUSED(event)) {
+    BootMachine();
 }
 
 void MainFrame::OnClearCycles(wxCommandEvent& WXUNUSED(event)) {
@@ -554,6 +657,10 @@ void MainFrame::OnSelectMachine(wxCommandEvent& event) {
         else if (mach == "mega65") mt = MACHINE_MEGA65;
         else if (mach == "x16") mt = MACHINE_X16;
         sim_set_machine_type(m_sim, mt);
+        /* Load any configured ROMs for the new machine and boot from the
+         * reset vector.  Silent if no ROMs are configured (sim_boot returns -1). */
+        LoadConfiguredROMs();
+        sim_boot(m_sim);
         UpdateStatus();
     }
 }
@@ -564,6 +671,87 @@ void MainFrame::OnQuit(wxCommandEvent& WXUNUSED(event)) {
 
 void MainFrame::OnAbout(wxCommandEvent& WXUNUSED(event)) {
     wxMessageBox("6502 Simulator (wxWidgets)", "About", wxOK | wxICON_INFORMATION);
+}
+
+void MainFrame::OnSettings(wxCommandEvent& WXUNUSED(event)) {
+    wxString curMachine   = m_sim ? wxString(sim_machine_name(sim_get_machine_type(m_sim))) : "raw6502";
+    wxString curProcessor = m_sim ? wxString(sim_processor_name(m_sim)) : "6502";
+
+    SettingsDialog dlg(this, m_base_font_size, m_theme, m_ui_scale,
+                       m_speed_scale, curMachine, curProcessor);
+    if (dlg.ShowModal() == wxID_OK) {
+        bool fontChanged = (dlg.GetFontSize() != m_base_font_size ||
+                            dlg.GetUIScale()  != m_ui_scale);
+        m_base_font_size = dlg.GetFontSize();
+        m_theme          = dlg.GetTheme();
+        m_ui_scale       = dlg.GetUIScale();
+        ApplyTheme();
+
+        // Apply speed immediately
+        ApplySpeedScale(dlg.GetSpeedScale());
+
+        // Apply machine and processor to current session
+        if (m_sim) {
+            wxString newMach = dlg.GetDefaultMachine();
+            wxString newProc = dlg.GetDefaultProcessor();
+            if (newMach != curMachine) {
+                machine_type_t mt = MACHINE_RAW6502;
+                if      (newMach == "c64")    mt = MACHINE_C64;
+                else if (newMach == "c128")   mt = MACHINE_C128;
+                else if (newMach == "mega65") mt = MACHINE_MEGA65;
+                else if (newMach == "x16")    mt = MACHINE_X16;
+                sim_set_machine_type(m_sim, mt);
+            }
+            if (newProc != curProcessor)
+                sim_set_processor(m_sim, newProc.mb_str());
+        }
+
+        // Persist emulator paths (not MainFrame members; written directly to config)
+        wxConfigBase* cfg = wxConfigBase::Get();
+        if (cfg) {
+            cfg->Write("Emulators/VICEBinDir",  dlg.GetVICEBin());
+            cfg->Write("Emulators/VICEData",    dlg.GetVICEData());
+            cfg->Write("Emulators/XemuBinDir",  dlg.GetXemuBin());
+            cfg->Write("Emulators/XemuData",    dlg.GetXemuData());
+            // ROM entries per machine target (address-based layout)
+            static const char* const kRomTargetIds[] = {
+                "raw6502", "c64", "c128", "mega65", "x16"
+            };
+            for (int t = 0; t < SettingsDialog::kRomTargetCount; t++) {
+                wxString base = wxString::Format("ROMs/%s/", kRomTargetIds[t]);
+                const auto& entries = dlg.GetROMEntries(t);
+                // Erase stale indexed entries beyond the new count
+                int oldCount = 0;
+                cfg->Read(base + "Count", &oldCount, 0);
+                for (int i = (int)entries.size(); i < oldCount; i++)
+                    cfg->DeleteGroup(wxString::Format("/ROMs/%s/%d", kRomTargetIds[t], i));
+                cfg->Write(base + "Count", (int)entries.size());
+                for (int i = 0; i < (int)entries.size(); i++) {
+                    wxString eb = wxString::Format("%s%d/", base, i);
+                    cfg->Write(eb + "Addr", entries[i].addr);
+                    cfg->Write(eb + "Type", entries[i].type);
+                    cfg->Write(eb + "File", entries[i].file);
+                }
+            }
+            // Speed and machine defaults
+            cfg->Write("Settings/SpeedScale",       (double)dlg.GetSpeedScale());
+            cfg->Write("Settings/DefaultMachine",   dlg.GetDefaultMachine());
+            cfg->Write("Settings/DefaultProcessor", dlg.GetDefaultProcessor());
+            // Limits
+            cfg->Write("Limits/HistDepth",      dlg.GetHistDepth());
+            cfg->Write("Limits/TraceDepth",     dlg.GetTraceDepth());
+            cfg->Write("Limits/MaxBreakpoints", dlg.GetMaxBreakpoints());
+            cfg->Write("Limits/MaxWatches",     dlg.GetMaxWatches());
+            cfg->Write("Limits/MaxSnapDiff",    dlg.GetMaxSnapDiff());
+            cfg->Write("Limits/CycleLimit",     (long)dlg.GetCycleLimit());
+        }
+        ApplyCycleLimit(dlg.GetCycleLimit());
+        SaveSettings();
+        if (fontChanged) {
+            wxMessageBox("Font size and scaling changes will take effect after restarting the application.",
+                         "Restart Required", wxOK | wxICON_INFORMATION, this);
+        }
+    }
 }
 
 void MainFrame::OnTogglePane(wxCommandEvent& event) {
@@ -613,6 +801,15 @@ void MainFrame::OnPaneButton(wxAuiManagerEvent& event) {
     }
 }
 
+void MainFrame::ApplyFontSize() {
+    int pt = (int)((float)m_base_font_size * m_ui_scale + 0.5f);
+    if (pt < 6)  pt = 6;
+    if (pt > 64) pt = 64;
+    wxFont f(pt, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
+    if (f.IsOk())
+        SetFont(f);
+}
+
 void MainFrame::ApplyTheme() {
     bool is_dark = false;
     if (m_theme == 2) {
@@ -638,6 +835,14 @@ void MainFrame::LoadSettings() {
     if (cfg) {
         cfg->Read("Settings/FontSize", &m_base_font_size, 13);
         cfg->Read("Settings/Theme", &m_theme, 2);
+
+        double speedVal = 0.0;
+        if (cfg->Read("Settings/SpeedScale", &speedVal))
+            m_speed_scale = (float)speedVal;
+
+        long cycLimit = 0;
+        cfg->Read("Limits/CycleLimit", &cycLimit, 0L);
+        m_cycle_limit = (unsigned long)cycLimit;
         
         int w, h, x, y;
         if (cfg->Read("Window/Width", &w) && cfg->Read("Window/Height", &h)) {
@@ -685,25 +890,32 @@ void MainFrame::LoadSettings() {
         }
     }
 
+    // UIScale priority: SIM6502_SCALE env > config > GDK/QT env > DPI auto-detect
     wxString env_scale;
     if (wxGetEnv("SIM6502_SCALE", &env_scale)) {
         double v;
-        if (env_scale.ToDouble(&v) && v >= 0.5 && v <= 8.0) m_ui_scale = v;
-    } else if (wxGetEnv("GDK_SCALE", &env_scale)) {
-        double v;
-        if (env_scale.ToDouble(&v) && v >= 1.0 && v <= 8.0) m_ui_scale = v;
-    } else if (wxGetEnv("QT_SCALE_FACTOR", &env_scale)) {
-        double v;
-        if (env_scale.ToDouble(&v) && v >= 1.0 && v <= 8.0) m_ui_scale = v;
+        if (env_scale.ToDouble(&v) && v >= 0.5 && v <= 8.0) m_ui_scale = (float)v;
     } else {
-        wxDisplay display(this);
-        wxSize ppi = display.GetPPI();
-        if (ppi.y > 0 && ppi.y != 96) {
-            m_ui_scale = floorf((float)ppi.y / 96.0f * 4.0f + 0.5f) / 4.0f;
+        double configScale = 1.0;
+        if (cfg && cfg->Read("Settings/UIScale", &configScale)
+                && configScale >= 0.5 && configScale <= 8.0) {
+            m_ui_scale = (float)configScale;
+        } else if (wxGetEnv("GDK_SCALE", &env_scale)) {
+            double v;
+            if (env_scale.ToDouble(&v) && v >= 1.0 && v <= 8.0) m_ui_scale = (float)v;
+        } else if (wxGetEnv("QT_SCALE_FACTOR", &env_scale)) {
+            double v;
+            if (env_scale.ToDouble(&v) && v >= 1.0 && v <= 8.0) m_ui_scale = (float)v;
         } else {
-            wxSize mode = display.GetGeometry().GetSize();
-            if (mode.x >= 3840) m_ui_scale = 2.00f;
-            else if (mode.x >= 2560) m_ui_scale = 1.50f;
+            wxDisplay display(this);
+            wxSize ppi = display.GetPPI();
+            if (ppi.y > 0 && ppi.y != 96) {
+                m_ui_scale = floorf((float)ppi.y / 96.0f * 4.0f + 0.5f) / 4.0f;
+            } else {
+                wxSize mode = display.GetGeometry().GetSize();
+                if (mode.x >= 3840) m_ui_scale = 2.00f;
+                else if (mode.x >= 2560) m_ui_scale = 1.50f;
+            }
         }
     }
 }
@@ -713,7 +925,8 @@ void MainFrame::SaveSettings() {
     if (!cfg) return;
 
     cfg->Write("Settings/FontSize", m_base_font_size);
-    cfg->Write("Settings/Theme", m_theme);
+    cfg->Write("Settings/Theme",    m_theme);
+    cfg->Write("Settings/UIScale",  (double)m_ui_scale);
 
     wxSize sz = GetSize();
     cfg->Write("Window/Width", sz.x);

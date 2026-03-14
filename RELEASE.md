@@ -12,14 +12,15 @@ This document outlines the release schedule for the 6502 Simulator, prioritizing
 - [ ] **VIC Screen Polish:** Implement scale controls (1x/2x/3x), freeze-frame toggle, and mode/address status indicators.
 - [ ] **Unified Settings Dialog:**
   - [ ] Implement a multi-pane `SettingsDialog` (using `wxTreebook` or similar) to replace scattered configuration menus.
-  - [ ]**Panes:** 
-    - [ ] *General:* Interface scaling, theme selection, and font preferences.
-    - [ ] *Emulators:* Paths to VICE and Xemu binaries/data directories.
-    - [ ] *ROM Mapping:* Assignment of Kernal, BASIC, and Character ROMs to system targets.
-    - [ ] *Speed and Memory:* Allow setting of default speed, machine target and processor and adjustment of built-in caches that are used for things like history etc. 
+  - [ ] **Panes:**
+    - [X] *General:* Interface scaling, theme selection, and font preferences.
+    - [X] *Emulators:* Paths to VICE and Xemu binaries/data directories. Includes a **Detect** button that scans common installation paths on Linux, macOS, and Windows to auto-populate the binary and data-directory fields for both VICE and Xemu.
+    - [ ] *ROM Mapping:* Address-based ROM layout editor, fully generic across machine targets. Each supported machine target (`raw6502`, `c64`, `c128`, `mega65`, `x16`) holds an ordered list of ROM entries. Each entry has three fields: **Load Address** (hex, e.g. `$A000`), **Type** (one of `Kernal` / `Basic` / `Character` / `Expansion` / `Other`), and **File** (path to a `.rom` or `.bin` file). The layout is not hardcoded to the C64 — any machine can define however many ROM regions it needs at whatever addresses suit its memory map. Example C64 layout: `$A000 / Basic / basic.bin`, `$D000 / Character / chargen.bin`, `$E000 / Kernal / kernal.bin`. Example MEGA65 layout: `$20000 / Kernal / mega65.rom`. The UI presents an editable `wxListCtrl` with Add / Remove / Edit row controls. A **Scan** button triggers **Emulator Resource Discovery** (see below) to auto-populate entries from known ROM directories. Config stored as indexed entries: `ROMs/<target>/N/Addr`, `ROMs/<target>/N/Type`, `ROMs/<target>/N/File`. The simulator API gains `sim_load_rom_entry(session, addr, path)` and `sim_clear_roms(session, target)` to apply ROM layouts at session init or on demand. *(Current implementation uses fixed Kernal/Basic/Char pickers — this replaces that approach.)*
+    - [X] *Speed:* Default execution speed (Unlimited / 0.5x / 1x–16x based on 985 KHz PAL baseline), default machine target, and default processor. Speed applies to the current session immediately; machine and processor are also applied to the current session on OK. Persisted under `Settings/SpeedScale`, `Settings/DefaultMachine`, `Settings/DefaultProcessor`. *(Cache/history limits are covered by the Limits pane below.)*
+    - [X] *Limits:* Expose configurable caps for magic default values — execution history depth (`SIM_HIST_DEFAULT_DEPTH`), trace ring-buffer depth (`SIM_TRACE_DEPTH`), max breakpoints, max watches, and max snap-diff entries. Changes take effect on next session reset.
 - [ ] **Emulator Resource Discovery:**
-  - [ ] Implement auto-discovery logic to locate VICE and Xemu installations on Linux, macOS, and Windows.
-  - [ ] Add a "Scan for ROMs" feature that automatically populates system profiles from discovered emulator data folders.
+  - [X] Implement auto-discovery logic to locate VICE and Xemu installations on Linux, macOS, and Windows.
+  - [X] Add a "Scan for ROMs" feature that automatically populates system profiles from discovered emulator data folders.
 - [ ] **Binary & Metadata Parsing:**
   - [ ] **VICE Support:** Load and parse `.bin` ROM images and `.sym` symbol files for system-level debugging.
   - [ ] **MEGA65 Support:** Implement a parser for `.M65` bundle files to extract Character and System ROMs.
@@ -27,6 +28,29 @@ This document outlines the release schedule for the 6502 Simulator, prioritizing
 - [ ] **Project-Specific Configuration:**
   - [ ] Allow `project.toml` to specify a custom ROM set, overriding global settings for specific development tasks.
   - [ ] Extend the `sim_api.h` to support dynamic ROM switching without restarting the simulator session.
+
+### Complexity Analysis
+
+**Overall milestone complexity: High.** Three distinct domains are touched: UI features, cross-platform system integration, and file format parsing. The cross-platform discovery logic and new file parsers (`.M65`, VICE `.sym`) are the largest unknowns. The Settings Dialog is the largest pure GUI effort. Most items have clean attachment points in existing architecture (`project_manager`, `sim_api`, `wxConfig`), but the platform-specific ROM discovery has no existing analog in the codebase.
+
+| Feature | Complexity | New Files | API Changes | Platform-Specific |
+|---|---|---|---|---|
+| Time Machine UI | Medium | 0 | 1 (reverse-continue) | No |
+| VIC Screen Polish | Low-Medium | 0 | 0 | No |
+| Unified Settings Dialog | Medium-High | 1-2 | 2-3 | No |
+| Emulator Resource Discovery | High | 1-2 | 0 | Yes (3 platforms) |
+| Binary & Metadata Parsing | Medium-High | 1-2 | 2-3 | No |
+| Project-Specific Config | Medium | 0 | 1-2 | No |
+
+#### Feature Notes
+
+- **Time Machine UI:** History infrastructure already exists (`debug_types.h`, `SIM_HIST_DEFAULT_DEPTH`); this is primarily GUI wiring. Reverse-continue requires a new API call that loops `sim_step_back` until a breakpoint address is hit.
+- **VIC Screen Polish:** Scale controls affect the `wxGLCanvas` viewport transform in `pane_vic_screen.cpp`. Mode/address indicators read existing VIC-II registers via `sim_mem_read_byte` at `$D011`, `$D016`, `$D018`. No new simulator API calls expected.
+- **Unified Settings Dialog:** Replaces scattered config across `main_frame_menus.cpp` and other panes. *General pane done.* *Emulators pane done* (paths + Detect button; stored under `Emulators/VICEBinDir`, `Emulators/VICEData`, `Emulators/XemuBinDir`, `Emulators/XemuData` in `wxConfig`). *Speed pane done* (`Settings/SpeedScale`, `Settings/DefaultMachine`, `Settings/DefaultProcessor`). **ROM Mapping** replaces the earlier fixed Kernal/Basic/Char picker approach with a generic address-based list: each machine target holds N entries of `(addr, type, file)`. A ROM type enum is needed: `ROM_TYPE_KERNAL`, `ROM_TYPE_BASIC`, `ROM_TYPE_CHAR`, `ROM_TYPE_EXPANSION`, `ROM_TYPE_OTHER`. New API calls: `sim_load_rom_entry(session, addr, path)` and `sim_clear_roms(session, target)`. Config keys: `ROMs/<target>/<N>/Addr`, `ROMs/<target>/<N>/Type`, `ROMs/<target>/<N>/File`. The Limits sub-pane exposes `SIM_HIST_DEFAULT_DEPTH`, `SIM_TRACE_DEPTH`, max breakpoints, max watches, and max snap-diff entries — currently compile-time constants in `debug_types.h` — as runtime-configurable values persisted via `wxConfig` and applied on session reset.
+- **Memory Overlays (ROM Banking Architecture):** ROM regions are modelled as `mem_overlay_t` entries in an overlay table (`overlays[MAX_OVERLAYS]`, `overlay_count`) inside `memory_t`. Each entry records `phys_base`, `size`, a `data` pointer into the ROM buffer, `type` (`ROM_TYPE_CHARACTER` / `ROM_TYPE_KERNAL` / `ROM_TYPE_BASIC` / `ROM_TYPE_EXPANSION` / `ROM_TYPE_OTHER`), and three flags: `active`, `cpu_visible`, `vic_visible`. `mem_read()` scans CPU-visible active overlays before consulting I/O handlers or RAM, replacing all hardcoded machine-specific branches. `vic_read()` in `vic2.cpp` does the same for VIC-visible overlays, replacing the hardcoded bank-0/bank-2 char ROM windows. Device classes drive banking: the C64 CPU port `$01` handler (`CharRomPlaHandler : IOHandler`) evaluates the CHAREN and HIRAM bits on every write and calls `mem_overlay_set_active()` to show or hide the CHARACTER overlay at `$D000` — no machine-specific logic remains in `mem_read()`. VIC char ROM windows (`$1000–$1FFF`, `$9000–$9FFF`) are pre-registered as `vic_visible=1` overlays at session init and are always active. Overlay management: `mem_overlay_add()`, `mem_overlay_set_active()`, `mem_overlay_find()`, `mem_overlay_clear_all()` in `memory.cpp`; `sim_overlay_load()`, `sim_overlay_set_active()`, `sim_overlay_find()`, `sim_overlay_clear()` in `sim_api.cpp`. `mem_overlay_clear_all()` is called before each `memset(mem, 0, ...)` and at the start of `machine_init_hardware()` so overlays are always rebuilt cleanly on reset or reload.
+- **Emulator Resource Discovery:** Largest effort in the milestone. Requires platform-specific path scanning (Linux: XDG/`/usr/share/vice`; macOS: `/Applications`, Homebrew; Windows: registry + `Program Files`). ROM role matching by filename convention or size/checksum. Must degrade gracefully on failure.
+- **Binary & Metadata Parsing:** VICE `.bin` ROM images are loaded via `sim_load_rom_entry()` at their configured address rather than into dedicated ROM buffer fields in `memory_t`. VICE `.sym` format (`al AAAA .label`) is distinct from the existing `.sym` parser in `metadata.cpp` and requires a new parser path. `.M65` bundle parsing requires a new parser module that extracts ROM regions and maps them to ROM Mapping entries. PRG auto-configure PC is a small change to `sim_load_bin`.
+- **Project-Specific Config:** Extends the `project_manager` TOML parser. Dynamic ROM switching requires `sim_load_rom(type, path)` or equivalent in `sim_api.h` and clean mid-session ROM replacement in the simulator session.
 
 ---
 

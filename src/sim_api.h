@@ -60,6 +60,11 @@ int sim_step_cycles(sim_session_t *s, unsigned long max_cycles);
 void sim_reset(sim_session_t *s);
 void sim_clear_cycles(sim_session_t *s);
 
+/* Boot from reset vector: triggers C64PlaHandler to activate ROM overlays,
+ * then reads $FFFC/$FFFD and sets PC to the reset vector.
+ * Returns 0 on success, -1 if the reset vector is $0000 (no KERNAL loaded). */
+int sim_boot(sim_session_t *s);
+
 /* Disassembler */
 typedef struct {
     unsigned short address;
@@ -96,6 +101,28 @@ void sim_set_debug(sim_session_t *s, bool debug);
 /* Machine state */
 machine_type_t sim_get_machine_type(sim_session_t *s);
 void sim_set_machine_type(sim_session_t *s, machine_type_t machine);
+
+/* --------------------------------------------------------------------------
+ * ROM overlay API
+ * -------------------------------------------------------------------------- */
+
+/* Load a ROM file from disk and register it as an overlay.
+ * type: cast from rom_type_t (ROM_TYPE_CHARACTER etc.)
+ * cpu_visible: 1 = shadow CPU reads via mem_read()
+ * vic_visible: 1 = shadow VIC reads via vic_read()
+ * active: 1 = overlay is immediately visible
+ * Returns the overlay index on success, -1 on failure. */
+int  sim_overlay_load(sim_session_t *s, uint32_t phys_base, const char *path,
+                      int type, int cpu_visible, int vic_visible, int active);
+
+/* Activate or deactivate an overlay by index. */
+void sim_overlay_set_active(sim_session_t *s, int idx, int active);
+
+/* Return the index of the first overlay at phys_base, or -1 if not found. */
+int  sim_overlay_find(sim_session_t *s, uint32_t phys_base);
+
+/* Remove all overlays (frees any malloc'd buffers). */
+void sim_overlay_clear(sim_session_t *s);
 const char *sim_machine_name(machine_type_t type);
 int sim_device_add(sim_session_t *s, const char *name, uint16_t address);
 int sim_get_device_count(sim_session_t *s);

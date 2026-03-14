@@ -19,6 +19,7 @@ void MainFrame::InitMenuBar() {
     simMenu->Append(ID_SIM_STEP_INTO, "Step &Into	F7");
     simMenu->Append(ID_SIM_STEP_OVER, "Step &Over	F8");
     simMenu->Append(ID_SIM_RESET, "R&eset	Ctrl+R");
+    simMenu->Append(ID_SIM_BOOT,  "&Boot Machine\tCtrl+B");
     simMenu->AppendSeparator();
     simMenu->Append(ID_SIM_TOGGLE_BREAKPOINT, "Toggle &Breakpoint	F9");
     simMenu->AppendSeparator();
@@ -103,35 +104,15 @@ void MainFrame::InitMenuBar() {
 
     viewMenu->AppendSeparator();
     viewMenu->Append(ID_VIEW_GO_TO_ADDRESS, "&Go to Address...\tCtrl+G");
-    
+
     viewMenu->AppendSeparator();
-    wxMenu *settingsMenu = new wxMenu;
-
-    wxMenu *fontSizeMenu = new wxMenu;
-    fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_10, "10 px");
-    fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_11, "11 px");
-    fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_12, "12 px");
-    fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_13, "13 px");
-    fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_14, "14 px");
-    fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_15, "15 px");
-    fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_16, "16 px");
-    fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_18, "18 px");
-    fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_20, "20 px");
-    fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_24, "24 px");
-    settingsMenu->AppendSubMenu(fontSizeMenu, "Font Size");
-
-    wxMenu *themeMenu = new wxMenu;
-    themeMenu->AppendRadioItem(ID_VIEW_THEME_AUTO, "Auto (OS)");
-    themeMenu->AppendRadioItem(ID_VIEW_THEME_DARK, "Dark");
-    themeMenu->AppendRadioItem(ID_VIEW_THEME_LIGHT, "Light");
-    settingsMenu->AppendSubMenu(themeMenu, "Theme");
-
     wxMenu *layoutMenu = new wxMenu;
     layoutMenu->Append(ID_VIEW_LAYOUT_SAVE, "Save Layout...");
     layoutMenu->Append(ID_VIEW_LAYOUT_RESET, "Reset to Default");
-    settingsMenu->AppendSubMenu(layoutMenu, "Layout");
+    viewMenu->AppendSubMenu(layoutMenu, "Layout");
 
-    viewMenu->AppendSubMenu(settingsMenu, "Settings");
+    viewMenu->AppendSeparator();
+    viewMenu->Append(ID_SETTINGS_DIALOG, "&Settings...\tCtrl+,");
 
     // --- Window Menu ---
     wxMenu *windowMenu = new wxMenu;

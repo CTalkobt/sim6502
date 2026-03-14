@@ -31,6 +31,47 @@
 extern int g_verbose;
 #define LOG_V2(...) if (g_verbose >= 2) fprintf(stderr, __VA_ARGS__)
 
+/* Watches the 6510 CPU port: $00 = Data Direction Register (DDR),
+ * $01 = Data register.  Both registers share this handler so that a write
+ * to either one recomputes the full effective port value and updates all
+ * three C64 PLA-controlled ROM overlays accordingly.
+ *
+ * Effective bit = data bit when DDR bit = 1 (output).
+ *                 1 (pull-up) when DDR bit = 0 (input).
+ *
+ * Banking rules (ExROM/GAME lines assumed de-asserted / standard):
+ *   KERNAL ($E000-$FFFF) : active when HIRAM=1
+ *   BASIC  ($A000-$BFFF) : active when LORAM=1 AND HIRAM=1
+ *   CHAR   ($D000-$DFFF) : active when CHAREN=0 AND (HIRAM=1 OR LORAM=1)
+ *
+ * Returns false so values are also written through to RAM. */
+class C64PlaHandler : public IOHandler {
+public:
+    const char *get_handler_name() const override { return "C64PLA"; }
+    bool io_write(memory_t *mem, uint16_t addr, uint8_t val) override {
+        /* Read the register that was NOT just written from RAM; use val for
+         * the one being written (it hasn't reached RAM yet). */
+        uint8_t ddr  = (addr == 0x00u) ? val : mem->mem[0x00];
+        uint8_t data = (addr == 0x01u) ? val : mem->mem[0x01];
+        /* Input bits (DDR=0) float to 1 via internal pull-ups. */
+        uint8_t port = (data & ddr) | ~ddr;
+        int loram  = (port >> 0) & 1;
+        int hiram  = (port >> 1) & 1;
+        int charen = (port >> 2) & 1;
+
+        int k = mem_overlay_find(mem, 0xE000u); /* KERNAL */
+        if (k >= 0) mem_overlay_set_active(mem, k, hiram);
+
+        int b = mem_overlay_find(mem, 0xA000u); /* BASIC */
+        if (b >= 0) mem_overlay_set_active(mem, b, loram && hiram);
+
+        int c = mem_overlay_find(mem, 0xD000u); /* CHARACTER */
+        if (c >= 0) mem_overlay_set_active(mem, c, !charen && (hiram || loram));
+
+        return false; /* write through to RAM */
+    }
+};
+
 /* Full definition of the opaque sim_session_t handle. */
 struct sim_session {
     CPU              *cpu;
@@ -262,8 +303,7 @@ static void sim_load_default_charset(sim_session_t *s) {
     uint8_t buf[2048];
     size_t n = fread(buf, 1, sizeof(buf), f);
     fclose(f);
-    /* Always populate char_rom — used by vic_read() for bank-0/bank-2 VIC
-     * exceptions and by mem_read() for CPU reads with CHAREN=0, HIRAM=1. */
+    /* Populate char_rom backing store used by all overlay data pointers. */
     memcpy(s->mem->char_rom, buf, n);
     if (s->machine_type == MACHINE_MEGA65) {
         /* Mega65 character ROM lives at physical $2D000 in the 28-bit address
@@ -275,10 +315,31 @@ static void sim_load_default_charset(sim_session_t *s) {
          * implemented (see vic2.h TODO).                                       */
         for (size_t i = 0; i < n; i++)
             s->mem->mem[0x4000 + i] = buf[i];
+    } else {
+        /* C64 / C128: Three overlays all backed by char_rom[]:
+         *  1. CPU $D000-$DFFF  (cpu_visible, inactive — PLA controls)
+         *  2. VIC bank-0 $1000-$1FFF  (vic_visible, always active)
+         *  3. VIC bank-2 $9000-$9FFF  (vic_visible, always active)
+         * KERNAL/BASIC overlays are added later via sim_overlay_load() when
+         * the user has configured ROM files; C64PlaHandler activates them
+         * automatically once they exist at $E000 and $A000. */
+        mem_overlay_add(s->mem, 0xD000u, 4096u, s->mem->char_rom,
+                        ROM_TYPE_CHARACTER, /*cpu*/1, /*vic*/0, /*active*/0);
+        mem_overlay_add(s->mem, 0x1000u, 4096u, s->mem->char_rom,
+                        ROM_TYPE_CHARACTER, /*cpu*/0, /*vic*/1, /*active*/1);
+        mem_overlay_add(s->mem, 0x9000u, 4096u, s->mem->char_rom,
+                        ROM_TYPE_CHARACTER, /*cpu*/0, /*vic*/1, /*active*/1);
+        /* C64PlaHandler: watches $00 (DDR) and $01 (data) writes and
+         * recomputes KERNAL/BASIC/CHARACTER overlay visibility on every change. */
+        C64PlaHandler *pla = new C64PlaHandler();
+        s->mem->io_handlers[0x00] = pla;
+        s->mem->io_handlers[0x01] = pla;
+        s->dynamic_handlers.push_back(pla);
     }
 }
 
 static void machine_init_hardware(sim_session_t *s) {
+    mem_overlay_clear_all(s->mem);
     if (s->mem->io_registry) {
         delete s->mem->io_registry;
     }
@@ -392,10 +453,11 @@ int sim_load_asm(sim_session_t *s, const char *path) {
 
     /* Reset session state */
     IORegistry *old_registry = s->mem->io_registry;
+    mem_overlay_clear_all(s->mem);
     mem_free_far_pages(s->mem);
     memset(s->mem, 0, sizeof(memory_t));
     s->mem->io_registry = old_registry;
-    
+
     /* Apply detected or preserved CPU type BEFORE machine_init_hardware */
     if (detected_type != s->cpu_type) {
         apply_cpu_type(s, detected_type);
@@ -451,6 +513,7 @@ int sim_load_bin(sim_session_t *s, const char *path, uint16_t load_addr)
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
     IORegistry *old_registry = s->mem->io_registry;
+    mem_overlay_clear_all(s->mem);
     mem_free_far_pages(s->mem);
     memset(s->mem, 0, sizeof(memory_t));
     s->mem->io_registry = old_registry;
@@ -482,6 +545,7 @@ int sim_load_prg(sim_session_t *s, const char *path, uint16_t override_addr)
         ? override_addr
         : (uint16_t)((unsigned)lo | ((unsigned)hi << 8));
     IORegistry *old_registry = s->mem->io_registry;
+    mem_overlay_clear_all(s->mem);
     mem_free_far_pages(s->mem);
     memset(s->mem, 0, sizeof(memory_t));
     s->mem->io_registry = old_registry;
@@ -671,6 +735,25 @@ void sim_reset(sim_session_t *s) {
     s->state = (s->filename[0] != '\0') ? SIM_READY : SIM_IDLE;
 }
 
+int sim_boot(sim_session_t *s) {
+    if (!s) return -1;
+    /* Trigger C64PlaHandler with the current $00 (DDR) value.
+     * After memset both $00 and $01 are 0; DDR=0 means all pins are inputs
+     * which pull high via internal resistors, giving effective port = $FF:
+     *   LORAM=1, HIRAM=1, CHAREN=1 → KERNAL active, BASIC active, CHAR inactive. */
+    sim_mem_write_byte(s, 0x00, sim_mem_read_byte(s, 0x00));
+    /* Read reset vector — now served from KERNAL ROM overlay if one is loaded. */
+    uint8_t lo = mem_read(s->mem, 0xFFFCu);
+    uint8_t hi = mem_read(s->mem, 0xFFFDu);
+    uint16_t vec = (uint16_t)(lo | ((uint16_t)hi << 8));
+    if (vec == 0x0000) return -1;
+    s->cpu->reset();
+    s->cpu->pc    = vec;
+    s->start_addr = vec;
+    s->state      = SIM_READY;
+    return 0;
+}
+
 void sim_clear_cycles(sim_session_t *s) {
     if (s && s->cpu) {
         s->cpu->cycles = 0;
@@ -811,6 +894,45 @@ void sim_set_machine_type(sim_session_t *s, machine_type_t machine) {
     }
     apply_cpu_type(s, new_cpu);
     machine_init_hardware(s);
+}
+
+/* --------------------------------------------------------------------------
+ * ROM overlay API
+ * -------------------------------------------------------------------------- */
+
+int sim_overlay_load(sim_session_t *s, uint32_t phys_base, const char *path,
+                     int type, int cpu_visible, int vic_visible, int active) {
+    if (!s || !path) return -1;
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (sz <= 0) { fclose(f); return -1; }
+    uint8_t *buf = (uint8_t *)malloc((size_t)sz);
+    if (!buf) { fclose(f); return -1; }
+    fread(buf, 1, (size_t)sz, f);
+    fclose(f);
+    int idx = mem_overlay_add(s->mem, phys_base, (uint32_t)sz, buf,
+                              (rom_type_t)type, cpu_visible, vic_visible, active);
+    if (idx < 0) { free(buf); return -1; }
+    s->mem->overlays[idx].owns_data = 1;
+    return idx;
+}
+
+void sim_overlay_set_active(sim_session_t *s, int idx, int active) {
+    if (!s) return;
+    mem_overlay_set_active(s->mem, idx, active);
+}
+
+int sim_overlay_find(sim_session_t *s, uint32_t phys_base) {
+    if (!s) return -1;
+    return mem_overlay_find(s->mem, phys_base);
+}
+
+void sim_overlay_clear(sim_session_t *s) {
+    if (!s) return;
+    mem_overlay_clear_all(s->mem);
 }
 
 const char *sim_state_name(sim_state_t state) {

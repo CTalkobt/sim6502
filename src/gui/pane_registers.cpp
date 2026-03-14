@@ -14,7 +14,7 @@ PaneRegisters::PaneRegisters(wxWindow* parent, sim_session_t *sim)
     m_list->InsertColumn(3, "Prev", wxLIST_FORMAT_LEFT, 60);
     m_list->InsertColumn(4, "Flags / Bits", wxLIST_FORMAT_LEFT, 150);
 
-    m_list->SetFont(wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    m_list->SetFont(wxFont(GetFont().GetPointSize(), wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
 
     sizer->Add(m_list, 1, wxEXPAND);
     SetSizer(sizer);

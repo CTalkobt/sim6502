@@ -47,4 +47,24 @@ void far_mem_write(memory_t *m, unsigned int addr, unsigned char val);
  */
 void mem_free_far_pages(memory_t *mem);
 
+/* --------------------------------------------------------------------------
+ * Overlay management
+ * -------------------------------------------------------------------------- */
+
+/* Add an overlay. Returns the overlay index, or -1 if the table is full.
+ * data must remain valid for the lifetime of the overlay.
+ * Set owns_data via the returned index if the buffer was malloc'd. */
+int  mem_overlay_add(memory_t *mem, uint32_t phys_base, uint32_t size,
+                     uint8_t *data, rom_type_t type,
+                     int cpu_visible, int vic_visible, int active);
+
+/* Activate or deactivate an overlay by index. */
+void mem_overlay_set_active(memory_t *mem, int idx, int active);
+
+/* Return the index of the first overlay whose phys_base matches, or -1. */
+int  mem_overlay_find(memory_t *mem, uint32_t phys_base);
+
+/* Deactivate and remove all overlays. Frees any owns_data buffers. */
+void mem_overlay_clear_all(memory_t *mem);
+
 #endif // MEMORY_H

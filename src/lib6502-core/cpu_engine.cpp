@@ -1,4 +1,5 @@
 #include "cpu_engine.h"
+#include "interrupts.h"
 #include <stdio.h>
 
 unsigned short decode_operand(CPUState *cpu, memory_t *mem, unsigned char mode) {
@@ -60,5 +61,9 @@ void execute_from_mem(CPU *cpu, memory_t *mem, const dispatch_table_t *dt, cpu_t
 
 	if (mem->io_registry) {
 		mem->io_registry->tick_all(cpu->cycles);
+		interrupt_controller_t *ic = static_cast<interrupt_controller_t*>(cpu->get_interrupt_controller());
+		if (ic && interrupt_check(ic, cpu)) {
+			interrupt_handle(ic, cpu, mem);
+		}
 	}
 }

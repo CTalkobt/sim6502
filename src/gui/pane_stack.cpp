@@ -11,7 +11,7 @@ StackMemListCtrl::StackMemListCtrl(wxWindow* parent, sim_session_t* sim)
 {
     // A slightly deeper amber for better contrast on white backgrounds.
     m_sp_attr.SetBackgroundColour(wxColour(255, 190, 40)); 
-    SetFont(wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    SetFont(wxFont(GetFont().GetPointSize(), wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
 }
 
 wxString StackMemListCtrl::OnGetItemText(long item, long col) const {
@@ -83,7 +83,7 @@ PaneStack::PaneStack(wxWindow* parent, sim_session_t *sim)
     wxBoxSizer* recentSizer = new wxBoxSizer(wxVERTICAL);
     m_list = new wxListCtrl(recentPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                             wxLC_REPORT | wxLC_SINGLE_SEL);
-    m_list->SetFont(wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    m_list->SetFont(wxFont(GetFont().GetPointSize(), wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     m_list->InsertColumn(0, "Depth",           wxLIST_FORMAT_LEFT,  50);
     m_list->InsertColumn(1, "Addr",            wxLIST_FORMAT_LEFT,  60);
     m_list->InsertColumn(2, "Value",           wxLIST_FORMAT_LEFT,  50);

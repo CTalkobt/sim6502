@@ -70,24 +70,24 @@ const dispatch_entry_t *peek_dispatch(const CPUState *cpu, const memory_t *mem,
 int disasm_one(const memory_t *mem, const dispatch_table_t *dt,
                       cpu_type_t cpu_type, unsigned short addr,
                       char *buf, int bufsz) {
-    unsigned char b0 = mem->mem[addr];
+    unsigned char b0 = mem_peek(mem, addr);
     const dispatch_entry_t *e = NULL;
     int prefix_len = 0;
 
     if (cpu_type == CPU_45GS02) {
         if (b0 == 0x42) {
-            unsigned char b1 = mem->mem[(unsigned short)(addr + 1)];
+            unsigned char b1 = mem_peek(mem, (unsigned short)(addr + 1));
             if (b1 == 0x42) {
-                unsigned char b2 = mem->mem[(unsigned short)(addr + 2)];
+                unsigned char b2 = mem_peek(mem, (unsigned short)(addr + 2));
                 if (b2 == 0xEA) {
-                    unsigned char b3 = mem->mem[(unsigned short)(addr + 3)];
+                    unsigned char b3 = mem_peek(mem, (unsigned short)(addr + 3));
                     if (dt->quad_eom[b3].fn) { e = &dt->quad_eom[b3]; prefix_len = 3; }
                 } else {
                     if (dt->quad[b2].fn) { e = &dt->quad[b2]; prefix_len = 2; }
                 }
             }
         } else if (b0 == 0xEA) {
-            unsigned char b1 = mem->mem[(unsigned short)(addr + 1)];
+            unsigned char b1 = mem_peek(mem, (unsigned short)(addr + 1));
             if (dt->eom[b1].fn) { e = &dt->eom[b1]; prefix_len = 1; }
         }
     }
@@ -102,14 +102,14 @@ int disasm_one(const memory_t *mem, const dispatch_table_t *dt,
     }
     int instr_len  = get_instruction_length(e->mode);
     int total_len  = prefix_len + instr_len;
-    unsigned char op1 = (instr_len >= 2) ? mem->mem[(unsigned short)(addr + prefix_len + 1)] : 0;
-    unsigned char op2 = (instr_len >= 3) ? mem->mem[(unsigned short)(addr + prefix_len + 2)] : 0;
+    unsigned char op1 = (instr_len >= 2) ? mem_peek(mem, (unsigned short)(addr + prefix_len + 1)) : 0;
+    unsigned char op2 = (instr_len >= 3) ? mem_peek(mem, (unsigned short)(addr + prefix_len + 2)) : 0;
     unsigned short operand = (unsigned short)(op1 | (op2 << 8));
     char hexbuf[24] = "";
     int hpos = 0;
     for (int i = 0; i < total_len; i++)
         hpos += snprintf(hexbuf + hpos, (int)sizeof(hexbuf) - hpos,
-                         "%02X ", mem->mem[(unsigned short)(addr + i)]);
+                         "%02X ", mem_peek(mem, (unsigned short)(addr + i)));
     char opstr[32] = "";
     switch (e->mode) {
     case MODE_IMPLIED:                                                          break;
@@ -152,24 +152,24 @@ int disasm_one(const memory_t *mem, const dispatch_table_t *dt,
 int disasm_one_entry(const memory_t *mem, const dispatch_table_t *dt,
                      cpu_type_t cpu_type, unsigned short addr,
                      disasm_entry_t *out) {
-    unsigned char b0 = mem->mem[addr];
+    unsigned char b0 = mem_peek(mem, addr);
     const dispatch_entry_t *e = NULL;
     int prefix_len = 0;
 
     if (cpu_type == CPU_45GS02) {
         if (b0 == 0x42) {
-            unsigned char b1 = mem->mem[(unsigned short)(addr + 1)];
+            unsigned char b1 = mem_peek(mem, (unsigned short)(addr + 1));
             if (b1 == 0x42) {
-                unsigned char b2 = mem->mem[(unsigned short)(addr + 2)];
+                unsigned char b2 = mem_peek(mem, (unsigned short)(addr + 2));
                 if (b2 == 0xEA) {
-                    unsigned char b3 = mem->mem[(unsigned short)(addr + 3)];
+                    unsigned char b3 = mem_peek(mem, (unsigned short)(addr + 3));
                     if (dt->quad_eom[b3].fn) { e = &dt->quad_eom[b3]; prefix_len = 3; }
                 } else {
                     if (dt->quad[b2].fn) { e = &dt->quad[b2]; prefix_len = 2; }
                 }
             }
         } else if (b0 == 0xEA) {
-            unsigned char b1 = mem->mem[(unsigned short)(addr + 1)];
+            unsigned char b1 = mem_peek(mem, (unsigned short)(addr + 1));
             if (dt->eom[b1].fn) { e = &dt->eom[b1]; prefix_len = 1; }
         }
     }
@@ -201,13 +201,13 @@ int disasm_one_entry(const memory_t *mem, const dispatch_table_t *dt,
     for (int i = 0; i < total_len && hpos < (int)sizeof(out->bytes) - 3; i++) {
         if (i > 0) out->bytes[hpos++] = ' ';
         hpos += snprintf(out->bytes + hpos, sizeof(out->bytes) - (size_t)hpos,
-                         "%02X", mem->mem[(unsigned short)(addr + i)]);
+                         "%02X", mem_peek(mem, (unsigned short)(addr + i)));
     }
 
     snprintf(out->mnemonic, sizeof(out->mnemonic), "%s", e->mnemonic);
 
-    unsigned char op1 = (instr_len >= 2) ? mem->mem[(unsigned short)(addr + prefix_len + 1)] : 0;
-    unsigned char op2 = (instr_len >= 3) ? mem->mem[(unsigned short)(addr + prefix_len + 2)] : 0;
+    unsigned char op1 = (instr_len >= 2) ? mem_peek(mem, (unsigned short)(addr + prefix_len + 1)) : 0;
+    unsigned char op2 = (instr_len >= 3) ? mem_peek(mem, (unsigned short)(addr + prefix_len + 2)) : 0;
     unsigned short operand = (unsigned short)(op1 | (op2 << 8));
 
     switch (e->mode) {

@@ -210,7 +210,7 @@ void PaneProfiler::OnPaint(wxPaintEvent& WXUNUSED(event)) {
     }
 
     pdc.SetTextForeground(*wxWHITE);
-    pdc.SetFont(wxFont(8, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    pdc.SetFont(GetFont().Smaller());
     pdc.DrawText("0", lx_abs, ly_abs - 12);
     pdc.DrawText(wxString::Format("%u", m_maxHits), lx_abs + legendWidth - 30, ly_abs - 12);
 }
