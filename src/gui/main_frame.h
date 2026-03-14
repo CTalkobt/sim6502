@@ -4,6 +4,9 @@
 #include <wx/wx.h>
 #include <wx/aui/aui.h>
 #include "sim_api.h"
+#include "pane_base.h"
+#include <vector>
+#include <map>
 
 class MainFrame : public wxFrame {
 public:
@@ -11,6 +14,40 @@ public:
     virtual ~MainFrame();
 
 private:
+    void InitMenuBar();
+    void InitToolBar();
+    void InitStatusBar();
+    void InitPanes();
+
+    void RegisterPane(SimPane* pane, int menu_id, const wxAuiPaneInfo& info);
+    void UpdatePaneVisibility(int menu_id);
+
+    // Event Handlers - Simulation
+    void OnRun(wxCommandEvent& event);
+    void OnPause(wxCommandEvent& event);
+    void OnStepInto(wxCommandEvent& event);
+    void OnStepOver(wxCommandEvent& event);
+    void OnReset(wxCommandEvent& event);
+    void OnToggleBreakpoint(wxCommandEvent& event);
+    void OnStepBack(wxCommandEvent& event);
+    void OnStepForward(wxCommandEvent& event);
+    void OnReverseContinue(wxCommandEvent& event);
+    
+    // Event Handlers - File
+    void OnLoad(wxCommandEvent& event);
+    void OnBrowseLoad(wxCommandEvent& event);
+    void OnSaveBin(wxCommandEvent& event);
+    void OnNewProject(wxCommandEvent& event);
+
+    // Event Handlers - Machine
+    void OnSelectProcessor(wxCommandEvent& event);
+    void OnSelectMachine(wxCommandEvent& event);
+    void OnAddDevice(wxCommandEvent& event);
+
+    // Event Handlers - View
+    void OnGoToAddress(wxCommandEvent& event);
+    void OnTogglePane(wxCommandEvent& event);
+
     void OnTimer(wxTimerEvent& event);
     void OnQuit(wxCommandEvent& event);
     void OnAbout(wxCommandEvent& event);
@@ -18,15 +55,22 @@ private:
     void ApplyTheme();
     void LoadSettings();
     void SaveSettings();
+    void UpdateStatus();
 
     sim_session_t *m_sim;
     wxAuiManager   m_aui;
     wxTimer        m_timer;
+    wxAuiToolBar  *m_toolbar;
+
+    std::map<int, SimPane*> m_panes;
+    std::vector<SimPane*>   m_pane_list;
 
     // Settings
     int   m_base_font_size;
     int   m_theme; // 0=Dark, 1=Light, 2=Auto
     float m_ui_scale;
+    bool  m_running;
+    bool  m_initial_layout_done;
 
     wxDECLARE_EVENT_TABLE();
 };

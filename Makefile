@@ -158,7 +158,8 @@ $(GUI_TARGET): src/gui/main.o $(LIB_TARGET) $(IMGUI_OBJS)
 # --- wxWidgets GUI ---
 GUI_WX_SRCS = \
 	src/gui/app.cpp \
-	src/gui/main_frame.cpp
+	src/gui/main_frame.cpp \
+	src/gui/main_frame_menus.cpp
 
 GUI_WX_OBJS = $(GUI_WX_SRCS:.cpp=.o)
 
