@@ -530,17 +530,19 @@ static bool process_single_command(const std::string& line,
         cpu->reset(); if (*p_cpu_type == CPU_45GS02) cpu->set_flag(FLAG_E, 1);
         if (g_json_mode) json_ok("reset"); else printf("Reset.\n");
     } else if (cmd == "processors") {
-        if (g_json_mode) printf("{\"cmd\":\"processors\",\"ok\":true,\"data\":{\"processors\":[\"6502\",\"65c02\",\"65ce02\",\"45gs02\"]}}\n");
+        if (g_json_mode) printf("{\"cmd\":\"processors\",\"ok\":true,\"data\":{\"processors\":[\"6502\",\"6502-undoc\",\"65c02\",\"65ce02\",\"45gs02\"]}}\n");
         else list_processors();
     } else if (cmd == "processor") {
         char type[16]; if (sscanf(line.c_str(), "%*s %15s", type) == 1) {
-            if      (strcmp(type, "6502") == 0)   *p_cpu_type = CPU_6502;
-            else if (strcmp(type, "65c02") == 0)  *p_cpu_type = CPU_65C02;
-            else if (strcmp(type, "65ce02") == 0) *p_cpu_type = CPU_65CE02;
-            else if (strcmp(type, "45gs02") == 0) *p_cpu_type = CPU_45GS02;
+            if      (strcmp(type, "6502") == 0)       *p_cpu_type = CPU_6502;
+            else if (strcmp(type, "6502-undoc") == 0) *p_cpu_type = CPU_6502_UNDOCUMENTED;
+            else if (strcmp(type, "65c02") == 0)      *p_cpu_type = CPU_65C02;
+            else if (strcmp(type, "65ce02") == 0)     *p_cpu_type = CPU_65CE02;
+            else if (strcmp(type, "45gs02") == 0)     *p_cpu_type = CPU_45GS02;
             dispatch_table_t *dt = cpu->dispatch_table();
             memset(dt, 0, sizeof(dispatch_table_t));
             dispatch_build(dt, opcodes_6502,   OPCODES_6502_COUNT,   *p_cpu_type);
+            if (*p_cpu_type == CPU_6502_UNDOCUMENTED) dispatch_build(dt, opcodes_6502_undoc, OPCODES_6502_UNDOC_COUNT, *p_cpu_type);
             if (*p_cpu_type >= CPU_65C02)  dispatch_build(dt, opcodes_65c02,   OPCODES_65C02_COUNT,   *p_cpu_type);
             if (*p_cpu_type >= CPU_65CE02) dispatch_build(dt, opcodes_65ce02,  OPCODES_65CE02_COUNT,  *p_cpu_type);
             if (*p_cpu_type >= CPU_45GS02) dispatch_build(dt, opcodes_45gs02,  OPCODES_45GS02_COUNT,  *p_cpu_type);
@@ -648,14 +650,14 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
     }
 }
 
-void list_processors(void) { printf("Available Processors: 6502, 65c02, 65ce02, 45gs02\n"); }
+void list_processors(void) { printf("Available Processors: 6502, 6502-undoc, 65c02, 65ce02, 45gs02\n"); }
 void list_opcodes(cpu_type_t type) { (void)type; printf("Opcode listing not implemented in CLI helpers yet.\n"); }
 
 void print_help(const char *progname) {
     printf("6502 Simulator v0.99\nUsage: %s [options] <file.asm>\n\n", progname);
     printf("Options:\n"
            "  -M, --machine <TYPE> Select machine: raw6502, c64, c128, mega65, x16\n"
-           "  -p, --processor <CPU> Select processor: 6502, 65c02, 65ce02, 45gs02\n"
+           "  -p, --processor <CPU> Select processor: 6502, 6502-undoc, 65c02, 65ce02, 45gs02\n"
            "  -I        Interactive mode\n"
            "  -J        JSON output mode (use with -I)\n"
            "  -l        List processors\n"

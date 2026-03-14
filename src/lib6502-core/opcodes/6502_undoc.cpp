@@ -99,15 +99,6 @@ static void ins_zp(CPU *cpu, memory_t *mem, unsigned short arg) {
 	cpu->pc += 2;
 }
 
-static void asr_imm(CPU *cpu, memory_t *mem, unsigned short arg) {
-    (void)mem;
-	cpu->a &= arg & 0xFF;
-	cpu->set_flag(FLAG_C, cpu->a & 0x01);
-	cpu->a >>= 1;
-	cpu->update_nz(cpu->a);
-	cpu->pc += 2;
-}
-
 static void arr_imm(CPU *cpu, memory_t *mem, unsigned short arg) {
     (void)mem;
 	cpu->a &= arg & 0xFF;
@@ -293,7 +284,6 @@ opcode_handler_t opcodes_6502_undoc[] = {
 	{"DCM", MODE_ZP, dcm_zp, 5, 0, 0, 0, {0xC7}, 1},
 	{"INS", MODE_ABSOLUTE, ins_abs, 6, 0, 0, 0, {0xEF}, 1},
 	{"INS", MODE_ZP, ins_zp, 5, 0, 0, 0, {0xE7}, 1},
-	{"ASR", MODE_IMMEDIATE, asr_imm, 2, 0, 0, 0, {0x4B}, 1},
 	{"ARR", MODE_IMMEDIATE, arr_imm, 2, 0, 0, 0, {0x6B}, 1},
 	{"ALR", MODE_IMMEDIATE, alr_imm, 2, 0, 0, 0, {0x4B}, 1},
 	{"ANC", MODE_IMMEDIATE, anc_imm, 2, 0, 0, 0, {0x0B}, 1},
