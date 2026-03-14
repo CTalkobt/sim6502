@@ -1,11 +1,24 @@
 #include "CommandRegistry.h"
 #include "StepCmd.h"
+#include "NextCmd.h"
+#include "FinishCmd.h"
+#include "HistoryCmd.h"
 #include "BreakCmd.h"
 #include "EnvCmd.h"
 #include "DevicesCmd.h"
 
 CommandRegistry::CommandRegistry() {
     registerCommand(std::make_unique<StepCmd>());
+    registerCommand(std::make_unique<NextCmd>());
+    registerCommand(std::make_unique<FinishCmd>());
+    
+    auto hist = std::make_unique<HistoryCmd>();
+    commands["sb"] = std::move(hist);
+    registerCommand(std::make_unique<HistoryCmd>()); // registers as "history"
+    
+    auto sf = std::make_unique<HistoryCmd>();
+    commands["sf"] = std::move(sf);
+
     registerCommand(std::make_unique<BreakCmd>());
     registerCommand(std::make_unique<EnvCmd>());
     registerCommand(std::make_unique<DevicesCmd>());

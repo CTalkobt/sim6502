@@ -200,9 +200,7 @@ sim_session_t *sim_create(const char *processor) {
 
 void sim_destroy(sim_session_t *s) {
     if (!s) return;
-    for (int i = 0; i < FAR_NUM_PAGES; i++) {
-        if (s->mem.far_pages[i]) { free(s->mem.far_pages[i]); s->mem.far_pages[i] = NULL; }
-    }
+    mem_free_far_pages(&s->mem);
     delete s->debug_ctx;
     for (auto h : s->dynamic_handlers) delete h;
     if (s->mem.io_registry) delete s->mem.io_registry;
@@ -220,7 +218,7 @@ static void binary_load_common(sim_session_t *s, uint16_t load_addr, int byte_co
     s->cpu->reset();
     s->cpu->pc    = load_addr;
     s->start_addr = load_addr;
-    s->load_size  = (unsigned short)(byte_count > 0xFFFF ? 0xFFFF : byte_count);
+    s->load_size  = (unsigned short)(byte_count > 0xFFFF ? 0xFFFF : (byte_count < 0 ? 0 : byte_count));
     if (s->cpu_type == CPU_45GS02) s->cpu->set_flag( FLAG_E, 1);
     s->state = SIM_READY;
 }
@@ -249,6 +247,7 @@ int sim_load_asm(sim_session_t *s, const char *path) {
 
     /* Reset session state */
     IORegistry *old_registry = s->mem.io_registry;
+    mem_free_far_pages(&s->mem);
     memset(&s->mem, 0, sizeof(s->mem));
     s->mem.io_registry = old_registry;
     s->cpu->mem = &s->mem;
@@ -270,7 +269,9 @@ int sim_load_asm(sim_session_t *s, const char *path) {
         symbol_lookup_name(&s->symbols, "main", &start_addr);
         if (start_addr == (unsigned short)bundle_load_addr) symbol_lookup_name(&s->symbols, "start", &start_addr);
 
-        binary_load_common(s, start_addr, 0); /* load_size will be updated if we knew it */
+        // We don't have exact byte count from load_toolchain_bundle easily,
+        // but it loaded a PRG/BIN. We'll set a placeholder or find it from symbols.
+        binary_load_common(s, start_addr, 0); 
         return 0;
     }
     
@@ -283,6 +284,7 @@ int sim_load_bin(sim_session_t *s, const char *path, uint16_t load_addr)
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
     IORegistry *old_registry = s->mem.io_registry;
+    mem_free_far_pages(&s->mem);
     memset(&s->mem, 0, sizeof(s->mem));
     s->mem.io_registry = old_registry;
     machine_init_hardware(s);
@@ -313,6 +315,7 @@ int sim_load_prg(sim_session_t *s, const char *path, uint16_t override_addr)
         ? override_addr
         : (uint16_t)((unsigned)lo | ((unsigned)hi << 8));
     IORegistry *old_registry = s->mem.io_registry;
+    mem_free_far_pages(&s->mem);
     memset(&s->mem, 0, sizeof(s->mem));
     s->mem.io_registry = old_registry;
     machine_init_hardware(s);
@@ -415,6 +418,58 @@ int sim_step(sim_session_t *s, int count) {
     return 0;
 }
 
+int sim_step_over(sim_session_t *s) {
+    if (!s || s->state == SIM_IDLE || s->state == SIM_FINISHED) return -1;
+    
+    unsigned char opc = mem_read(&s->mem, s->cpu->pc);
+    const dispatch_entry_t *te = peek_dispatch(s->cpu, &s->mem, s->cpu->dispatch_table(), s->cpu_type);
+    
+    bool is_jsr = (opc == 0x20); // Standard JSR abs
+    if (!is_jsr && te && te->mnemonic) {
+        if (strcmp(te->mnemonic, "JSR") == 0 || strcmp(te->mnemonic, "BSR") == 0) {
+            is_jsr = true;
+        }
+    }
+    
+    if (is_jsr && te) {
+        char dummy[128];
+        int instr_bytes = disasm_one(&s->mem, s->cpu->dispatch_table(), s->cpu_type, s->cpu->pc, dummy, sizeof(dummy));
+        uint16_t next_pc = (uint16_t)(s->cpu->pc + instr_bytes);
+        sim_break_set(s, next_pc, NULL);
+        
+        while (1) {
+            int ev = sim_step(s, 1);
+            if (ev != 0) {
+                sim_break_clear(s, next_pc);
+                return ev;
+            }
+            if (s->cpu->pc == next_pc) {
+                sim_break_clear(s, next_pc);
+                return 0;
+            }
+        }
+    } else {
+        return sim_step(s, 1);
+    }
+}
+
+int sim_step_out(sim_session_t *s) {
+    if (!s || s->state == SIM_IDLE || s->state == SIM_FINISHED) return -1;
+    
+    uint16_t sp = s->cpu->s;
+    uint8_t lo = mem_read(&s->mem, (uint16_t)(0x0100 + ((sp + 1) & 0xFF)));
+    uint8_t hi = mem_read(&s->mem, (uint16_t)(0x0100 + ((sp + 2) & 0xFF)));
+    uint16_t return_addr = (uint16_t)((hi << 8) | lo) + 1;
+    
+    if (return_addr == 1) return -1; // Empty stack
+    
+    while (1) {
+        int ev = sim_step(s, 1);
+        if (ev != 0) return ev;
+        if (s->cpu->pc == return_addr) return 0;
+    }
+}
+
 int sim_step_cycles(sim_session_t *s, unsigned long max_cycles) {
     if (!s || s->state == SIM_IDLE || s->state == SIM_FINISHED) return -1;
     unsigned long start = s->cpu->cycles;
@@ -451,7 +506,6 @@ void sim_reset(sim_session_t *s) {
 
 int sim_disassemble_one(sim_session_t *s, uint16_t addr, char *buf, size_t len) {
     if (!s || !buf || len == 0) return 1;
-    if (s->state == SIM_IDLE) { snprintf(buf, len, "%04X: --", addr); return 1; }
     return disasm_one(&s->mem, s->cpu->dispatch_table(), s->cpu_type, addr, buf, (int)len);
 }
 

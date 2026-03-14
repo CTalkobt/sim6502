@@ -40,4 +40,9 @@ unsigned char far_mem_read(memory_t *m, unsigned int addr);
  */
 void far_mem_write(memory_t *m, unsigned int addr, unsigned char val);
 
+/**
+ * Free all allocated far memory pages.
+ */
+void mem_free_far_pages(memory_t *mem);
+
 #endif // MEMORY_H

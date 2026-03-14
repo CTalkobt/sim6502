@@ -52,6 +52,8 @@ void sim_get_load_info(sim_session_t *s, uint16_t *addr_out, uint16_t *size_out)
 
 /* Execution control */
 int sim_step(sim_session_t *s, int count);
+int sim_step_over(sim_session_t *s);
+int sim_step_out(sim_session_t *s);
 int sim_step_cycles(sim_session_t *s, unsigned long max_cycles);
 void sim_reset(sim_session_t *s);
 

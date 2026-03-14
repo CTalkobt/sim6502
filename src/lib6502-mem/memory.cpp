@@ -83,3 +83,13 @@ void far_mem_write(memory_t *m, unsigned int addr, unsigned char val) {
 	}
 	mem_write_phys(m, addr, val);
 }
+
+void mem_free_far_pages(memory_t *mem) {
+    if (!mem) return;
+    for (int i = 0; i < FAR_NUM_PAGES; i++) {
+        if (mem->far_pages[i]) {
+            free(mem->far_pages[i]);
+            mem->far_pages[i] = NULL;
+        }
+    }
+}

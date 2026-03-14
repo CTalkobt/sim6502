@@ -5,6 +5,7 @@
 #include "device/vic2.h"
 #include "device/sid_io.h"
 #include "patterns.h"
+#include "metadata.h"
 #include "commands/CommandRegistry.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,7 +63,7 @@ void cli_hist_push(const CPUState *pre, const memory_t *mem) {
     if (s_cli_hist_count < CLI_HIST_CAP) s_cli_hist_count++;
 }
 
-static int cli_hist_step_back(cpu_t *cpu, memory_t *mem) {
+int cli_hist_step_back(cpu_t *cpu, memory_t *mem) {
     if (s_cli_hist_pos >= s_cli_hist_count) return 0;
     int idx = ((s_cli_hist_write - 1 - s_cli_hist_pos) % CLI_HIST_CAP + CLI_HIST_CAP) % CLI_HIST_CAP;
     cli_hist_entry_t *e = &s_cli_hist[idx];
@@ -73,7 +74,7 @@ static int cli_hist_step_back(cpu_t *cpu, memory_t *mem) {
     return 1;
 }
 
-static int cli_hist_step_fwd(cpu_t *cpu, memory_t *mem, dispatch_table_t *dt, cpu_type_t cpu_type) {
+int cli_hist_step_fwd(cpu_t *cpu, memory_t *mem, dispatch_table_t *dt, cpu_type_t cpu_type) {
     (void)dt; (void)cpu_type;
     if (s_cli_hist_pos == 0) return 0;
     int idx = ((s_cli_hist_write - s_cli_hist_pos) % CLI_HIST_CAP + CLI_HIST_CAP) % CLI_HIST_CAP;
@@ -354,13 +355,92 @@ static std::vector<std::string> split_line(const std::string& line) {
     return args;
 }
 
+static bool handle_manual_execution(const std::string& line, CPU *cpu, memory_t *mem, cpu_type_t cpu_type) {
+    if (line.size() < 2) return true;
+    std::string instr = line.substr(1);
+    
+    // 1. Create a temporary .asm file
+    char tmp_asm[] = "manual_exec.asm";
+    char tmp_prg[] = "manual_exec.prg";
+    FILE *f = fopen(tmp_asm, "w");
+    if (!f) return true;
+    
+    // Add CPU directive to match current type
+    const char *cpu_dir = "_6502";
+    if (cpu_type == CPU_65C02) cpu_dir = "_65c02";
+    else if (cpu_type == CPU_65CE02) cpu_dir = "_65ce02";
+    else if (cpu_type == CPU_45GS02) cpu_dir = "_45gs02";
+    
+    fprintf(f, ".cpu %s\n", cpu_dir);
+    fprintf(f, "* = $FF00\n"); // Use a safe high memory area for temporary execution
+    fprintf(f, "%s\n", instr.c_str());
+    fclose(f);
+    
+    // 2. Assemble using KickAssembler
+    char cmd[1024];
+    char tmp_err[] = "manual_exec.err";
+    snprintf(cmd, sizeof(cmd), "java -jar tools/KickAss65CE02.jar %s -o %s > %s 2>&1", tmp_asm, tmp_prg, tmp_err);
+    int rc = system(cmd);
+    
+    if (rc == 0) {
+        // 3. Load the assembled bytes into memory
+        int load_addr = 0;
+        int size = load_prg(mem, tmp_prg, &load_addr);
+        if (size > 0) {
+            uint16_t old_pc = cpu->pc;
+            cpu->pc = (uint16_t)load_addr;
+            
+            // Execute until PC reaches load_addr + size
+            while (cpu->pc < load_addr + size) {
+                cpu->step();
+            }
+            
+            cpu->pc = old_pc; // Restore PC
+            if (g_json_mode) json_exec_result("exec", "ok", cpu);
+            else {
+                printf("Executed: %s  (Registers updated, PC preserved)\n", instr.c_str());
+                printf("REGS A=%02X X=%02X Y=%02X S=%04X P=%02X PC=%04X Cycles=%lu\n", 
+                       cpu->a, cpu->x, cpu->y, cpu->s, cpu->p, cpu->pc, cpu->cycles);
+            }
+        }
+    } else {
+        if (g_json_mode) json_err("exec", "Assembly failed");
+        else {
+            printf("Error: Assembly failed for '%s'\n", instr.c_str());
+            FILE *ef = fopen(tmp_err, "r");
+            if (ef) {
+                char ebuf[512];
+                while (fgets(ebuf, sizeof(ebuf), ef)) {
+                    printf("  %s", ebuf);
+                }
+                fclose(ef);
+            }
+        }
+    }
+    
+    remove(tmp_asm);
+    remove(tmp_prg);
+    remove(tmp_err);
+    return true;
+}
+
 static bool process_single_command(const std::string& line,
                                   CommandRegistry& registry,
                                   CPU *cpu, memory_t *mem,
                                   cpu_type_t *p_cpu_type,
                                   breakpoint_list_t *breakpoints,
                                   symbol_table_t *symbols) {
-    std::vector<std::string> args = split_line(line);
+    // Trim leading/trailing whitespace and newlines
+    std::string trimmed = line;
+    size_t first = trimmed.find_first_not_of(" \t\r\n");
+    if (std::string::npos == first) return true; // empty line
+    size_t last = trimmed.find_last_not_of(" \t\r\n");
+    trimmed = trimmed.substr(first, (last - first + 1));
+
+    if (trimmed[0] == '.') {
+        return handle_manual_execution(trimmed, cpu, mem, *p_cpu_type);
+    }
+    std::vector<std::string> args = split_line(trimmed);
     if (args.empty()) {
         int tr = handle_trap_local(symbols, cpu, mem);
         if (tr == 0) { 

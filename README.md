@@ -386,11 +386,31 @@ This allows any external toolchain to annotate `.prg`/`.bin` files with `.inspec
 
 Enter the monitor with `-I`. Pressing Enter on a blank line executes a single step.
 
+### Manual Instruction Execution
+
+In addition to monitor commands, you can execute individual assembler statements directly by prefixing them with a **dot (`.`)**.
+
+This is useful for modifying state or testing snippets without advancing the Program Counter of the program you are debugging. The simulator assembles the instruction in the background, executes it, and then restores the original PC.
+
+```bash
+> .lda #$FF
+Executed: lda #$FF  (Registers updated, PC preserved)
+REGS A=FF X=00 Y=00 S=01FF P=22 PC=0200 Cycles=12
+
+> .tax
+Executed: tax  (Registers updated, PC preserved)
+REGS A=FF X=FF Y=00 S=01FF P=22 PC=0200 Cycles=14
+```
+
+Registers are automatically displayed after each manual execution.
+
 ### Commands
 
 | Command | Description |
 |---------|-------------|
 | `step [n]` | Execute `n` instructions (default 1) |
+| `next` | Step over subroutine calls |
+| `finish` | Run until current subroutine returns |
 | `stepback` / `sb` | Step backward 1 instruction in history |
 | `stepfwd` / `sf` | Step forward (re-execute) in history |
 | `run` | Run until top-level RTS, STP, or a breakpoint |
@@ -570,4 +590,4 @@ The engine is split into focused static libraries that are linked into a single 
 
 Proprietary — see `LICENSE`. Will move to open source at a future date.
 
-**Last Updated**: 2026-03-13
+**Last Updated**: 2026-03-14

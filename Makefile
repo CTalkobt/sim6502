@@ -95,6 +95,9 @@ src/sim_api.o: src/sim_api.cpp
 # --- CLI Frontend ---
 CLI_COMMANDS_SRCS = \
 	src/cli/commands/StepCmd.cpp \
+	src/cli/commands/NextCmd.cpp \
+	src/cli/commands/FinishCmd.cpp \
+	src/cli/commands/HistoryCmd.cpp \
 	src/cli/commands/BreakCmd.cpp \
 	src/cli/commands/EnvCmd.cpp \
 	src/cli/commands/DevicesCmd.cpp \
