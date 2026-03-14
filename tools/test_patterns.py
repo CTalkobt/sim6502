@@ -336,7 +336,7 @@ def build_asm(pattern_body, routine_name, setup, result_to_regs, proc="6502"):
         f"    {setup.replace(chr(10), chr(10) + '    ')}\n"
         f"    jsr {routine_name}\n"
         f"    {result_to_regs.replace(chr(10), chr(10) + '    ')}\n"
-        f"    brk\n"
+        f"    rts\n"
     )
 
 
