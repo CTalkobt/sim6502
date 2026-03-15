@@ -306,26 +306,26 @@ Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx
 
 ### Phase I — Cleanup & Build Finalisation
 
-- [ ] **Remove ImGui sources and build rules.**
+- [X] **Remove ImGui sources and build rules.**
   Delete `src/gui/imgui/` directory and all ImGui-related Makefile variables
   (`IMGUI_DIR`, `IMGUI_BACK`, `IMGUI_SRCS`, `IMGUI_OBJS`, the auto-clone recipe).
   Remove `src/gui/imgui_filedlg.h`.
 
-- [ ] **Remove SDL2 / OpenGL from GUI build.**
+- [X] **Remove SDL2 / OpenGL from GUI build.**
   Remove `SDL2_CFLAGS`, `SDL2_LIBS`, `GL_LIBS` from the `gui` Makefile target
   (retain only for `wxGLCanvas` linkage if OpenGL is still needed; `wx-config --libs`
   covers this when `wxGLCanvas` is enabled).
 
-- [ ] **Validate `src/gui/main.cpp` is fully replaced.**
+- [X] **Validate `src/gui/main.cpp` is fully replaced.**
   The original monolithic file should be deleted once all 21 panes and the app
   bootstrap are accounted for in the new split files.
 
-- [ ] **API surface review.**
+- [X] **API surface review.**
   Any simulator state currently accessed via static globals or internal casts in
   `main.cpp` must be surfaced through new or existing `sim_api.h` calls. Document any
   additions to `sim_api.h` and corresponding `sim_api.cpp` implementations.
 
-- [ ] **`make test` regression.**
+- [X] **`make test` regression.**
   The CLI (`sim6502`) must continue to pass `make test` (runs `tools/run_tests.py`) and
   `make unit-test` without change. The GUI build must not alter `libsim6502.a` 
   contents or CLI linkage.
