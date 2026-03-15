@@ -166,7 +166,7 @@ GUI_SRCS = \
 	src/gui/pane_vic_sprites.cpp \
 	src/gui/pane_vic_regs.cpp \
 	src/gui/pane_sid_debugger.cpp \
-	src/gui/pane_audio_mixer.cpp
+	src/gui/pane_audio_mixer.cpp \
 
 GUI_OBJS = $(GUI_SRCS:.cpp=.o)
 GUI_TARGET = sim6502-gui
