@@ -16,12 +16,9 @@ private:
     void OnDelete(wxCommandEvent& event);
     void OnClearAll(wxCommandEvent& event);
     void OnItemActivated(wxListEvent& event);
-<<<<<<< HEAD
     void OnItemSelected(wxListEvent& event);
     void OnItemChecked(wxListEvent& event);
     void OnItemUnchecked(wxListEvent& event);
-=======
->>>>>>> e01e3fe (Debugging Panes)
 
     wxListCtrl* m_list;
 };
