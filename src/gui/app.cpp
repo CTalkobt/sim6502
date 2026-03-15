@@ -83,3 +83,4 @@ bool Sim6502App::OnCmdLineParsed(wxCmdLineParser& parser) {
     m_debug = parser.Found("debug");
     return true;
 }
+

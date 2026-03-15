@@ -200,6 +200,7 @@ void PaneVICScreen::OnPaint(wxPaintEvent& WXUNUSED(event)) {
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
+    glViewport(0, 0, m_canvas->GetSize().x, m_canvas->GetSize().y);
 
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, m_texture);
