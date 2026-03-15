@@ -40,18 +40,18 @@ same boundary used by the CLI and MCP server.
 **Goal:** Get a bare wx app compiling and linking against `libsim6502.a`, replacing the
 SDL2/OpenGL boilerplate in `main()`.
 
-- [ ] **Makefile: wxWidgets build target.**
+- [X] **Makefile: wxWidgets build target.**
   Add a `gui-wx` (or replace `gui`) Makefile target using `wx-config --cflags` and
   `wx-config --libs` in place of the current `SDL2_CFLAGS` / `SDL2_LIBS` / `GL_LIBS`
   variables. Remove the ImGui auto-clone recipe (`$(IMGUI_DIR)/imgui.h`) once migration
   is complete. Retain `libsim6502.a` as the only simulator dependency.
 
-- [ ] **`src/gui/app.h` / `src/gui/app.cpp` — `wxApp` subclass.**
+- [X] **`src/gui/app.h` / `src/gui/app.cpp` — `wxApp` subclass.**
   Implement `Sim6502App : public wxApp` with `OnInit()` / `OnExit()`. `OnInit()`
   creates the `MainFrame`, calls `Show()`, starts the simulation idle timer. Replaces
   the SDL `main()` entry point in `src/gui/main.cpp`.
 
-- [ ] **`src/gui/main_frame.h` / `src/gui/main_frame.cpp` — top-level `wxFrame`.**
+- [X] **`src/gui/main_frame.h` / `src/gui/main_frame.cpp` — top-level `wxFrame`.**
   `MainFrame : public wxFrame` owns the `sim_session_t *` handle (currently
   `g_sim` static global in `main.cpp`). Responsible for:
   - calling `sim_open()` / `sim_close()` on construction/destruction.
@@ -60,7 +60,7 @@ SDL2/OpenGL boilerplate in `main()`.
     `execute_steps()` call).
   - owning the status bar (processor mode, cycle count, run state).
 
-- [ ] **Theme / DPI / font initialisation.**
+- [X] **Theme / DPI / font initialisation.**
   The current code in `main.cpp` reads `SIM6502_SCALE`, `GDK_SCALE`, `QT_SCALE_FACTOR`
   and GTK/GNOME/KDE dark-mode hints to set up ImGui's font and color scheme. Port this
   logic to `MainFrame::ApplyTheme()` using `wxSystemSettings::GetColour()` and
@@ -75,7 +75,7 @@ SDL2/OpenGL boilerplate in `main()`.
 **Goal:** Replace the ImGui menu bar (currently rendered at `main.cpp:5573`) with a
 full native menu bar, toolbar, and status bar.
 
-- [ ] **`src/gui/main_frame_menus.cpp` — menu bar construction.**
+- [X] **`src/gui/main_frame_menus.cpp` — menu bar construction.**
   Build `wxMenuBar` from the existing five top-level menus:
   - *File*: New Project, Load (Ctrl+L), Browse to Load, Save Binary/PRG, Quit (Alt+F4).
   - *Simulation*: Step Into (F7), Step Over (F8), Run (F5), Pause (F6), Reset (Ctrl+R),
@@ -91,12 +91,12 @@ full native menu bar, toolbar, and status bar.
   Bind each item to a `wxCommandEvent` handler. Accelerator table replaces ImGui's
   inline `IsKeyPressed()` polling scattered through `main.cpp`.
 
-- [ ] **Native toolbar.**
+- [X] **Native toolbar.**
   `wxAuiToolBar` with icons for: Load, Step Into, Step Over, Run, Pause, Reset,
   Toggle Breakpoint. Add a processor/machine combo selector to the toolbar's right end
   (currently a dropdown in the Machine menu rendered inside the ImGui menu bar area).
 
-- [ ] **Status bar.**
+- [X] **Status bar.**
   Three-field `wxStatusBar`: [Run State | Processor | Cycles]. Update from the
   simulation tick timer.
 
@@ -107,14 +107,14 @@ full native menu bar, toolbar, and status bar.
 **Goal:** Replace ImGui's docking system with `wxAUI`, giving each of the 21 panes
 a proper `wxPanel`-derived host, and restoring docked layout from `wxConfig`.
 
-- [ ] **`wxAuiManager` integration in `MainFrame`.**
+- [X] **`wxAuiManager` integration in `MainFrame`.**
   Call `m_aui.SetManagedWindow(this)` in `MainFrame::OnInit()`. Register each pane
   panel with `wxAuiPaneInfo` (caption, dock direction, initial size, floatable,
   closable). Persist layout via `m_aui.SavePerspective()` / `LoadPerspective()` stored
   in `wxConfig`. Replaces ImGui's `DockSpace` and per-pane `SetNextWindowSize` /
   `ImGui::Begin()` calls.
 
-- [ ] **`src/gui/pane_base.h` — `SimPane` base class.**
+- [X] **`src/gui/pane_base.h` — `SimPane` base class.**
   `SimPane : public wxPanel` takes a `sim_session_t *` reference and provides:
   - `virtual void Refresh(const SimSnapshot &snap)` — called every tick with current
     CPU/memory state (struct to be defined; wraps the existing `sim_get_cpu()` /
@@ -122,11 +122,11 @@ a proper `wxPanel`-derived host, and restoring docked layout from `wxConfig`.
   - `virtual wxString GetPaneTitle() const = 0`.
   All 21 pane classes derive from `SimPane`.
 
-- [ ] **View menu ↔ pane visibility binding.**
+- [X] **View menu ↔ pane visibility binding.**
   Each View menu item calls `m_aui.GetPane(panel).Show(visible)` and
   `m_aui.Update()`. Replaces the per-pane `show_*` boolean globals in `main.cpp`.
 
-- [ ] **Layout Preset save/restore.**
+- [X] **Layout Preset save/restore.**
   Implement the "Save Layout Preset" and preset-load items using named perspectives
   in `wxConfig`, replacing the ImGui modal "Save Layout Preset##lsp" and the
   `g_layout_presets` vector in `main.cpp`.
@@ -138,14 +138,14 @@ a proper `wxPanel`-derived host, and restoring docked layout from `wxConfig`.
 **Goal:** Re-implement the four primary debugger panes using native wx controls,
 improving accessibility, keyboard navigation, and OS clipboard integration.
 
-- [ ] **`src/gui/pane_registers.cpp` — Registers pane.**
+- [X] **`src/gui/pane_registers.cpp` — Registers pane.**
   Replace `draw_pane_registers()`. Use a `wxListCtrl` (report view) with columns:
   Register | Value | Previous | Flags. Highlight changed registers with a coloured
   background (currently `text_changed` colour in `AppColors`). Inline editing via
   `wxListCtrl::EditLabel` or a secondary `wxTextCtrl` for register write-back through
   `sim_set_register()`.
 
-- [ ] **`src/gui/pane_disassembly.cpp` — Disassembly pane.**
+- [X] **`src/gui/pane_disassembly.cpp` — Disassembly pane.**
   Replace `draw_pane_disassembly()`. Virtual `wxListCtrl` (owner-drawn rows) for
   efficient rendering of large address ranges without pre-allocating all rows. Columns:
   Breakpoint gutter (toggle on click → `sim_break_set()`) | Address | Bytes | Mnemonic
@@ -153,14 +153,14 @@ improving accessibility, keyboard navigation, and OS clipboard integration.
   mnemonics (currently `AppColors::mnemonic`) and symbol labels. "Go to Address" via
   `wxTextEntryDialog` replacing the ImGui popup "Go to Address##goto".
 
-- [ ] **`src/gui/pane_memory.cpp` — Memory pane (up to 4 instances).**
+- [X] **`src/gui/pane_memory.cpp` — Memory pane (up to 4 instances).**
   Replace `draw_pane_memory()`. Implement a hex-editor-style `wxScrolledWindow` with
   owner-drawn cells: 16 bytes/row, address column, hex columns, ASCII column. Support
   up to 4 independent instances (each with its own base address) matching current
   `g_mem_view[]` array. Byte editing writes through `sim_mem_write_byte()`. Address
   search via toolbar `wxTextCtrl`.
 
-- [ ] **`src/gui/pane_console.cpp` — Console pane.**
+- [X] **`src/gui/pane_console.cpp` — Console pane.**
   Replace `draw_pane_console()`. Pair a read-only `wxTextCtrl` (output log, coloured
   by `wxTextAttr`) with an input `wxTextCtrl` for command entry. Command history
   navigation on Up/Down keys (currently `g_cli_history` in `main.cpp`). Pass entered

@@ -1,6 +1,10 @@
 #include "main_frame.h"
 #include "gui_ids.h"
 #include "pane_generic.h"
+#include "pane_registers.h"
+#include "pane_disassembly.h"
+#include "pane_memory.h"
+#include "pane_console.h"
 #include <wx/statusbr.h>
 #include <wx/msgdlg.h>
 #include <wx/settings.h>
@@ -80,14 +84,14 @@ MainFrame::~MainFrame() {
 }
 
 void MainFrame::InitPanes() {
-    RegisterPane(new GenericSimPane(this, m_sim, "Registers", "Registers"), ID_VIEW_PANE_REGISTERS, wxAuiPaneInfo().Name("Registers").Caption("Registers").Left().Position(0));
-    RegisterPane(new GenericSimPane(this, m_sim, "Disassembly", "Disassembly"), ID_VIEW_PANE_DISASSEMBLY, wxAuiPaneInfo().Name("Disassembly").Caption("Disassembly").CenterPane());
-    RegisterPane(new GenericSimPane(this, m_sim, "Console", "Console"), ID_VIEW_PANE_CONSOLE, wxAuiPaneInfo().Name("Console").Caption("Console").Bottom().Position(0));
+    RegisterPane(new PaneRegisters(this, m_sim), ID_VIEW_PANE_REGISTERS, wxAuiPaneInfo().Name("Registers").Caption("Registers").Left().Position(0));
+    RegisterPane(new PaneDisassembly(this, m_sim), ID_VIEW_PANE_DISASSEMBLY, wxAuiPaneInfo().Name("Disassembly").Caption("Disassembly").CenterPane());
+    RegisterPane(new PaneConsole(this, m_sim), ID_VIEW_PANE_CONSOLE, wxAuiPaneInfo().Name("Console").Caption("Console").Bottom().Position(0));
 
-    RegisterPane(new GenericSimPane(this, m_sim, "Memory 1", "Memory1"), ID_VIEW_PANE_MEMORY_1, wxAuiPaneInfo().Name("Memory1").Caption("Memory 1").Right().Position(0).Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "Memory 2", "Memory2"), ID_VIEW_PANE_MEMORY_2, wxAuiPaneInfo().Name("Memory2").Caption("Memory 2").Right().Position(1).Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "Memory 3", "Memory3"), ID_VIEW_PANE_MEMORY_3, wxAuiPaneInfo().Name("Memory3").Caption("Memory 3").Right().Position(2).Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "Memory 4", "Memory4"), ID_VIEW_PANE_MEMORY_4, wxAuiPaneInfo().Name("Memory4").Caption("Memory 4").Right().Position(3).Hide());
+    RegisterPane(new PaneMemory(this, m_sim, 0), ID_VIEW_PANE_MEMORY_1, wxAuiPaneInfo().Name("Memory1").Caption("Memory 1").Right().Position(0).Hide());
+    RegisterPane(new PaneMemory(this, m_sim, 1), ID_VIEW_PANE_MEMORY_2, wxAuiPaneInfo().Name("Memory2").Caption("Memory 2").Right().Position(1).Hide());
+    RegisterPane(new PaneMemory(this, m_sim, 2), ID_VIEW_PANE_MEMORY_3, wxAuiPaneInfo().Name("Memory3").Caption("Memory 3").Right().Position(2).Hide());
+    RegisterPane(new PaneMemory(this, m_sim, 3), ID_VIEW_PANE_MEMORY_4, wxAuiPaneInfo().Name("Memory4").Caption("Memory 4").Right().Position(3).Hide());
 
     RegisterPane(new GenericSimPane(this, m_sim, "Breakpoints", "Breakpoints"), ID_VIEW_PANE_BREAKPOINTS, wxAuiPaneInfo().Name("Breakpoints").Caption("Breakpoints").Bottom().Position(1).Hide());
     RegisterPane(new GenericSimPane(this, m_sim, "Trace Log", "TraceLog"), ID_VIEW_PANE_TRACE, wxAuiPaneInfo().Name("TraceLog").Caption("Trace Log").Bottom().Position(2).Hide());

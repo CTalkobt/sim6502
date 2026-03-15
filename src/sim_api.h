@@ -58,7 +58,17 @@ int sim_step_cycles(sim_session_t *s, unsigned long max_cycles);
 void sim_reset(sim_session_t *s);
 
 /* Disassembler */
+typedef struct {
+    unsigned short address;
+    int            size;        /* total bytes consumed (prefix + opcode + operand) */
+    char           bytes[24];   /* hex byte string, e.g. "A9 42" */
+    char           mnemonic[8];
+    char           operand[32]; /* e.g. "#$42", "$0300,X", "" for implied */
+    int            cycles;
+} sim_disasm_entry_t;
+
 int sim_disassemble_one(sim_session_t *s, uint16_t addr, char *buf, size_t len);
+int sim_disassemble_entry(sim_session_t *s, uint16_t addr, sim_disasm_entry_t *out);
 
 /* State inspection */
 CPU *sim_get_cpu(sim_session_t *s);

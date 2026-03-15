@@ -159,7 +159,11 @@ $(GUI_TARGET): src/gui/main.o $(LIB_TARGET) $(IMGUI_OBJS)
 GUI_WX_SRCS = \
 	src/gui/app.cpp \
 	src/gui/main_frame.cpp \
-	src/gui/main_frame_menus.cpp
+	src/gui/main_frame_menus.cpp \
+	src/gui/pane_registers.cpp \
+	src/gui/pane_disassembly.cpp \
+	src/gui/pane_memory.cpp \
+	src/gui/pane_console.cpp
 
 GUI_WX_OBJS = $(GUI_WX_SRCS:.cpp=.o)
 
