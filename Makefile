@@ -163,7 +163,12 @@ GUI_WX_SRCS = \
 	src/gui/pane_registers.cpp \
 	src/gui/pane_disassembly.cpp \
 	src/gui/pane_memory.cpp \
-	src/gui/pane_console.cpp
+	src/gui/pane_console.cpp \
+	src/gui/pane_breakpoints.cpp \
+	src/gui/pane_trace.cpp \
+	src/gui/pane_stack.cpp \
+	src/gui/pane_watches.cpp \
+	src/gui/pane_snap_diff.cpp
 
 GUI_WX_OBJS = $(GUI_WX_SRCS:.cpp=.o)
 

@@ -172,25 +172,25 @@ improving accessibility, keyboard navigation, and OS clipboard integration.
 
 ### Phase E — Debugging Panes
 
-- [ ] **`src/gui/pane_breakpoints.cpp`** — Replace `draw_pane_breakpoints()`.
+- [X] **`src/gui/pane_breakpoints.cpp`** — Replace `draw_pane_breakpoints()`.
   `wxListCtrl` with columns: # | Address | Symbol | Type | Condition. Toolbar buttons:
   Add (→ `wxTextEntryDialog`), Delete, Clear All. Data from `sim_break_*()` API.
 
-- [ ] **`src/gui/pane_trace.cpp`** — Replace `draw_pane_trace()`.
+- [X] **`src/gui/pane_trace.cpp`** — Replace `draw_pane_trace()`.
   `wxNotebook` with two pages: *Live Log* (auto-scrolling `wxTextCtrl`) and
   *Run Trace* (virtual `wxListCtrl` over `sim_trace_*()` data). The trace entry struct
   `sim_trace_entry_t` is defined in `src/lib6502-debug/debug_types.h`.
 
-- [ ] **`src/gui/pane_stack.cpp`** — Replace `draw_pane_stack()`.
+- [X] **`src/gui/pane_stack.cpp`** — Replace `draw_pane_stack()`.
   `wxListCtrl` showing stack depth, return addresses, and resolved symbols. Data from
   `sim_get_cpu()` SP field plus `sim_mem_read_byte()` across the stack page.
 
-- [ ] **`src/gui/pane_watches.cpp`** — Replace `draw_pane_watches()`.
+- [X] **`src/gui/pane_watches.cpp`** — Replace `draw_pane_watches()`.
   `wxListCtrl` with 16 user-defined watch slots. Columns: Label | Address | Value
   (hex) | Value (dec) | Value (ASCII). Add/remove via context menu. Replaces
   `g_watches[]` array and inline edit widgets in `main.cpp`.
 
-- [ ] **`src/gui/pane_snap_diff.cpp`** — Replace `draw_pane_snap_diff()`.
+- [X] **`src/gui/pane_snap_diff.cpp`** — Replace `draw_pane_snap_diff()`.
   `wxListCtrl` showing `sim_diff_entry_t` rows from `sim_snapshot_diff()`. Columns:
   Address Range | Before | After | Writer PC. Snapshot/clear controls in pane toolbar.
   `sim_diff_entry_t` is defined in `src/lib6502-debug/debug_types.h`.

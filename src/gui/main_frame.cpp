@@ -5,6 +5,11 @@
 #include "pane_disassembly.h"
 #include "pane_memory.h"
 #include "pane_console.h"
+#include "pane_breakpoints.h"
+#include "pane_trace.h"
+#include "pane_stack.h"
+#include "pane_watches.h"
+#include "pane_snap_diff.h"
 #include <wx/statusbr.h>
 #include <wx/msgdlg.h>
 #include <wx/settings.h>
@@ -93,11 +98,11 @@ void MainFrame::InitPanes() {
     RegisterPane(new PaneMemory(this, m_sim, 2), ID_VIEW_PANE_MEMORY_3, wxAuiPaneInfo().Name("Memory3").Caption("Memory 3").Right().Position(2).Hide());
     RegisterPane(new PaneMemory(this, m_sim, 3), ID_VIEW_PANE_MEMORY_4, wxAuiPaneInfo().Name("Memory4").Caption("Memory 4").Right().Position(3).Hide());
 
-    RegisterPane(new GenericSimPane(this, m_sim, "Breakpoints", "Breakpoints"), ID_VIEW_PANE_BREAKPOINTS, wxAuiPaneInfo().Name("Breakpoints").Caption("Breakpoints").Bottom().Position(1).Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "Trace Log", "TraceLog"), ID_VIEW_PANE_TRACE, wxAuiPaneInfo().Name("TraceLog").Caption("Trace Log").Bottom().Position(2).Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "Stack", "Stack"), ID_VIEW_PANE_STACK, wxAuiPaneInfo().Name("Stack").Caption("Stack").Right().Position(4).Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "Watch List", "Watches"), ID_VIEW_PANE_WATCHES, wxAuiPaneInfo().Name("Watches").Caption("Watch List").Right().Position(5).Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "Snapshot Diff", "SnapDiff"), ID_VIEW_PANE_SNAP_DIFF, wxAuiPaneInfo().Name("SnapDiff").Caption("Snapshot Diff").Bottom().Position(3).Hide());
+    RegisterPane(new PaneBreakpoints(this, m_sim), ID_VIEW_PANE_BREAKPOINTS, wxAuiPaneInfo().Name("Breakpoints").Caption("Breakpoints").Bottom().Position(1).Hide());
+    RegisterPane(new PaneTrace(this, m_sim), ID_VIEW_PANE_TRACE, wxAuiPaneInfo().Name("TraceLog").Caption("Trace Log").Bottom().Position(2).Hide());
+    RegisterPane(new PaneStack(this, m_sim), ID_VIEW_PANE_STACK, wxAuiPaneInfo().Name("Stack").Caption("Stack").Right().Position(4).Hide());
+    RegisterPane(new PaneWatches(this, m_sim), ID_VIEW_PANE_WATCHES, wxAuiPaneInfo().Name("Watches").Caption("Watch List").Right().Position(5).Hide());
+    RegisterPane(new PaneSnapDiff(this, m_sim), ID_VIEW_PANE_SNAP_DIFF, wxAuiPaneInfo().Name("SnapDiff").Caption("Snapshot Diff").Bottom().Position(3).Hide());
 
     RegisterPane(new GenericSimPane(this, m_sim, "Instruction Ref", "IRef"), ID_VIEW_PANE_IREF, wxAuiPaneInfo().Name("IRef").Caption("Instruction Ref").Bottom().Position(4).Hide());
     RegisterPane(new GenericSimPane(this, m_sim, "Symbols", "Symbols"), ID_VIEW_PANE_SYMBOLS, wxAuiPaneInfo().Name("Symbols").Caption("Symbols").Right().Position(6).Hide());
