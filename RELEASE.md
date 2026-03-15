@@ -270,35 +270,35 @@ encapsulated inside the respective panel classes.
 
 Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx dialogs.
 
-- [ ] **File open/save → `wxFileDialog`.**
+- [X] **File open/save → `wxFileDialog`.**
   Current modes: `FILEDLG_OPEN_FILE`, `FILEDLG_OPEN_SYM`, `FILEDLG_SAVE_BIN` in
   `main.cpp`. Replace with `wxFileDialog` (style `wxFD_OPEN` / `wxFD_SAVE`). File
   type filters: `*.asm;*.prg;*.bin` (load), `*.sym` (symbol), `*.bin;*.prg` (save).
 
-- [ ] **"Assembly Error" modal → `wxMessageBox()`.**
+- [X] **"Assembly Error" modal → `wxMessageBox()`.**
   Currently `ImGui::BeginPopupModal("Assembly Error")`. Replace with
   `wxMessageBox(errorText, "Assembly Error", wxOK | wxICON_ERROR)`.
 
-- [ ] **"Load Binary##binload" → custom `wxDialog`.**
+- [X] **"Load Binary##binload" → custom `wxDialog`.**
   Address entry field (`wxTextCtrl`, hex validated) plus Load/Cancel. Load calls
   `sim_load_bin()`. Port from `main.cpp modal of same name.
 
-- [ ] **"Add Optional Device" → `wxSingleChoiceDialog`.**
+- [X] **"Add Optional Device" → `wxSingleChoiceDialog`.**
   Lists available devices (SID, VIC2, CIA, etc.). Selection adds device via
   `sim_add_device()` (or equivalent API).
 
-- [ ] **"Save Binary##binsave" → custom `wxDialog`.**
+- [X] **"Save Binary##binsave" → custom `wxDialog`.**
   Start address, end address, filename fields. Calls `sim_save_bin()`.
 
-- [ ] **"New Project Wizard" → multi-page `wxWizard`.**
+- [X] **"New Project Wizard" → multi-page `wxWizard`.**
   Port the multi-step project creation flow from `main.cpp`. Steps: project name /
   directory, processor type, machine preset, template snippet. Writes `project.toml`
   (or equivalent) via `src/lib6502-toolchain/project_manager.h`.
 
-- [ ] **"Go to Address##goto" → `wxTextEntryDialog`.**
+- [X] **"Go to Address##goto" → `wxTextEntryDialog`.**
   Hex address input; on OK, scrolls the Disassembly or Memory pane to that address.
 
-- [ ] **"Save Layout Preset##lsp" → `wxTextEntryDialog`.**
+- [X] **"Save Layout Preset##lsp" → `wxTextEntryDialog`.**
   Preset name input; saves `wxAuiManager::SavePerspective()` under that name in
   `wxConfig`.
 

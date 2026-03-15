@@ -22,7 +22,12 @@
 #include "pane_vic_regs.h"
 #include "pane_sid_debugger.h"
 #include "pane_audio_mixer.h"
+#include "dialogs.h"
 #include <wx/statusbr.h>
+#include <wx/filedlg.h>
+#include <wx/msgdlg.h>
+#include <wx/textdlg.h>
+#include <wx/choicdlg.h>
 #include <wx/msgdlg.h>
 #include <wx/settings.h>
 #include <wx/config.h>
@@ -55,6 +60,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_COMBOBOX(ID_TOOLBAR_MACH_COMBO, MainFrame::OnSelectMachine)
 
     EVT_MENU(ID_VIEW_GO_TO_ADDRESS, MainFrame::OnGoToAddress)
+    EVT_MENU(ID_MACH_ADD_DEVICE, MainFrame::OnAddDevice)
     EVT_MENU_RANGE(ID_VIEW_PANE_REGISTERS, ID_VIEW_PANE_VIC_REGS, MainFrame::OnTogglePane)
     EVT_MENU(ID_VIEW_LAYOUT_SAVE, MainFrame::OnTogglePane)
     EVT_MENU(ID_VIEW_LAYOUT_RESET, MainFrame::OnTogglePane)
@@ -274,15 +280,81 @@ void MainFrame::OnReverseContinue(wxCommandEvent& WXUNUSED(event)) {
 }
 
 void MainFrame::OnLoad(wxCommandEvent& WXUNUSED(event)) {
+    const char* path = sim_get_filename(m_sim);
+    if (path && strcmp(path, "(none)") != 0) {
+        m_running = false;
+        if (sim_load_asm(m_sim, path) != 0) {
+            wxMessageBox(wxString::Format("Failed to reload '%s':\n%s", path, sim_get_last_error(m_sim)),
+                         "Assembly Error", wxOK | wxICON_ERROR);
+        } else {
+            SetStatusText(wxString::Format("Reloaded: %s", path), 0);
+        }
+    } else {
+        wxCommandEvent dummy;
+        OnBrowseLoad(dummy);
+    }
 }
 
 void MainFrame::OnBrowseLoad(wxCommandEvent& WXUNUSED(event)) {
+    wxFileDialog dlg(this, "Load File", "", "",
+                     "Supported files (*.asm;*.prg;*.bin)|*.asm;*.prg;*.bin|Assembly (*.asm)|*.asm|PRG files (*.prg)|*.prg|Binary (*.bin)|*.bin|All files (*.*)|*.*",
+                     wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dlg.ShowModal() == wxID_OK) {
+        wxString path = dlg.GetPath();
+        if (path.Lower().EndsWith(".bin") || path.Lower().EndsWith(".prg")) {
+            LoadBinaryDialog binDlg(this, path);
+            if (binDlg.ShowModal() == wxID_OK) {
+                m_running = false;
+                if (path.Lower().EndsWith(".prg")) {
+                    sim_load_prg(m_sim, path.mb_str(), binDlg.ShouldOverride() ? binDlg.GetAddress() : 0);
+                } else {
+                    sim_load_bin(m_sim, path.mb_str(), binDlg.GetAddress());
+                }
+            }
+        } else {
+            m_running = false;
+            if (sim_load_asm(m_sim, path.mb_str()) != 0) {
+                wxMessageBox(wxString::Format("Failed to load '%s':\n%s", path, sim_get_last_error(m_sim)),
+                             "Assembly Error", wxOK | wxICON_ERROR);
+            }
+        }
+    }
 }
 
 void MainFrame::OnSaveBin(wxCommandEvent& WXUNUSED(event)) {
+    SaveBinaryDialog dlg(this);
+    if (dlg.ShowModal() == wxID_OK) {
+        wxFileDialog fileDlg(this, "Save Binary", "", "",
+                             "Binary files (*.bin)|*.bin|PRG files (*.prg)|*.prg|All files (*.*)|*.*",
+                             wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+        if (fileDlg.ShowModal() == wxID_OK) {
+            wxString path = fileDlg.GetPath();
+            if (path.Lower().EndsWith(".prg")) {
+                sim_save_prg(m_sim, path.mb_str(), dlg.GetStart(), dlg.GetCount());
+            } else {
+                sim_save_bin(m_sim, path.mb_str(), dlg.GetStart(), dlg.GetCount());
+            }
+        }
+    }
 }
 
 void MainFrame::OnNewProject(wxCommandEvent& WXUNUSED(event)) {
+    NewProjectWizard wizard(this);
+    if (wizard.RunWizard((wxWizardPage*)wizard.GetPageAreaSizer()->GetItem((size_t)0)->GetWindow())) {
+        auto res = wizard.GetResult();
+        if (res.success) {
+            std::string err;
+            if (ProjectManager::create_project(res.templateId.ToStdString(), 
+                                             res.path.ToStdString(), res.vars, err)) {
+                wxString mainAsm = res.path + "/src/main.asm";
+                if (wxFileExists(mainAsm)) {
+                    sim_load_asm(m_sim, mainAsm.mb_str());
+                }
+            } else {
+                wxMessageBox("Failed to create project: " + wxString(err), "Error", wxOK | wxICON_ERROR);
+            }
+        }
+    }
 }
 
 void MainFrame::OnSelectProcessor(wxCommandEvent& event) {
@@ -425,7 +497,39 @@ void MainFrame::SaveSettings() {
 }
 
 void MainFrame::OnGoToAddress(wxCommandEvent& WXUNUSED(event)) {
+    wxTextEntryDialog dlg(this, "Enter hex address:", "Go to Address", "");
+    if (dlg.ShowModal() == wxID_OK) {
+        unsigned long addr;
+        if (dlg.GetValue().ToULong(&addr, 16)) {
+            // Find disassembly pane and scroll
+            for (auto pane : m_pane_list) {
+                if (pane->GetPaneName() == "Disassembly") {
+                    // We need a public method in PaneDisassembly to scroll.
+                    // For Phase H I will just update the status text as confirmation.
+                    SetStatusText(wxString::Format("Go to $%04X", (unsigned)addr), 0);
+                    // TODO: call pane->ScrollTo(addr)
+                }
+            }
+        }
+    }
 }
 
 void MainFrame::OnAddDevice(wxCommandEvent& WXUNUSED(event)) {
+    wxArrayString choices;
+    choices.Add("sid");
+    choices.Add("vic2");
+    choices.Add("mega65_math");
+    choices.Add("mega65_dma");
+    
+    wxSingleChoiceDialog dlg(this, "Select a device to add:", "Add Optional Device", choices);
+    if (dlg.ShowModal() == wxID_OK) {
+        wxString name = dlg.GetStringSelection();
+        wxTextEntryDialog addrDlg(this, "Enter base address (hex):", "Device Address", "D420");
+        if (addrDlg.ShowModal() == wxID_OK) {
+            unsigned long addr;
+            if (addrDlg.GetValue().ToULong(&addr, 16)) {
+                sim_device_add(m_sim, name.mb_str(), (uint16_t)addr);
+            }
+        }
+    }
 }

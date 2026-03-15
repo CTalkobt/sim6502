@@ -176,6 +176,7 @@ GUI_WX_SRCS = \
 	src/gui/pane_test_runner.cpp \
 	src/gui/pane_devices.cpp \
 	src/gui/pane_patterns.cpp \
+	src/gui/dialogs.cpp \
 	src/gui/pane_vic_screen.cpp \
 	src/gui/pane_vic_sprites.cpp \
 	src/gui/pane_vic_regs.cpp \
