@@ -99,5 +99,35 @@ TEST_CASE("API - Breakpoint API", "[api][breakpoint]") {
         CHECK(cpu->x == 0x56);
     }
 
+    SECTION("History State Diff") {
+        sim_history_enable(s, 1);
+        sim_history_clear(s);
+        
+        // LDA #$10
+        sim_mem_write_byte(s, 0x2000, 0xA9);
+        sim_mem_write_byte(s, 0x2001, 0x10);
+        sim_set_pc(s, 0x2000);
+        sim_set_reg_byte(s, "A", 0x00);
+        sim_set_state(s, SIM_PAUSED);
+        
+        // Step once
+        sim_step(s, 1);
+        
+        CPU* cpu = sim_get_cpu(s);
+        CHECK(cpu->a == 0x10);
+        CHECK(cpu->pc == 0x2002);
+        
+        // Check history for PREV state
+        sim_history_entry_t entry;
+        int ok = sim_history_get(s, 0, &entry);
+        REQUIRE(ok == 1);
+        
+        // entry.pre_cpu is the state BEFORE execution of that slot
+        // We want to ensure history contains a different 'A'
+        CHECK(entry.pre_cpu.a == 0x00);
+        CHECK(cpu->a == 0x10);
+        CHECK(entry.pc == 0x2000);
+    }
+
     sim_destroy(s);
 }

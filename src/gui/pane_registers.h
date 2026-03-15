@@ -19,10 +19,13 @@ private:
     void OnEditorKillFocus(wxFocusEvent& event);
     void CommitEdit(int row, const wxString& newValue);
     void HideEditor();
+    void OpenEditorForRow(long row);
+    long GetColumnAt(const wxPoint& pos);
 
     wxListCtrl* m_list;
     wxTextCtrl* m_textEditor;
     int         m_editRow;
+    CPUState    m_current_cpu;
     CPUState    m_prev_cpu;
     bool        m_prev_valid;
 };
