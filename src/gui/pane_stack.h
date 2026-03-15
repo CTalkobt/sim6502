@@ -3,6 +3,7 @@
 
 #include "pane_base.h"
 #include <wx/listctrl.h>
+<<<<<<< HEAD
 #include <wx/notebook.h>
 
 class StackMemListCtrl : public wxListCtrl {
@@ -18,6 +19,8 @@ private:
     sim_session_t*          m_sim;
     mutable wxListItemAttr  m_sp_attr;  // amber highlight for the SP cell
 };
+=======
+>>>>>>> e01e3fe (Debugging Panes)
 
 class PaneStack : public SimPane {
 public:
@@ -27,9 +30,13 @@ public:
     wxString GetPaneName() const override { return "Stack"; }
 
 private:
+<<<<<<< HEAD
     wxNotebook*       m_notebook;
     StackMemListCtrl* m_memdump;  // "Stack Memory" tab — virtual list $0100-$01FF
     wxListCtrl*       m_list;     // "Recent" tab — active stack entries
+=======
+    wxListCtrl* m_list;
+>>>>>>> e01e3fe (Debugging Panes)
 };
 
 #endif

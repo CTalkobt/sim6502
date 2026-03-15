@@ -4,6 +4,7 @@
 #include "pane_base.h"
 #include <wx/listctrl.h>
 
+<<<<<<< HEAD
 #include <vector>
 
 class VirtualDiffList : public wxListCtrl {
@@ -19,6 +20,8 @@ private:
     std::vector<sim_diff_entry_t> m_data;
 };
 
+=======
+>>>>>>> e01e3fe (Debugging Panes)
 class PaneSnapDiff : public SimPane {
 public:
     PaneSnapDiff(wxWindow* parent, sim_session_t *sim);
@@ -29,6 +32,7 @@ public:
 private:
     void OnTakeSnapshot(wxCommandEvent& event);
     void OnClear(wxCommandEvent& event);
+<<<<<<< HEAD
     void OnItemActivated(wxListEvent& event);
 
     VirtualDiffList* m_list;
@@ -37,6 +41,10 @@ private:
     uint32_t m_last_snap_timestamp;
     uint64_t m_last_cpu_cycles;
     int m_last_count;
+=======
+
+    wxListCtrl* m_list;
+>>>>>>> e01e3fe (Debugging Panes)
 };
 
 #endif

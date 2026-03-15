@@ -1,11 +1,15 @@
 #include "pane_breakpoints.h"
+<<<<<<< HEAD
 #include "main_frame.h"
+=======
+>>>>>>> e01e3fe (Debugging Panes)
 #include <wx/toolbar.h>
 #include <wx/artprov.h>
 #include <wx/textctrl.h>
 #include <wx/msgdlg.h>
 
 PaneBreakpoints::PaneBreakpoints(wxWindow* parent, sim_session_t *sim)
+<<<<<<< HEAD
     : SimPane(parent, sim)
 {
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
@@ -14,11 +18,24 @@ PaneBreakpoints::PaneBreakpoints(wxWindow* parent, sim_session_t *sim)
     toolBar->AddTool(101, "Add", wxArtProvider::GetBitmap(wxART_NEW), "Add a new breakpoint at a specific address");
     toolBar->AddTool(102, "Delete", wxArtProvider::GetBitmap(wxART_DELETE), "Delete the selected breakpoint");
     toolBar->AddTool(103, "Clear All", wxArtProvider::GetBitmap(wxART_CROSS_MARK), "Clear all breakpoints");
+=======
+    : SimPane(parent, sim) 
+{
+    wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
+    
+    wxToolBar* toolBar = new wxToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTB_HORIZONTAL | wxTB_FLAT);
+    toolBar->AddTool(101, "Add", wxArtProvider::GetBitmap(wxART_NEW));
+    toolBar->AddTool(102, "Delete", wxArtProvider::GetBitmap(wxART_DELETE));
+    toolBar->AddTool(103, "Clear All", wxArtProvider::GetBitmap(wxART_CROSS_MARK));
+>>>>>>> e01e3fe (Debugging Panes)
     toolBar->Realize();
     sizer->Add(toolBar, 0, wxEXPAND);
 
     m_list = new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
+<<<<<<< HEAD
     m_list->EnableCheckBoxes();
+=======
+>>>>>>> e01e3fe (Debugging Panes)
     m_list->InsertColumn(0, "#", wxLIST_FORMAT_LEFT, 30);
     m_list->InsertColumn(1, "Address", wxLIST_FORMAT_LEFT, 80);
     m_list->InsertColumn(2, "Symbol", wxLIST_FORMAT_LEFT, 150);
@@ -32,9 +49,12 @@ PaneBreakpoints::PaneBreakpoints(wxWindow* parent, sim_session_t *sim)
     toolBar->Bind(wxEVT_TOOL, &PaneBreakpoints::OnDelete, this, 102);
     toolBar->Bind(wxEVT_TOOL, &PaneBreakpoints::OnClearAll, this, 103);
     m_list->Bind(wxEVT_LIST_ITEM_ACTIVATED, &PaneBreakpoints::OnItemActivated, this);
+<<<<<<< HEAD
     m_list->Bind(wxEVT_LIST_ITEM_SELECTED, &PaneBreakpoints::OnItemSelected, this);
     m_list->Bind(wxEVT_LIST_ITEM_CHECKED, &PaneBreakpoints::OnItemChecked, this);
     m_list->Bind(wxEVT_LIST_ITEM_UNCHECKED, &PaneBreakpoints::OnItemUnchecked, this);
+=======
+>>>>>>> e01e3fe (Debugging Panes)
 }
 
 void PaneBreakpoints::RefreshPane(const SimSnapshot &snap) {
@@ -43,6 +63,7 @@ void PaneBreakpoints::RefreshPane(const SimSnapshot &snap) {
     int count = sim_break_count(m_sim);
     for (int i = 0; i < count; i++) {
         uint16_t addr;
+<<<<<<< HEAD
         char cond[128] = {};
         if (sim_break_get(m_sim, i, &addr, cond, sizeof(cond)) != 0) {
             long item = m_list->InsertItem(i, wxString::Format("%d", i));
@@ -50,12 +71,24 @@ void PaneBreakpoints::RefreshPane(const SimSnapshot &snap) {
             m_list->CheckItem(item, enabled);
             m_list->SetItem(item, 1, wxString::Format("%04X", addr));
 
+=======
+        char cond[128];
+        if (sim_break_get(m_sim, i, &addr, cond, sizeof(cond)) == 0) {
+            long item = m_list->InsertItem(i, wxString::Format("%d", i));
+            m_list->SetItem(item, 1, wxString::Format("%04X", addr));
+            
+>>>>>>> e01e3fe (Debugging Panes)
             const char* sym = sim_sym_by_addr(m_sim, addr);
             m_list->SetItem(item, 2, sym ? wxString(sym) : "");
             m_list->SetItem(item, 3, "Exec");
             m_list->SetItem(item, 4, wxString(cond));
+<<<<<<< HEAD
 
             if (!enabled) {
+=======
+            
+            if (!sim_break_is_enabled(m_sim, i)) {
+>>>>>>> e01e3fe (Debugging Panes)
                 m_list->SetItemTextColour(item, *wxLIGHT_GREY);
             }
         }
@@ -63,6 +96,7 @@ void PaneBreakpoints::RefreshPane(const SimSnapshot &snap) {
 }
 
 void PaneBreakpoints::OnAdd(wxCommandEvent& WXUNUSED(event)) {
+<<<<<<< HEAD
     wxTextEntryDialog addrDlg(this, "Enter address (hex):", "Add Breakpoint");
     if (addrDlg.ShowModal() != wxID_OK)
         return;
@@ -81,14 +115,30 @@ void PaneBreakpoints::OnAdd(wxCommandEvent& WXUNUSED(event)) {
     std::string condStr = cond.ToStdString();
     sim_break_set(m_sim, (uint16_t)addr, condStr.empty() ? nullptr : condStr.c_str());
     RefreshPane(SimSnapshot{});
+=======
+    wxTextEntryDialog dlg(this, "Enter address (hex) or symbol:", "Add Breakpoint");
+    if (dlg.ShowModal() == wxID_OK) {
+        wxString val = dlg.GetValue();
+        unsigned long addr;
+        if (val.ToULong(&addr, 16)) {
+            sim_break_set(m_sim, (uint16_t)addr, NULL);
+            RefreshPane(SimSnapshot{}); // Dummy snap
+        }
+    }
+>>>>>>> e01e3fe (Debugging Panes)
 }
 
 void PaneBreakpoints::OnDelete(wxCommandEvent& WXUNUSED(event)) {
     long sel = m_list->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
     if (sel != -1) {
         uint16_t addr;
+<<<<<<< HEAD
         char cond[128] = {};
         if (sim_break_get(m_sim, (int)sel, &addr, cond, sizeof(cond)) != 0) {
+=======
+        char cond[128];
+        if (sim_break_get(m_sim, (int)sel, &addr, cond, sizeof(cond)) == 0) {
+>>>>>>> e01e3fe (Debugging Panes)
             sim_break_clear(m_sim, addr);
             RefreshPane(SimSnapshot{});
         }
@@ -97,6 +147,7 @@ void PaneBreakpoints::OnDelete(wxCommandEvent& WXUNUSED(event)) {
 
 void PaneBreakpoints::OnClearAll(wxCommandEvent& WXUNUSED(event)) {
     int count = sim_break_count(m_sim);
+<<<<<<< HEAD
     if (count == 0)
         return;
 
@@ -108,12 +159,19 @@ void PaneBreakpoints::OnClearAll(wxCommandEvent& WXUNUSED(event)) {
         uint16_t addr;
         char cond[128] = {};
         if (sim_break_get(m_sim, i, &addr, cond, sizeof(cond)) != 0) {
+=======
+    for (int i = count - 1; i >= 0; i--) {
+        uint16_t addr;
+        char cond[128];
+        if (sim_break_get(m_sim, i, &addr, cond, sizeof(cond)) == 0) {
+>>>>>>> e01e3fe (Debugging Panes)
             sim_break_clear(m_sim, addr);
         }
     }
     RefreshPane(SimSnapshot{});
 }
 
+<<<<<<< HEAD
 // Double-click: edit the condition for the selected breakpoint
 void PaneBreakpoints::OnItemActivated(wxListEvent& event) {
     int idx = (int)event.GetIndex();
@@ -170,3 +228,10 @@ void PaneBreakpoints::OnItemUnchecked(wxListEvent& event) {
         sim_break_toggle(m_sim, idx);
     m_list->SetItemTextColour(idx, *wxLIGHT_GREY);
 }
+=======
+void PaneBreakpoints::OnItemActivated(wxListEvent& event) {
+    int idx = (int)event.GetIndex();
+    sim_break_toggle(m_sim, idx);
+    RefreshPane(SimSnapshot{});
+}
+>>>>>>> e01e3fe (Debugging Panes)
