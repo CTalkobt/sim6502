@@ -73,9 +73,9 @@ void PaneTestRunner::OnRunAll(wxCommandEvent& WXUNUSED(event)) {
     size_t count = m_rows.size();
     if (count == 0) return;
 
-    sim_test_in_t*     ins = (sim_test_in_t*)calloc(count, sizeof(sim_test_in_t));
-    sim_test_expect_t* exs = (sim_test_expect_t*)calloc(count, sizeof(sim_test_expect_t));
-    sim_test_result_t* res = (sim_test_result_t*)calloc(count, sizeof(sim_test_result_t));
+    sim_test_in_t*     ins = new sim_test_in_t[count]();
+    sim_test_expect_t* exs = new sim_test_expect_t[count]();
+    sim_test_result_t* res = new sim_test_result_t[count]();
 
     for (size_t i = 0; i < count; i++) {
         ins[i].a = ins[i].x = ins[i].y = ins[i].z = ins[i].b = ins[i].s = ins[i].p = -1;
@@ -100,7 +100,7 @@ void PaneTestRunner::OnRunAll(wxCommandEvent& WXUNUSED(event)) {
         m_list->SetItemTextColour((long)i, res[i].passed ? *wxGREEN : *wxRED);
     }
 
-    free(ins); free(exs); free(res);
+    delete[] ins; delete[] exs; delete[] res;
     
     wxMessageBox(wxString::Format("%d / %zu passed", totalPassed, count), "Test Results");
 }

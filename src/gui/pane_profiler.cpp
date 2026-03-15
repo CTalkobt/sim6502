@@ -36,7 +36,7 @@ void PaneProfiler::RefreshPane(const SimSnapshot &snap) {
     }
 
     wxImage img(256, 256);
-    unsigned char* rgb = (unsigned char*)malloc(256 * 256 * 3);
+    unsigned char* rgb = new unsigned char[256 * 256 * 3];
     
     for (int y = 0; y < 256; y++) {
         for (int x = 0; x < 256; x++) {

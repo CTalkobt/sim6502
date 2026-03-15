@@ -37,38 +37,53 @@ TEST_CASE("System Integration - Large Memory Maps", "[integration][memory]") {
 }
 
 TEST_CASE("System Integration - High-Frequency Interrupts", "[integration][interrupts]") {
-    memory_t mem;
-    memset(&mem, 0, sizeof(mem));
+    // Heap-allocate to avoid ~1 MB stack frame from far_pages/io_handlers arrays
+    memory_t* mem = new memory_t();
+    memset(mem, 0, sizeof(*mem));
     CPU* cpu = CPUFactory::create(CPU_6502);
-    cpu->mem = &mem;
+    cpu->mem = mem;
     cpu->reset();
-    
-    // Setup IRQ vector at $FFFE
-    mem.mem[0xFFFE] = 0x00;
-    mem.mem[0xFFFF] = 0x20; // IRQ handler at $2000
-    
-    // RTI at $2000
-    mem.mem[0x2000] = 0x40;
-    
-    // NOPs at $1000
-    for(int i=0; i<100; i++) mem.mem[0x1000 + i] = 0xEA;
+
+    // IRQ vector $FFFE/$FFFF -> $3000
+    mem->mem[0xFFFE] = 0x00;
+    mem->mem[0xFFFF] = 0x30;
+
+    // IRQ handler at $3000: LDA #$42, STA $0200, RTI
+    mem->mem[0x3000] = 0xA9; // LDA #$42
+    mem->mem[0x3001] = 0x42;
+    mem->mem[0x3002] = 0x8D; // STA $0200
+    mem->mem[0x3003] = 0x00;
+    mem->mem[0x3004] = 0x02;
+    mem->mem[0x3005] = 0x40; // RTI
+
+    // Busy-spin at $1000: JMP $1000
+    mem->mem[0x1000] = 0x4C; // JMP abs
+    mem->mem[0x1001] = 0x00; // lo
+    mem->mem[0x1002] = 0x10; // hi  ->  $1000
+
     cpu->pc = 0x1000;
-    cpu->set_flag(FLAG_I, 0); // Enable interrupts
-    
+    cpu->set_flag(FLAG_I, 0); // reset() sets FLAG_I; clear it to allow IRQs
+
     SECTION("Rapid IRQ triggers") {
         interrupt_controller_t* ic = static_cast<interrupt_controller_t*>(cpu->get_interrupt_controller());
-        
-        for (int i = 0; i < 10; i++) {
+
+        for (int i = 0; i < 5; i++) {
             interrupt_request_irq(ic);
-            cpu->step(); // Should trigger interrupt or be in handler
-            // We can't easily check if we are "in" the handler with just one step 
-            // if the NOP was executed before the IRQ was polled.
-            // But we can check if PC changed significantly.
+            if (interrupt_check(ic, cpu)) {
+                interrupt_handle(ic, cpu, mem);
+            }
+            cpu->step(); // LDA #$42
+            cpu->step(); // STA $0200
+            interrupt_release_irq(ic);
+            cpu->step(); // RTI  ->  PC restored to $1000, I flag restored (clear)
+            cpu->step(); // JMP $1000
         }
-        
-        // At least some interrupts should have fired
-        CHECK(cpu->cycles > 0);
+
+        // Handler must have stored the marker and RTI'd successfully
+        CHECK(mem->mem[0x0200] == 0x42);
+        CHECK(ic->handled_count == 5);
     }
-    
+
     delete cpu;
+    delete mem;
 }

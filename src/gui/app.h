@@ -2,10 +2,13 @@
 #define SIM6502_APP_H
 
 #include <wx/wx.h>
+#include <wx/cmdline.h>
 
 class Sim6502App : public wxApp {
 public:
     virtual bool OnInit() override;
+    virtual void OnInitCmdLine(wxCmdLineParser& parser) override;
+    virtual bool OnCmdLineParsed(wxCmdLineParser& parser) override;
 };
 
 DECLARE_APP(Sim6502App)

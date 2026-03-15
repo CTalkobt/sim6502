@@ -21,6 +21,7 @@ private:
 
     void RegisterPane(SimPane* pane, int menu_id, const wxAuiPaneInfo& info);
     void UpdatePaneVisibility(int menu_id);
+    void CheckMenuItem(int menu_id, bool check);
 
     // Event Handlers - Simulation
     void OnRun(wxCommandEvent& event);

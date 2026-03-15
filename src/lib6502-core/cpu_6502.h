@@ -5,9 +5,11 @@
 #include "memory.h"
 #include "disassembler.h"
 
+#include <memory>
+
 class CPU6502 : public CPU {
 protected:
-    dispatch_table_t dt;
+    std::unique_ptr<dispatch_table_t> dt;
     void* ic;
 public:
     CPU6502();
@@ -15,7 +17,7 @@ public:
     virtual int step() override;
     virtual void trigger_interrupt(int vector_addr) override;
     virtual void* get_interrupt_controller() override { return ic; }
-    virtual dispatch_table_t* dispatch_table() override { return &dt; }
+    virtual dispatch_table_t* dispatch_table() override { return dt.get(); }
 };
 
 class CPU6502Undocumented : public CPU6502 {

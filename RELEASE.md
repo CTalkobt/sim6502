@@ -331,6 +331,18 @@ Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx
   contents or CLI linkage.
 
 ---
+
+### Phase J — Cleanup and rename sim6502-gui-wx to sim6502-gui
+
+- [ ] **Remove Existing sim6502-gui source**
+  Remove existing sim6502-gui source that is not used by sim6502-gui-wx. 
+
+- [ ] **Rename sim6502-gui-wx to be sim6502-gui**
+  Adjust source and make files to change the name and target name of sim6502-gui-wx
+  to take the place of the just removed sim6502-gui.  The makefile target of gui should
+  resolve to building the newly renamed sim6502-gui. 
+
+---
 ## Milestone 1.6: GUI Ease of Use, Minor Bug Fixes
 **Goal:** Changes for the GUI interactions focused on ease of use. Minor bug fixes. 
 **Theme:** Advanced UI & Refinement. 

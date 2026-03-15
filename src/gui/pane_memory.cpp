@@ -1,6 +1,8 @@
 #include "pane_memory.h"
 #include <wx/toolbar.h>
 #include <wx/stattext.h>
+#include <wx/artprov.h>
+#include <wx/sizer.h>
 
 MemoryListCtrl::MemoryListCtrl(wxWindow* parent, sim_session_t* sim)
     : wxListCtrl(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_VIRTUAL | wxLC_SINGLE_SEL),
@@ -35,7 +37,10 @@ PaneMemory::PaneMemory(wxWindow* parent, sim_session_t *sim, int index)
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     
     wxToolBar* toolBar = new wxToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTB_HORIZONTAL | wxTB_FLAT);
-    toolBar->AddControl(new wxStaticText(toolBar, wxID_ANY, " Address: "));
+    toolBar->AddTool(1001, "Page Up (-256)", wxArtProvider::GetBitmap(wxART_GO_UP));
+    toolBar->AddTool(1002, "Page Down (+256)", wxArtProvider::GetBitmap(wxART_GO_DOWN));
+    toolBar->AddSeparator();
+    toolBar->AddControl(new wxStaticText(toolBar, wxID_ANY, " Address: $"));
     m_addrSearch = new wxTextCtrl(toolBar, wxID_ANY, "0000", wxDefaultPosition, wxSize(60, -1), wxTE_PROCESS_ENTER);
     toolBar->AddControl(m_addrSearch);
     toolBar->Realize();
@@ -54,11 +59,20 @@ PaneMemory::PaneMemory(wxWindow* parent, sim_session_t *sim, int index)
     SetSizer(sizer);
 
     m_addrSearch->Bind(wxEVT_TEXT_ENTER, &PaneMemory::OnGoToAddress, this);
+    toolBar->Bind(wxEVT_TOOL, &PaneMemory::OnPrevPage, this, 1001);
+    toolBar->Bind(wxEVT_TOOL, &PaneMemory::OnNextPage, this, 1002);
 }
 
 void PaneMemory::RefreshPane(const SimSnapshot &snap) {
     (void)snap;
     m_list->Refresh();
+}
+
+void PaneMemory::ScrollTo(uint16_t addr) {
+    m_list->EnsureVisible(addr / 16);
+    if (!m_addrSearch->HasFocus()) {
+        m_addrSearch->ChangeValue(wxString::Format("%04X", addr));
+    }
 }
 
 wxString PaneMemory::GetPaneTitle() const { return wxString::Format("Memory %d", m_index + 1); }
@@ -68,6 +82,20 @@ void PaneMemory::OnGoToAddress(wxCommandEvent& WXUNUSED(event)) {
     wxString addrStr = m_addrSearch->GetValue();
     unsigned long addr;
     if (addrStr.ToULong(&addr, 16)) {
-        m_list->EnsureVisible(addr / 16);
+        ScrollTo((uint16_t)addr);
     }
+}
+
+void PaneMemory::OnPrevPage(wxCommandEvent& WXUNUSED(event)) {
+    long top = m_list->GetTopItem();
+    long next = (top * 16) - 256;
+    if (next < 0) next = 0;
+    ScrollTo((uint16_t)next);
+}
+
+void PaneMemory::OnNextPage(wxCommandEvent& WXUNUSED(event)) {
+    long top = m_list->GetTopItem();
+    long next = (top * 16) + 256;
+    if (next > 65535) next = 65535;
+    ScrollTo((uint16_t)next);
 }

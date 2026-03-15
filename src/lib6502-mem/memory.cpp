@@ -33,7 +33,7 @@ void mem_write_phys(memory_t *mem, unsigned int phys, unsigned char val) {
 	}
 	unsigned int page = phys >> FAR_PAGE_SHIFT;
 	unsigned int off  = phys & (FAR_PAGE_SIZE - 1);
-	if (!mem->far_pages[page]) mem->far_pages[page] = (unsigned char *)calloc(FAR_PAGE_SIZE, 1);
+	if (!mem->far_pages[page]) mem->far_pages[page] = new unsigned char[FAR_PAGE_SIZE]();
 	mem->far_pages[page][off] = val;
 }
 
@@ -88,7 +88,7 @@ void mem_free_far_pages(memory_t *mem) {
     if (!mem) return;
     for (int i = 0; i < FAR_NUM_PAGES; i++) {
         if (mem->far_pages[i]) {
-            free(mem->far_pages[i]);
+            delete[] mem->far_pages[i];
             mem->far_pages[i] = NULL;
         }
     }

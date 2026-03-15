@@ -3,30 +3,30 @@
 
 #include "pane_base.h"
 #include <wx/listctrl.h>
+#include <wx/toolbar.h>
+#include <wx/textctrl.h>
 
-class DisasmListCtrl : public wxListCtrl {
-public:
-    DisasmListCtrl(wxWindow* parent, sim_session_t* sim);
-    void SetPC(uint16_t pc);
-    wxString OnGetItemText(long item, long column) const override;
-    wxListItemAttr* OnGetItemAttr(long item) const override;
-
-private:
-    sim_session_t* m_sim;
-    uint16_t       m_current_pc;
-};
+class DisasmListCtrl;
 
 class PaneDisassembly : public SimPane {
 public:
     PaneDisassembly(wxWindow* parent, sim_session_t *sim);
     void RefreshPane(const SimSnapshot &snap) override;
-    wxString GetPaneTitle() const override { return "Disassembly"; }
-    wxString GetPaneName() const override { return "Disassembly"; }
+    wxString GetPaneTitle() const override;
+    wxString GetPaneName() const override;
+
+    void ScrollTo(uint16_t addr);
 
 private:
     void OnToggleBreakpoint(wxListEvent& event);
+    void OnSyncToPC(wxCommandEvent& event);
+    void OnGoToAddress(wxCommandEvent& event);
+    void OnPrevPage(wxCommandEvent& event);
+    void OnNextPage(wxCommandEvent& event);
 
     DisasmListCtrl* m_list;
+    wxTextCtrl*     m_addrSearch;
+    bool            m_followPC;
 };
 
 #endif

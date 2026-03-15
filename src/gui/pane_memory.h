@@ -21,8 +21,12 @@ public:
     wxString GetPaneTitle() const override;
     wxString GetPaneName() const override;
 
+    void ScrollTo(uint16_t addr);
+
 private:
     void OnGoToAddress(wxCommandEvent& event);
+    void OnPrevPage(wxCommandEvent& event);
+    void OnNextPage(wxCommandEvent& event);
 
     int             m_index;
     MemoryListCtrl* m_list;

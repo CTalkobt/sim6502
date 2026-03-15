@@ -26,7 +26,7 @@ DebugContext::DebugContext()
       trace_buf_(nullptr), trace_head_(0), trace_count_(0), trace_enabled_(0)
 {
     memset(snap_buckets_, 0, sizeof(snap_buckets_));
-    hist_buf_    = (sim_history_entry_t *)calloc((size_t)hist_cap_, sizeof(sim_history_entry_t));
+    hist_buf_    = new sim_history_entry_t[hist_cap_]();
     hist_enabled_ = (hist_buf_ != nullptr) ? 1 : 0;
     prof_exec_   = new uint32_t[65536]();
     prof_cycles_ = new uint32_t[65536]();
@@ -35,7 +35,7 @@ DebugContext::DebugContext()
 
 DebugContext::~DebugContext() {
     snap_free_nodes();
-    free(hist_buf_);
+    delete[] hist_buf_;
     delete[] prof_exec_;
     delete[] prof_cycles_;
     delete[] trace_buf_;
@@ -87,7 +87,11 @@ int DebugContext::get_history(int slot, sim_history_entry_t *entry) {
 void DebugContext::snap_free_nodes() {
     for (int i = 0; i < 256; i++) {
         SnapNode *n = snap_buckets_[i];
-        while (n) { SnapNode *nx = n->next; free(n); n = nx; }
+        while (n) { 
+            SnapNode *nx = n->next; 
+            delete n;
+            n = nx; 
+        }
         snap_buckets_[i] = nullptr;
     }
 }
@@ -97,7 +101,7 @@ void DebugContext::snap_record_write(uint16_t addr, uint8_t before, uint8_t afte
     for (SnapNode *n = snap_buckets_[bucket]; n; n = n->next) {
         if (n->addr == addr) { n->after = after; n->writer_pc = writer_pc; return; }
     }
-    SnapNode *n = (SnapNode *)malloc(sizeof(SnapNode));
+    SnapNode *n = new SnapNode();
     if (!n) return;
     n->addr = addr; n->before = before; n->after = after; n->writer_pc = writer_pc;
     n->next = snap_buckets_[bucket];

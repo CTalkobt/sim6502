@@ -49,8 +49,8 @@ void MainFrame::InitMenuBar() {
     machMenu->AppendSubMenu(typeMenu, "Machine Selection");
 
     machMenu->AppendSeparator();
-    machMenu->Append(ID_MACH_SID_DEBUGGER, "SID Debugger");
-    machMenu->Append(ID_MACH_AUDIO_MIXER, "Audio Mixer");
+    machMenu->AppendCheckItem(ID_MACH_SID_DEBUGGER, "SID Debugger");
+    machMenu->AppendCheckItem(ID_MACH_AUDIO_MIXER, "Audio Mixer");
 
     // --- View Menu ---
     wxMenu *viewMenu = new wxMenu;

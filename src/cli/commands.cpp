@@ -223,7 +223,11 @@ int s_snap_active = 0;
 void cli_snap_reset() {
     for (int i = 0; i < 256; i++) {
         cli_snap_node_t *n = s_snap_buckets[i];
-        while (n) { cli_snap_node_t *nx = n->next; free(n); n = nx; }
+        while (n) { 
+            cli_snap_node_t *nx = n->next; 
+            delete n; 
+            n = nx; 
+        }
         s_snap_buckets[i] = NULL;
     }
 }
@@ -235,7 +239,7 @@ void cli_snap_record(uint16_t addr, uint8_t before, uint8_t after, uint16_t writ
         if (n->addr == addr) { n->after = after; n->writer_pc = writer_pc; return; }
         n = n->next;
     }
-    n = (cli_snap_node_t *)malloc(sizeof(cli_snap_node_t));
+    n = new cli_snap_node_t();
     n->addr = addr; n->before = before; n->after = after; n->writer_pc = writer_pc;
     n->next = s_snap_buckets[b]; s_snap_buckets[b] = n;
 }

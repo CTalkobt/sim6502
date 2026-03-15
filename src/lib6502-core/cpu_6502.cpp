@@ -6,35 +6,37 @@
 #include <string.h>
 
 CPU6502::CPU6502() {
-    memset(&dt, 0, sizeof(dt));
-    dispatch_build(&dt, opcodes_6502, OPCODES_6502_COUNT, CPU_6502);
-    interrupt_controller_t* ic_ptr = (interrupt_controller_t*)malloc(sizeof(interrupt_controller_t));
+    dt = std::make_unique<dispatch_table_t>();
+    for (int i = 0; i < 256; i++) {
+        dt->base[i].fn = nullptr;
+        dt->quad[i].fn = nullptr;
+        dt->quad_eom[i].fn = nullptr;
+    }
+    dispatch_build(dt.get(), opcodes_6502, OPCODES_6502_COUNT, CPU_6502);
+    interrupt_controller_t* ic_ptr = new interrupt_controller_t();
     interrupt_init(ic_ptr);
     ic = ic_ptr;
 }
 
 CPU6502::~CPU6502() {
-    if (ic) free(static_cast<interrupt_controller_t*>(ic));
+    if (ic) delete static_cast<interrupt_controller_t*>(ic);
 }
 
 int CPU6502::step() {
     unsigned long start_cycles = cycles;
-    execute_from_mem(this, mem, &dt, CPU_6502);
+    execute_from_mem(this, mem, dt.get(), CPU_6502);
     return (int)(cycles - start_cycles);
 }
 
 CPU6502Undocumented::CPU6502Undocumented() {
-    memset(&dt, 0, sizeof(dt));
-    dispatch_build(&dt, opcodes_6502, OPCODES_6502_COUNT, CPU_6502_UNDOCUMENTED);
-    dispatch_build(&dt, opcodes_6502_undoc, OPCODES_6502_UNDOC_COUNT, CPU_6502_UNDOCUMENTED);
-    interrupt_controller_t* ic_ptr = (interrupt_controller_t*)malloc(sizeof(interrupt_controller_t));
-    interrupt_init(ic_ptr);
-    ic = ic_ptr;
+    memset(dt.get(), 0, sizeof(dispatch_table_t));
+    dispatch_build(dt.get(), opcodes_6502, OPCODES_6502_COUNT, CPU_6502_UNDOCUMENTED);
+    dispatch_build(dt.get(), opcodes_6502_undoc, OPCODES_6502_UNDOC_COUNT, CPU_6502_UNDOCUMENTED);
 }
 
 int CPU6502Undocumented::step() {
     unsigned long start_cycles = cycles;
-    execute_from_mem(this, mem, &dt, CPU_6502_UNDOCUMENTED);
+    execute_from_mem(this, mem, dt.get(), CPU_6502_UNDOCUMENTED);
     return (int)(cycles - start_cycles);
 }
 
@@ -52,47 +54,41 @@ void CPU6502::trigger_interrupt(int vector_addr) {
 }
 
 CPU65C02::CPU65C02() {
-    memset(&dt, 0, sizeof(dt));
-    dispatch_build(&dt, opcodes_6502, OPCODES_6502_COUNT, CPU_65C02);
-    dispatch_build(&dt, opcodes_65c02, OPCODES_65C02_COUNT, CPU_65C02);
-    interrupt_controller_t* ic_ptr = (interrupt_controller_t*)malloc(sizeof(interrupt_controller_t));
-    interrupt_init(ic_ptr);
-    ic = ic_ptr;
+    memset(dt.get(), 0, sizeof(dispatch_table_t));
+    dispatch_build(dt.get(), opcodes_6502, OPCODES_6502_COUNT, CPU_65C02);
+    dispatch_build(dt.get(), opcodes_65c02, OPCODES_65C02_COUNT, CPU_65C02);
 }
 
 int CPU65C02::step() {
     unsigned long start_cycles = cycles;
-    execute_from_mem(this, mem, &dt, CPU_65C02);
+    execute_from_mem(this, mem, dt.get(), CPU_65C02);
     return (int)(cycles - start_cycles);
 }
 
 CPU65CE02::CPU65CE02() {
-    memset(&dt, 0, sizeof(dt));
-    dispatch_build(&dt, opcodes_6502, OPCODES_6502_COUNT, CPU_65CE02);
-    dispatch_build(&dt, opcodes_65c02, OPCODES_65C02_COUNT, CPU_65CE02);
-    dispatch_build(&dt, opcodes_65ce02, OPCODES_65CE02_COUNT, CPU_65CE02);
-    interrupt_controller_t* ic_ptr = (interrupt_controller_t*)malloc(sizeof(interrupt_controller_t));
-    interrupt_init(ic_ptr);
-    ic = ic_ptr;
+    memset(dt.get(), 0, sizeof(dispatch_table_t));
+    dispatch_build(dt.get(), opcodes_6502, OPCODES_6502_COUNT, CPU_65CE02);
+    dispatch_build(dt.get(), opcodes_65c02, OPCODES_65C02_COUNT, CPU_65CE02);
+    dispatch_build(dt.get(), opcodes_65ce02, OPCODES_65CE02_COUNT, CPU_65CE02);
 }
 
 int CPU65CE02::step() {
     unsigned long start_cycles = cycles;
-    execute_from_mem(this, mem, &dt, CPU_65CE02);
+    execute_from_mem(this, mem, dt.get(), CPU_65CE02);
     return (int)(cycles - start_cycles);
 }
 
 CPU45GS02::CPU45GS02() {
-    memset(&dt, 0, sizeof(dt));
-    dispatch_build(&dt, opcodes_6502, OPCODES_6502_COUNT, CPU_45GS02);
-    dispatch_build(&dt, opcodes_65c02, OPCODES_65C02_COUNT, CPU_45GS02);
-    dispatch_build(&dt, opcodes_65ce02, OPCODES_65CE02_COUNT, CPU_45GS02);
-    dispatch_build(&dt, opcodes_45gs02, OPCODES_45GS02_COUNT, CPU_45GS02);
+    memset(dt.get(), 0, sizeof(dispatch_table_t));
+    dispatch_build(dt.get(), opcodes_6502, OPCODES_6502_COUNT, CPU_45GS02);
+    dispatch_build(dt.get(), opcodes_65c02, OPCODES_65C02_COUNT, CPU_45GS02);
+    dispatch_build(dt.get(), opcodes_65ce02, OPCODES_65CE02_COUNT, CPU_45GS02);
+    dispatch_build(dt.get(), opcodes_45gs02, OPCODES_45GS02_COUNT, CPU_45GS02);
 }
 
 int CPU45GS02::step() {
     unsigned long start_cycles = cycles;
-    execute_from_mem(this, mem, &dt, CPU_45GS02);
+    execute_from_mem(this, mem, dt.get(), CPU_45GS02);
     return (int)(cycles - start_cycles);
 }
 

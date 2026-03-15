@@ -61,6 +61,8 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
 
     EVT_MENU(ID_VIEW_GO_TO_ADDRESS, MainFrame::OnGoToAddress)
     EVT_MENU(ID_MACH_ADD_DEVICE, MainFrame::OnAddDevice)
+    EVT_MENU(ID_MACH_SID_DEBUGGER, MainFrame::OnTogglePane)
+    EVT_MENU(ID_MACH_AUDIO_MIXER, MainFrame::OnTogglePane)
     EVT_MENU_RANGE(ID_VIEW_PANE_REGISTERS, ID_VIEW_PANE_VIC_REGS, MainFrame::OnTogglePane)
     EVT_MENU(ID_VIEW_LAYOUT_SAVE, MainFrame::OnTogglePane)
     EVT_MENU(ID_VIEW_LAYOUT_RESET, MainFrame::OnTogglePane)
@@ -143,14 +145,22 @@ void MainFrame::RegisterPane(SimPane* pane, int menu_id, const wxAuiPaneInfo& in
     m_aui.AddPane(pane, info);
     
     // Initial menu state
-    GetMenuBar()->Check(menu_id, info.IsShown());
+    CheckMenuItem(menu_id, info.IsShown());
 }
 
 void MainFrame::UpdatePaneVisibility(int menu_id) {
     if (m_panes.count(menu_id)) {
-        bool show = GetMenuBar()->IsChecked(menu_id);
+        wxMenuItem* item = GetMenuBar()->FindItem(menu_id);
+        bool show = (item && item->IsCheckable()) ? item->IsChecked() : m_aui.GetPane(m_panes[menu_id]).IsShown();
         m_aui.GetPane(m_panes[menu_id]).Show(show);
         m_aui.Update();
+    }
+}
+
+void MainFrame::CheckMenuItem(int menu_id, bool check) {
+    wxMenuItem* item = GetMenuBar()->FindItem(menu_id);
+    if (item && item->IsCheckable()) {
+        item->Check(check);
     }
 }
 
@@ -395,7 +405,7 @@ void MainFrame::OnTogglePane(wxCommandEvent& event) {
                          menu_id == ID_VIEW_PANE_DISASSEMBLY || 
                          menu_id == ID_VIEW_PANE_CONSOLE);
             m_aui.GetPane(pane).Show(show);
-            GetMenuBar()->Check(menu_id, show);
+            CheckMenuItem(menu_id, show);
         }
         m_aui.Update();
     } else if (id == ID_VIEW_LAYOUT_SAVE) {
@@ -448,7 +458,7 @@ void MainFrame::LoadSettings() {
 
             // Update menu checkmarks from loaded perspective
             for (auto const& [menu_id, pane] : m_panes) {
-                GetMenuBar()->Check(menu_id, m_aui.GetPane(pane).IsShown());
+                CheckMenuItem(menu_id, m_aui.GetPane(pane).IsShown());
             }
         }
     }

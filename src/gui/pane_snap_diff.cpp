@@ -32,6 +32,7 @@ void PaneSnapDiff::RefreshPane(const SimSnapshot &snap) {
 
     sim_diff_entry_t diffs[256];
     int count = sim_snapshot_diff(m_sim, diffs, 256);
+    if (count > 256) count = 256;
     
     m_list->DeleteAllItems();
     for (int i = 0; i < count; i++) {
