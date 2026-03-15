@@ -11,6 +11,7 @@
 #include "list_parser.h"
 #include "metadata.h"
 #include "disassembler.h"
+#include "patterns.h"
 #include "cpu_engine.h"
 #include "cpu_6502.h"
 #include "device/mega65_io.h"
@@ -588,9 +589,48 @@ int sim_device_add(sim_session_t *s, const char *name, uint16_t address) {
         s->mem.io_registry->rebuild_map(&s->mem);
         return 0;
     }
-
     return -1;
 }
+
+int sim_get_device_count(sim_session_t *s) {
+    if (!s || !s->mem.io_registry) return 0;
+    return (int)s->mem.io_registry->get_registrations().size();
+}
+
+int sim_get_device_info(sim_session_t *s, int idx, char *name_out, int name_sz, uint16_t *start_out, uint16_t *end_out) {
+    if (!s || !s->mem.io_registry) return -1;
+    const auto& regs = s->mem.io_registry->get_registrations();
+    if (idx < 0 || idx >= (int)regs.size()) return -1;
+    
+    if (name_out) strncpy(name_out, regs[idx].handler->get_handler_name(), (size_t)name_sz);
+    if (start_out) *start_out = regs[idx].start;
+    if (end_out) *end_out = regs[idx].end;
+    return 0;
+}
+
+int sim_snippet_count(void) { return g_snippet_count; }
+
+int sim_snippet_get(int idx, sim_snippet_t *out) {
+    if (idx < 0 || idx >= g_snippet_count || !out) return -1;
+    out->name = g_snippets[idx].name;
+    out->category = g_snippets[idx].category;
+    out->summary = g_snippets[idx].summary;
+    out->processor = g_snippets[idx].processor;
+    out->body = g_snippets[idx].body;
+    return 0;
+}
+
+int sim_snippet_find(const char *name, sim_snippet_t *out) {
+    const snippet_t *s = snippet_find(name);
+    if (!s || !out) return -1;
+    out->name = s->name;
+    out->category = s->category;
+    out->summary = s->summary;
+    out->processor = s->processor;
+    out->body = s->body;
+    return 0;
+}
+
 
 void sim_set_machine_type(sim_session_t *s, machine_type_t machine) {
     if (!s) return;
@@ -705,6 +745,22 @@ int sim_sym_add(sim_session_t *s, uint16_t addr, const char *name, const char *t
     return symbol_add(&s->symbols, name, addr, type, "API");
 }
 int sim_sym_load_file(sim_session_t *s, const char *path) { return s ? symbol_load_file(&s->symbols, path) : 0; }
+int sim_sym_save_file(sim_session_t *s, const char *path) { return s ? symbol_save_file(&s->symbols, path) : 0; }
+
+int sim_source_lookup_addr(sim_session_t *s, uint16_t addr, char *path_out, int *line_out) {
+    if (!s) return 0;
+    return source_map_lookup_addr(&s->source_map, addr, path_out, line_out) ? 1 : 0;
+}
+
+int sim_source_lookup_line(sim_session_t *s, const char *path, int line, uint16_t *addr_out) {
+    if (!s) return 0;
+    uint32_t a32;
+    if (source_map_lookup_line(&s->source_map, path, line, &a32)) {
+        if (addr_out) *addr_out = (uint16_t)a32;
+        return 1;
+    }
+    return 0;
+}
 /* --- Execution History --- */
 
 void sim_history_enable(sim_session_t *s, int enable) { if (s) s->debug_ctx->enable_history(enable); }

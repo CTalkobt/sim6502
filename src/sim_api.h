@@ -93,6 +93,21 @@ machine_type_t sim_get_machine_type(sim_session_t *s);
 void sim_set_machine_type(sim_session_t *s, machine_type_t machine);
 const char *sim_machine_name(machine_type_t type);
 int sim_device_add(sim_session_t *s, const char *name, uint16_t address);
+int sim_get_device_count(sim_session_t *s);
+int sim_get_device_info(sim_session_t *s, int idx, char *name_out, int name_sz, uint16_t *start_out, uint16_t *end_out);
+
+/* Snippets (Idioms) */
+typedef struct {
+    const char *name;
+    const char *category;
+    const char *summary;
+    const char *processor;
+    const char *body;
+} sim_snippet_t;
+
+int sim_snippet_count(void);
+int sim_snippet_get(int idx, sim_snippet_t *out);
+int sim_snippet_find(const char *name, sim_snippet_t *out);
 
 /* Event callbacks */
 void sim_set_event_callback(sim_session_t *s, sim_event_cb cb, void *userdata);
@@ -114,6 +129,11 @@ const char *sim_sym_type_name(int type);
 int sim_sym_remove_idx(sim_session_t *s, int idx);
 int sim_sym_add(sim_session_t *s, uint16_t addr, const char *name, const char *type_str);
 int sim_sym_load_file(sim_session_t *s, const char *path);
+int sim_sym_save_file(sim_session_t *s, const char *path);
+
+/* Source Map */
+int sim_source_lookup_addr(sim_session_t *s, uint16_t addr, char *path_out, int *line_out);
+int sim_source_lookup_line(sim_session_t *s, const char *path, int line, uint16_t *addr_out);
 
 /* Trace — types defined in debug_types.h */
 

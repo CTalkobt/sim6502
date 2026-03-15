@@ -10,6 +10,13 @@
 #include "pane_stack.h"
 #include "pane_watches.h"
 #include "pane_snap_diff.h"
+#include "pane_iref.h"
+#include "pane_symbols.h"
+#include "pane_source.h"
+#include "pane_profiler.h"
+#include "pane_test_runner.h"
+#include "pane_devices.h"
+#include "pane_patterns.h"
 #include <wx/statusbr.h>
 #include <wx/msgdlg.h>
 #include <wx/settings.h>
@@ -104,13 +111,13 @@ void MainFrame::InitPanes() {
     RegisterPane(new PaneWatches(this, m_sim), ID_VIEW_PANE_WATCHES, wxAuiPaneInfo().Name("Watches").Caption("Watch List").Right().Position(5).Hide());
     RegisterPane(new PaneSnapDiff(this, m_sim), ID_VIEW_PANE_SNAP_DIFF, wxAuiPaneInfo().Name("SnapDiff").Caption("Snapshot Diff").Bottom().Position(3).Hide());
 
-    RegisterPane(new GenericSimPane(this, m_sim, "Instruction Ref", "IRef"), ID_VIEW_PANE_IREF, wxAuiPaneInfo().Name("IRef").Caption("Instruction Ref").Bottom().Position(4).Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "Symbols", "Symbols"), ID_VIEW_PANE_SYMBOLS, wxAuiPaneInfo().Name("Symbols").Caption("Symbols").Right().Position(6).Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "Source View", "Source"), ID_VIEW_PANE_SOURCE, wxAuiPaneInfo().Name("Source").Caption("Source View").CenterPane().Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "Profiler", "Profiler"), ID_VIEW_PANE_PROFILER, wxAuiPaneInfo().Name("Profiler").Caption("Profiler").Bottom().Position(5).Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "Test Runner", "TestRunner"), ID_VIEW_PANE_TEST_RUNNER, wxAuiPaneInfo().Name("TestRunner").Caption("Test Runner").Bottom().Position(6).Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "I/O Devices", "Devices"), ID_VIEW_PANE_DEVICES, wxAuiPaneInfo().Name("Devices").Caption("I/O Devices").Right().Position(7).Hide());
-    RegisterPane(new GenericSimPane(this, m_sim, "Idiom Library", "Patterns"), ID_VIEW_PANE_PATTERNS, wxAuiPaneInfo().Name("Patterns").Caption("Idiom Library").Right().Position(8).Hide());
+    RegisterPane(new PaneIRef(this, m_sim), ID_VIEW_PANE_IREF, wxAuiPaneInfo().Name("IRef").Caption("Instruction Ref").Bottom().Position(4).Hide());
+    RegisterPane(new PaneSymbols(this, m_sim), ID_VIEW_PANE_SYMBOLS, wxAuiPaneInfo().Name("Symbols").Caption("Symbols").Right().Position(6).Hide());
+    RegisterPane(new PaneSource(this, m_sim), ID_VIEW_PANE_SOURCE, wxAuiPaneInfo().Name("Source").Caption("Source View").CenterPane().Hide());
+    RegisterPane(new PaneProfiler(this, m_sim), ID_VIEW_PANE_PROFILER, wxAuiPaneInfo().Name("Profiler").Caption("Profiler").Bottom().Position(5).Hide());
+    RegisterPane(new PaneTestRunner(this, m_sim), ID_VIEW_PANE_TEST_RUNNER, wxAuiPaneInfo().Name("TestRunner").Caption("Test Runner").Bottom().Position(6).Hide());
+    RegisterPane(new PaneDevices(this, m_sim), ID_VIEW_PANE_DEVICES, wxAuiPaneInfo().Name("Devices").Caption("I/O Devices").Right().Position(7).Hide());
+    RegisterPane(new PanePatterns(this, m_sim), ID_VIEW_PANE_PATTERNS, wxAuiPaneInfo().Name("Patterns").Caption("Idiom Library").Right().Position(8).Hide());
 
     RegisterPane(new GenericSimPane(this, m_sim, "VIC-II Screen", "VICScreen"), ID_VIEW_PANE_VIC_SCREEN, wxAuiPaneInfo().Name("VICScreen").Caption("VIC-II Screen").Right().Position(9).Hide());
     RegisterPane(new GenericSimPane(this, m_sim, "VIC-II Sprites", "VICSprites"), ID_VIEW_PANE_VIC_SPRITES, wxAuiPaneInfo().Name("VICSprites").Caption("VIC-II Sprites").Right().Position(10).Hide());

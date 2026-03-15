@@ -199,37 +199,37 @@ improving accessibility, keyboard navigation, and OS clipboard integration.
 
 ### Phase F — Reference & Analysis Panes
 
-- [ ] **`src/gui/pane_iref.cpp`** — Replace `draw_pane_iref()`.
+- [X] **`src/gui/pane_iref.cpp`** — Replace `draw_pane_iref()`.
   `wxSplitterWindow`: top half is a `wxListCtrl` of all opcodes (mnemonic, mode,
   opcode byte, cycles); bottom half is a `wxTextCtrl` showing detail for the selected
   opcode. Filter toolbar `wxTextCtrl` for mnemonic search.
 
-- [ ] **`src/gui/pane_symbols.cpp`** — Replace `draw_pane_symbols()`.
+- [X] **`src/gui/pane_symbols.cpp`** — Replace `draw_pane_symbols()`.
   Virtual `wxListCtrl`: Name | Address | Type | Source. Filter by prefix. Load
   external `.sym` via `wxFileDialog` + `sim_sym_load()`. Save via `sim_sym_save()`.
 
-- [ ] **`src/gui/pane_source.cpp`** — Replace `draw_pane_source()`.
+- [X] **`src/gui/pane_source.cpp`** — Replace `draw_pane_source()`.
   `wxStyledTextCtrl` (Scintilla) for syntax-highlighted source display, search
   highlight, and PC-sync scrolling. Read-only; source text from `sim_get_source_text()`
   (API to be confirmed/added). Line-to-address mapping from symbol data.
 
-- [ ] **`src/gui/pane_profiler.cpp`** — Replace `draw_pane_profiler()`.
+- [X] **`src/gui/pane_profiler.cpp`** — Replace `draw_pane_profiler()`.
   The heatmap is a 256×256 RGB texture computed from `sim_profiler_get_hits()`.
   Render via `wxGLCanvas` (same approach as VIC-II, see Phase G) or as a pre-rendered
   `wxBitmap` updated each tick (simpler, acceptable for 64KB address space).
   Tooltip on hover showing hit count for the pointed address.
 
-- [ ] **`src/gui/pane_test_runner.cpp`** — Replace `draw_pane_test_runner()`.
+- [X] **`src/gui/pane_test_runner.cpp`** — Replace `draw_pane_test_runner()`.
   `wxSplitterWindow`: file tree (`wxTreeCtrl`) on left; result detail (`wxTextCtrl`)
   on right. "Run All" / "Run Selected" toolbar buttons. Launch test process via
   `wxProcess` + `wxExecute()` replacing the current `popen()` / thread-based runner
   in `main.cpp`.
 
-- [ ] **`src/gui/pane_devices.cpp`** — Replace `draw_pane_devices()`.
+- [X] **`src/gui/pane_devices.cpp`** — Replace `draw_pane_devices()`.
   `wxPropertyGrid` listing device registers and configuration fields. Update on each
   tick from `sim_get_device_state()` (API to be confirmed).
 
-- [ ] **`src/gui/pane_patterns.cpp`** — Replace `draw_pane_patterns()`.
+- [X] **`src/gui/pane_patterns.cpp`** — Replace `draw_pane_patterns()`.
   `wxSplitterWindow`: `wxListBox` of snippet names (from `snippet_find()` in
   `src/lib6502-toolchain/patterns.h`) on left; `wxStyledTextCtrl` preview on right.
   "Insert" button copies snippet text to clipboard. Filter `wxTextCtrl` for name search.

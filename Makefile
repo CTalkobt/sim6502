@@ -130,7 +130,7 @@ SDL2_LIBS   := $(shell pkg-config --libs   sdl2 2>/dev/null)
 GL_LIBS      = -lGL -lpthread
 
 WX_CFLAGS   := $(shell wx-config --cflags)
-WX_LIBS     := $(shell wx-config --libs std,aui,gl)
+WX_LIBS     := $(shell wx-config --libs std,aui,gl,stc,propgrid)
 
 IMGUI_SRCS = \
 	$(IMGUI_DIR)/imgui.cpp \
@@ -168,7 +168,14 @@ GUI_WX_SRCS = \
 	src/gui/pane_trace.cpp \
 	src/gui/pane_stack.cpp \
 	src/gui/pane_watches.cpp \
-	src/gui/pane_snap_diff.cpp
+	src/gui/pane_snap_diff.cpp \
+	src/gui/pane_iref.cpp \
+	src/gui/pane_symbols.cpp \
+	src/gui/pane_source.cpp \
+	src/gui/pane_profiler.cpp \
+	src/gui/pane_test_runner.cpp \
+	src/gui/pane_devices.cpp \
+	src/gui/pane_patterns.cpp
 
 GUI_WX_OBJS = $(GUI_WX_SRCS:.cpp=.o)
 
