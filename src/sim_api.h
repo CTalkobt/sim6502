@@ -135,6 +135,11 @@ int sim_sym_save_file(sim_session_t *s, const char *path);
 int sim_source_lookup_addr(sim_session_t *s, uint16_t addr, char *path_out, int *line_out);
 int sim_source_lookup_line(sim_session_t *s, const char *path, int line, uint16_t *addr_out);
 
+/* Hardware Rendering */
+void sim_vic_render_framebuffer(sim_session_t *s, uint8_t *buf);
+void sim_vic_render_active_framebuffer(sim_session_t *s, uint8_t *buf);
+void sim_vic_render_sprite(sim_session_t *s, int index, uint8_t *buf);
+
 /* Trace — types defined in debug_types.h */
 
 void sim_trace_enable(sim_session_t *s, int enable);

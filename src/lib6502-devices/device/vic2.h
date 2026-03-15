@@ -48,6 +48,11 @@ void vic2_print_regs(const memory_t *mem);
 /* Print all 8 sprite states (position, colour, flags, data address) to stdout. */
 void vic2_print_sprites(const memory_t *mem);
 
+/* Render a single sprite (0-7) to a 24x21 RGBA buffer.
+   buf must be at least 24 * 21 * 4 bytes. 
+   Includes transparency (alpha=0 for bg). */
+void vic2_render_sprite(const memory_t *mem, int index, uint8_t *buf);
+
 /* JSON output variants — print a single-line JSON object to stdout.
    Intended for use with the -J (JSON mode) interactive CLI flag. */
 void vic2_json_info(const memory_t *mem);

@@ -832,3 +832,57 @@ void vic2_json_sprites(const memory_t *mem)
     }
     printf("]}");
 }
+
+void vic2_render_sprite(const memory_t *mem, int sn, uint8_t *buf) {
+    if (sn < 0 || sn > 7) return;
+
+    uint8_t memsetup = mem->mem[0xD018];
+    uint8_t cia2a    = mem->mem[0xDD00];
+    uint32_t vic_bank = (uint32_t)((~cia2a) & 3) * 0x4000u;
+    uint32_t screen_base = vic_bank + (uint32_t)((memsetup >> 4) & 0xF) * 1024u;
+
+    uint8_t d01c = mem->mem[0xD01C];   /* multicolor       */
+    uint8_t mc0  = mem->mem[0xD025] & 0xF;
+    uint8_t mc1  = mem->mem[0xD026] & 0xF;
+    uint8_t col  = mem->mem[0xD027 + sn] & 0xF;
+    int     mcf  = (d01c & (1 << sn)) ? 1 : 0;
+
+    uint16_t ptr_addr  = (uint16_t)((screen_base + 0x3F8u + (uint32_t)sn) & 0xFFFF);
+    uint8_t  ptr       = mem->mem[ptr_addr];
+    uint32_t data_base = (vic_bank + (uint32_t)ptr * 64u) & 0xFFFF;
+
+    memset(buf, 0, 24 * 21 * 4);
+
+    for (int row = 0; row < 21; row++) {
+        uint16_t ra = (uint16_t)((data_base + (uint32_t)row * 3u) & 0xFFFF);
+        uint32_t bits = ((uint32_t)mem->mem[ra]              << 16) |
+                        ((uint32_t)mem->mem[(ra+1u) & 0xFFFF] <<  8) |
+                         (uint32_t)mem->mem[(ra+2u) & 0xFFFF];
+
+        if (!mcf) {
+            for (int px = 0; px < 24; px++) {
+                if (bits & (0x800000u >> (uint32_t)px)) {
+                    int off = (row * 24 + px) * 4;
+                    buf[off+0] = vic2_palette[col][0];
+                    buf[off+1] = vic2_palette[col][1];
+                    buf[off+2] = vic2_palette[col][2];
+                    buf[off+3] = 255;
+                }
+            }
+        } else {
+            for (int px = 0; px < 12; px++) {
+                int sel = (int)((bits >> (uint32_t)(22 - px*2)) & 0x3u);
+                if (sel != 0) {
+                    uint8_t c = (sel == 1) ? mc0 : (sel == 2) ? col : mc1;
+                    for (int xr = 0; xr < 2; xr++) {
+                        int off = (row * 24 + px * 2 + xr) * 4;
+                        buf[off+0] = vic2_palette[c][0];
+                        buf[off+1] = vic2_palette[c][1];
+                        buf[off+2] = vic2_palette[c][2];
+                        buf[off+3] = 255;
+                    }
+                }
+            }
+        }
+    }
+}

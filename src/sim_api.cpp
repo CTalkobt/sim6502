@@ -16,6 +16,7 @@
 #include "cpu_6502.h"
 #include "device/mega65_io.h"
 #include "device/vic2_io.h"
+#include "device/vic2.h"
 #include "device/sid_io.h"
 #include "device/cia_io.h"
 #include <stdio.h>
@@ -760,6 +761,18 @@ int sim_source_lookup_line(sim_session_t *s, const char *path, int line, uint16_
         return 1;
     }
     return 0;
+}
+
+void sim_vic_render_framebuffer(sim_session_t *s, uint8_t *buf) {
+    if (s && buf) vic2_render_rgb(&s->mem, buf);
+}
+
+void sim_vic_render_active_framebuffer(sim_session_t *s, uint8_t *buf) {
+    if (s && buf) vic2_render_rgb_active(&s->mem, buf);
+}
+
+void sim_vic_render_sprite(sim_session_t *s, int index, uint8_t *buf) {
+    if (s && buf) vic2_render_sprite(&s->mem, index, buf);
 }
 /* --- Execution History --- */
 

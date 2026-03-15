@@ -175,12 +175,17 @@ GUI_WX_SRCS = \
 	src/gui/pane_profiler.cpp \
 	src/gui/pane_test_runner.cpp \
 	src/gui/pane_devices.cpp \
-	src/gui/pane_patterns.cpp
+	src/gui/pane_patterns.cpp \
+	src/gui/pane_vic_screen.cpp \
+	src/gui/pane_vic_sprites.cpp \
+	src/gui/pane_vic_regs.cpp \
+	src/gui/pane_sid_debugger.cpp \
+	src/gui/pane_audio_mixer.cpp
 
 GUI_WX_OBJS = $(GUI_WX_SRCS:.cpp=.o)
 
 $(GUI_WX_TARGET): $(GUI_WX_OBJS) $(LIB_TARGET)
-	$(CXX) -o $@ $^ $(WX_LIBS) $(SDL2_LIBS)
+	$(CXX) -o $@ $^ $(WX_LIBS) $(SDL2_LIBS) $(GL_LIBS)
 
 src/gui/%.o: src/gui/%.cpp
 	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) $(WX_CFLAGS) -c -o $@ $<

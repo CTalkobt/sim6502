@@ -243,24 +243,24 @@ texture update logic currently embedded in `main.cpp` (heatmap texture at line ~
 VIC-II screen texture at line ~4600, sprite textures at line ~4700) should be
 encapsulated inside the respective panel classes.
 
-- [ ] **`src/gui/pane_vic_screen.cpp`** — Replace `draw_pane_vic_screen()`.
+- [X] **`src/gui/pane_vic_screen.cpp`** — Replace `draw_pane_vic_screen()`.
   `wxGLCanvas` sized to the 384×272 VIC-II output. Each tick, retrieve the pixel
   buffer via `sim_vic_get_framebuffer()` (API to be confirmed), upload to an OpenGL
   texture, blit to canvas. Aspect-ratio-correct scaling on resize.
 
-- [ ] **`src/gui/pane_vic_sprites.cpp`** — Replace `draw_pane_vic_sprites()`.
+- [X] **`src/gui/pane_vic_sprites.cpp`** — Replace `draw_pane_vic_sprites()`.
   8 sub-panels (or a `wxNotebook` of 8 pages), each a `wxGLCanvas` for one sprite's
   24×21 RGBA texture. Current textures: `g_sprite_tex[8]` in `main.cpp`.
 
-- [ ] **`src/gui/pane_vic_regs.cpp`** — Replace `draw_pane_vic_regs()`.
+- [X] **`src/gui/pane_vic_regs.cpp`** — Replace `draw_pane_vic_regs()`.
   `wxPropertyGrid` for all VIC-II control registers. Editable values write back
   through `sim_mem_write_byte()` at VIC-II register addresses.
 
-- [ ] **`src/gui/pane_sid_debugger.cpp`** — Replace `draw_pane_sid_debugger()`.
+- [X] **`src/gui/pane_sid_debugger.cpp`** — Replace `draw_pane_sid_debugger()`.
   `wxPanel` with a grid of SID register read-outs. Voice oscillator visualisation can
   use a `wxGLCanvas` or a `wxClientDC` owner-drawn curve plot.
 
-- [ ] **`src/gui/pane_audio_mixer.cpp`** — Replace `draw_pane_audio_mixer()`.
+- [X] **`src/gui/pane_audio_mixer.cpp`** — Replace `draw_pane_audio_mixer()`.
   `wxPanel` with `wxSlider` controls for volume, voice mix. Label each control with
   register name and current hex value.
 
@@ -326,8 +326,9 @@ Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx
   additions to `sim_api.h` and corresponding `sim_api.cpp` implementations.
 
 - [ ] **`make test` regression.**
-  The CLI (`sim6502`) must continue to pass `make test` (runs `tools/run_tests.py`)
-  without change. The GUI build must not alter `libsim6502.a` contents or CLI linkage.
+  The CLI (`sim6502`) must continue to pass `make test` (runs `tools/run_tests.py`) and
+  `make unit-test` without change. The GUI build must not alter `libsim6502.a` 
+  contents or CLI linkage.
 
 ---
 ## Milestone 1.6: GUI Ease of Use, Minor Bug Fixes
