@@ -75,7 +75,7 @@ TEST_CASE("API - Breakpoint API", "[api][breakpoint]") {
     sim_mem_write_byte(s, 0x1002, 0xA9); // LDA #$02
     sim_mem_write_byte(s, 0x1003, 0x02);
     sim_set_pc(s, 0x1000);
-    sim_set_reg_byte(s, "S", 0xFE); 
+    sim_set_reg_value(s, "S", 0x01FE); 
     sim_set_state(s, SIM_PAUSED);
 
     SECTION("Stop on Breakpoint") {
@@ -88,6 +88,15 @@ TEST_CASE("API - Breakpoint API", "[api][breakpoint]") {
         CPU* cpu = sim_get_cpu(s);
         CHECK(cpu->pc == 0x1002);
         CHECK(cpu->a == 0x01);
+        CHECK(cpu->s == 0x01FE);
+    }
+
+    SECTION("Set other registers") {
+        sim_set_reg_value(s, "A", 0x123);
+        sim_set_reg_value(s, "X", 0x456);
+        CPU* cpu = sim_get_cpu(s);
+        CHECK(cpu->a == 0x23);
+        CHECK(cpu->x == 0x56);
     }
 
     sim_destroy(s);

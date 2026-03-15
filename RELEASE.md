@@ -348,10 +348,9 @@ Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx
 - [X] **Memory Integrity:** Fix `far_pages` memory leaks during reloads and ensure correct `load_size` calculation for assembly programs.
 - [ ] **Interactive Graphics Editors:** Implement the interactive bitmap editor for the VIC-II Sprite pane (1bpp/2bpp modes) and create the new VIC-II Character Set Editor pane.
 - [ ] **Time Machine UI:** Add the timeline slider and history table to the Execution History pane, including the "Rewind to Breakpoint" (reverse-continue) feature.
-- [ ] **Register Editing:** Replace modal dialogs with inline hex editing for registers.
+- [X] **Register Editing:** Replace modal dialogs with inline hex editing for registers.
 - [ ] **Memory View Refinement:** Add "Follow PC/SP" toggles, write-access highlighting, and inline cell editing.
 - [ ] **VIC Screen Polish:** Implement scale controls (1x/2x/3x), freeze-frame toggle, and mode/address status indicators.
-- [ ] **Remote Connectivity:** Implement the connection UI and protocol adapters for VICE Remote Monitor and M65dbg (Serial/Ethernet).
 - [ ] **UX & Navigation:** Complete the "Go To Address" disassembly scrolling and ensure robust layout persistence for multi-instance panes.
 
 ---

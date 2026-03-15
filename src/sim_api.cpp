@@ -726,14 +726,19 @@ int sim_get_last_writes(sim_session_t *s, uint16_t *addrs, int max_count) {
 }
 void sim_set_pc(sim_session_t *s, uint16_t pc) { if (s) s->cpu->pc = pc; }
 void sim_set_reg_byte(sim_session_t *s, const char *name, uint8_t val) {
+    sim_set_reg_value(s, name, (uint16_t)val);
+}
+
+void sim_set_reg_value(sim_session_t *s, const char *name, uint16_t val) {
     if (!s || !name) return;
-    if (strcmp(name, "A") == 0) s->cpu->a = val;
-    else if (strcmp(name, "X") == 0) s->cpu->x = val;
-    else if (strcmp(name, "Y") == 0) s->cpu->y = val;
-    else if (strcmp(name, "Z") == 0) s->cpu->z = val;
-    else if (strcmp(name, "B") == 0) s->cpu->b = val;
+    if (strcmp(name, "A") == 0) s->cpu->a = (uint8_t)val;
+    else if (strcmp(name, "X") == 0) s->cpu->x = (uint8_t)val;
+    else if (strcmp(name, "Y") == 0) s->cpu->y = (uint8_t)val;
+    else if (strcmp(name, "Z") == 0) s->cpu->z = (uint8_t)val;
+    else if (strcmp(name, "B") == 0) s->cpu->b = (uint8_t)val;
     else if (strcmp(name, "S") == 0) s->cpu->s = val;
-    else if (strcmp(name, "P") == 0) s->cpu->p = val;
+    else if (strcmp(name, "P") == 0) s->cpu->p = (uint8_t)val;
+    else if (strcmp(name, "PC") == 0) s->cpu->pc = val;
 }
 int sim_break_count(sim_session_t *s) { return s ? s->breakpoints->count : 0; }
 int sim_break_get(sim_session_t *s, int idx, uint16_t *addr, char *cond, int cond_sz) {

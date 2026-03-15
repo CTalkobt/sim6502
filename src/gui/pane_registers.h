@@ -14,8 +14,15 @@ public:
 private:
     void UpdateRow(int row, const wxString& name, uint32_t val, uint32_t prev, bool is16 = false);
     void OnEditRegister(wxListEvent& event);
+    void OnLeftClick(wxMouseEvent& event);
+    void OnEditorEnter(wxCommandEvent& event);
+    void OnEditorKillFocus(wxFocusEvent& event);
+    void CommitEdit(int row, const wxString& newValue);
+    void HideEditor();
 
     wxListCtrl* m_list;
+    wxTextCtrl* m_textEditor;
+    int         m_editRow;
     CPUState    m_prev_cpu;
     bool        m_prev_valid;
 };
