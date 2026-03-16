@@ -19,6 +19,8 @@
 #include "metadata.h"
 #include "disassembler.h"
 #include "commands.h"
+#include "sim_api.h"
+#include "sim_api.h"
 #include "cpu_engine.h"
 #include "cpu_6502.h"
 #include "audio.h"

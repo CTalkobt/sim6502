@@ -1,4 +1,3 @@
-#include "sim_api.h"
 #include "version.h"
 #include "debug_context.h"
 #include "cpu.h"

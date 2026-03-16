@@ -16,12 +16,12 @@
 extern int g_json_mode;
 void json_err(const char *cmd, const char *msg);
 
+#include "sim_api.h"
+
 /* Enable JSON output mode for all interactive commands (0=text, 1=JSON) */
 void cli_set_json_mode(int v);
 
-typedef void (*cli_log_cb)(const char *text, void *userdata);
-void cli_set_log_callback(cli_log_cb cb, void *userdata);
-void cli_printf(const char *fmt, ...);
+void list_processors();
 
 /* --- Interactive Modes --- */
 

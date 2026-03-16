@@ -153,8 +153,12 @@ int sim_trace_run(sim_session_t *s, int start_addr, int max_instr, int stop_on_b
 
 /* Register / State control */
 typedef void (*sim_log_cb)(const char *text, void *userdata);
+typedef void (*cli_log_cb)(const char *text, void *userdata);
+
 void sim_set_log_callback(sim_session_t *s, sim_log_cb cb, void *userdata);
 void sim_exec_command(sim_session_t *s, const char *cmd);
+void cli_printf(const char *fmt, ...);
+void cli_set_log_callback(cli_log_cb cb, void *userdata);
 
 void sim_set_pc(sim_session_t *s, uint16_t pc);
 void sim_set_reg_byte(sim_session_t *s, const char *name, uint8_t val);

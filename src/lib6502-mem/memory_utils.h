@@ -1,3 +1,4 @@
+#include "sim_api.h"
 #ifndef MEMORY_UTILS_H
 #define MEMORY_UTILS_H
 
@@ -65,43 +66,43 @@ static inline int memory_viewer_add_range(memory_viewer_t *viewer, uint16_t star
 /* --- Inspection / Display --- */
 
 static inline void memory_dump(const memory_t *mem, uint16_t start, uint16_t end) {
-	printf("\nMemory Dump: 0x%04X to 0x%04X\n", start, end);
-	printf("═══════════════════════════════════════════════════════════════\n");
-	printf("Address  | Hex Values                          | ASCII\n");
-	printf("─────────┼─────────────────────────────────────┼─────────────────\n");
+	cli_printf("\nMemory Dump: 0x%04X to 0x%04X\n", start, end);
+	cli_printf("═══════════════════════════════════════════════════════════════\n");
+	cli_printf("Address  | Hex Values                          | ASCII\n");
+	cli_printf("─────────┼─────────────────────────────────────┼─────────────────\n");
 	
 	for (uint32_t addr = (start & 0xFFF0); addr <= end; addr += 16) {
-		printf("%04X     | ", (uint16_t)addr);
+		cli_printf("%04X     | ", (uint16_t)addr);
 		
 		/* Hex values */
 		for (int i = 0; i < 16; i++) {
 			if (addr + i >= start && addr + i <= end) {
-				printf("%02X ", mem->mem[(uint16_t)(addr + i)]);
+				cli_printf("%02X ", mem->mem[(uint16_t)(addr + i)]);
 			} else {
-				printf("   ");
+				cli_printf("   ");
 			}
-			if (i == 7) printf("  ");
+			if (i == 7) cli_printf("  ");
 		}
 		
-		printf("| ");
+		cli_printf("| ");
 		
 		/* ASCII representation */
 		for (int i = 0; i < 16; i++) {
 			if (addr + i >= start && addr + i <= end) {
 				uint8_t c = mem->mem[(uint16_t)(addr + i)];
-				printf("%c", (c >= 32 && c < 127) ? c : '.');
+				cli_printf("%c", (c >= 32 && c < 127) ? c : '.');
 			} else {
-				printf(" ");
+				cli_printf(" ");
 			}
 		}
-		printf("\n");
+		cli_printf("\n");
 	}
-	printf("═══════════════════════════════════════════════════════════════\n");
+	cli_printf("═══════════════════════════════════════════════════════════════\n");
 }
 
 static inline void memory_peek(const memory_t *mem, uint16_t addr) {
 	uint8_t val = mem->mem[addr];
-	printf("Peek at 0x%04X: 0x%02X (%d, '%c')\n", 
+	cli_printf("Peek at 0x%04X: 0x%02X (%d, '%c')\n", 
 		addr, val, val, (val >= 32 && val < 127) ? val : '.');
 }
 
@@ -109,7 +110,7 @@ static inline void memory_read_word(const memory_t *mem, uint16_t addr) {
 	uint8_t lo = mem->mem[addr];
 	uint8_t hi = mem->mem[addr + 1];
 	uint16_t word = lo | (hi << 8);
-	printf("Memory[0x%04X:0x%04X] = 0x%04X (%d)\n", addr, (uint16_t)(addr + 1), word, word);
+	cli_printf("Memory[0x%04X:0x%04X] = 0x%04X (%d)\n", addr, (uint16_t)(addr + 1), word, word);
 }
 
 /* --- Watch Points --- */
@@ -129,7 +130,7 @@ static inline void watch_update(watch_list_t *wl, const memory_t *mem) {
 		if (!wl->watches[i].watching) continue;
 		uint8_t current = mem->mem[wl->watches[i].address];
 		if (current != wl->watches[i].last_value) {
-			printf("[WATCH] %s (0x%04X) changed: 0x%02X -> 0x%02X\n", 
+			cli_printf("[WATCH] %s (0x%04X) changed: 0x%02X -> 0x%02X\n", 
 				wl->watches[i].name, wl->watches[i].address, wl->watches[i].last_value, current);
 			wl->watches[i].last_value = current;
 		}

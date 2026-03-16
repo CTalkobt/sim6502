@@ -1,3 +1,4 @@
+#include "sim_api.h"
 #include "commands.h"
 #include "version.h"
 #include "cpu_engine.h"

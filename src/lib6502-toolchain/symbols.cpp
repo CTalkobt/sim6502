@@ -1,3 +1,4 @@
+#include "sim_api.h"
 #include "symbols.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -90,11 +91,11 @@ symbol_t *symbol_get(const symbol_table_t *st, const char *name) {
 
 /* Display symbol table */
 void symbol_display(const symbol_table_t *st) {
-	printf("\n╔════════════════════════════════════════════════════════╗\n");
-	printf("║  Symbol Table: %-40s║\n", st->arch_name);
-	printf("╠════════════════════════════════════════════════════════╣\n");
-	printf("║ Address  | Name                | Type          | Comment       ║\n");
-	printf("╠══════════╪═════════════════════╪═══════════════╪═══════════════╣\n");
+	cli_printf("\n╔════════════════════════════════════════════════════════╗\n");
+	cli_printf("║  Symbol Table: %-40s║\n", st->arch_name);
+	cli_printf("╠════════════════════════════════════════════════════════╣\n");
+	cli_printf("║ Address  | Name                | Type          | Comment       ║\n");
+	cli_printf("╠══════════╪═════════════════════╪═══════════════╪═══════════════╣\n");
 	
 	for (int i = 0; i < st->count; i++) {
 		const char *type_str;
@@ -110,16 +111,16 @@ void symbol_display(const symbol_table_t *st) {
 		default: type_str = "Unknown"; break;
 		}
 		
-		printf("║ $%04X    │ %-19s │ %-13s │ %-13s ║\n",
+		cli_printf("║ $%04X    │ %-19s │ %-13s │ %-13s ║\n",
 			st->symbols[i].address,
 			st->symbols[i].name,
 			type_str,
 			st->symbols[i].comment);
 	}
 	
-	printf("╠════════════════════════════════════════════════════════╣\n");
-	printf("║ Total Symbols: %-46d║\n", st->count);
-	printf("╚════════════════════════════════════════════════════════╝\n");
+	cli_printf("╠════════════════════════════════════════════════════════╣\n");
+	cli_printf("║ Total Symbols: %-46d║\n", st->count);
+	cli_printf("╚════════════════════════════════════════════════════════╝\n");
 }
 
 /* Load symbol table from file */

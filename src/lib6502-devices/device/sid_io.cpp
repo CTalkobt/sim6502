@@ -1,3 +1,4 @@
+#include "sim_api.h"
 #include "sid_io.h"
 #include "io_registry.h"
 #include "audio.h"
@@ -127,9 +128,9 @@ void sid_io_register(memory_t *mem, machine_type_t machine, std::vector<IOHandle
 
 void sid_print_info(memory_t *mem) {
     (void)mem;
-    printf("SID Subsystem: %d active chip(s)\n", (int)g_sid_instances.size());
+    cli_printf("SID Subsystem: %d active chip(s)\n", (int)g_sid_instances.size());
     for (size_t i = 0; i < g_sid_instances.size(); i++) {
-        printf("  %s: %lu clock cycles\n", g_sid_instances[i]->get_handler_name(), g_sid_instances[i]->get_clocks());
+        cli_printf("  %s: %lu clock cycles\n", g_sid_instances[i]->get_handler_name(), g_sid_instances[i]->get_clocks());
     }
 }
 
@@ -137,36 +138,36 @@ void sid_print_regs(memory_t *mem) {
     (void)mem;
     for (size_t i = 0; i < g_sid_instances.size(); i++) {
         SIDHandler* h = g_sid_instances[i];
-        printf("%s ($%04X):\n", h->get_handler_name(), 0xD400 + (unsigned int)(i * 0x20));
+        cli_printf("%s ($%04X):\n", h->get_handler_name(), 0xD400 + (unsigned int)(i * 0x20));
         for (int r = 0; r < 32; r++) {
             uint8_t val = 0;
             h->io_read(NULL, (uint16_t)(0xD400 + i*0x20 + r), &val);
-            printf("%02X ", val);
-            if ((r + 1) % 7 == 0) printf("\n");
+            cli_printf("%02X ", val);
+            if ((r + 1) % 7 == 0) cli_printf("\n");
         }
-        printf("\n\n");
+        cli_printf("\n\n");
     }
 }
 
 void sid_json_info(memory_t *mem) {
     (void)mem;
-    printf("{\"count\":%d}", (int)g_sid_instances.size());
+    cli_printf("{\"count\":%d}", (int)g_sid_instances.size());
 }
 
 void sid_json_regs(memory_t *mem) {
     (void)mem;
-    printf("{\"chips\":[");
+    cli_printf("{\"chips\":[");
     for (size_t i = 0; i < g_sid_instances.size(); i++) {
-        if (i > 0) printf(",");
-        printf("{\"name\":\"%s\",\"regs\":[", g_sid_instances[i]->get_handler_name());
+        if (i > 0) cli_printf(",");
+        cli_printf("{\"name\":\"%s\",\"regs\":[", g_sid_instances[i]->get_handler_name());
         for (int r = 0; r < 32; r++) {
             uint8_t val = 0;
             g_sid_instances[i]->io_read(NULL, (uint16_t)r, &val);
-            printf("%d%s", val, r < 31 ? "," : "");
+            cli_printf("%d%s", val, r < 31 ? "," : "");
         }
-        printf("]}");
+        cli_printf("]}");
     }
-    printf("]}");
+    cli_printf("]}");
 }
 
 size_t sid_get_count() {

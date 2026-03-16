@@ -7,6 +7,7 @@ CXXFLAGS = -pthread -Wall -Wextra -O2 -Wno-stringop-truncation
 
 # Include paths for library code (no src/ prefix — each lib is its own root)
 LIB_IFLAGS = \
+	-I src \
 	-I src/lib6502-core \
 	-I src/lib6502-core/opcodes \
 	-I src/lib6502-mem \

@@ -1,3 +1,4 @@
+#include "sim_api.h"
 #ifndef BREAKPOINT_H
 #define BREAKPOINT_H
 
@@ -81,12 +82,12 @@ static inline int breakpoint_hit(breakpoint_list_t *bp_list, cpu_t *cpu) {
 /* List all breakpoints */
 static inline void breakpoint_list(breakpoint_list_t *bp_list) {
 	if (bp_list->count == 0) {
-		printf("No breakpoints set.\n");
+		cli_printf("No breakpoints set.\n");
 		return;
 	}
-	printf("Breakpoints:\n");
+	cli_printf("Breakpoints:\n");
 	for (int i = 0; i < bp_list->count; i++) {
-		printf("  %d: 0x%04X %s%s%s\n", i, bp_list->breakpoints[i].address,
+		cli_printf("  %d: 0x%04X %s%s%s\n", i, bp_list->breakpoints[i].address,
 			bp_list->breakpoints[i].enabled ? "[enabled]" : "[disabled]",
 			bp_list->breakpoints[i].condition[0] ? " if " : "",
 			bp_list->breakpoints[i].condition);

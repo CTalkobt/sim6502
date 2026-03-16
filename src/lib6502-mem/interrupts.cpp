@@ -1,3 +1,4 @@
+#include "sim_api.h"
 #include "interrupts.h"
 #include "memory.h"
 #include <stdio.h>
@@ -140,14 +141,14 @@ const char *interrupt_name(interrupt_type_t type) {
 }
 
 void interrupt_display_status(const interrupt_controller_t *handler) {
-	printf("\n=== Interrupt Status ===\n");
-	printf("Current Type: %s\n", interrupt_name(handler->current.type));
+	cli_printf("\n=== Interrupt Status ===\n");
+	cli_printf("Current Type: %s\n", interrupt_name(handler->current.type));
 	if (handler->current.type != INT_NONE) {
-		printf("Vector: 0x%04X\n", handler->current.vector);
-		printf("Pending: %s\n", handler->current.pending ? "Yes" : "No");
+		cli_printf("Vector: 0x%04X\n", handler->current.vector);
+		cli_printf("Pending: %s\n", handler->current.pending ? "Yes" : "No");
 	}
-	printf("IRQ Line: %s\n", handler->irq_line ? "Asserted" : "Released");
-	printf("NMI Pending: %s\n", handler->nmi_pending ? "Yes" : "No");
-	printf("Handled: %u\n", handler->handled_count);
-	printf("=======================\n");
+	cli_printf("IRQ Line: %s\n", handler->irq_line ? "Asserted" : "Released");
+	cli_printf("NMI Pending: %s\n", handler->nmi_pending ? "Yes" : "No");
+	cli_printf("Handled: %u\n", handler->handled_count);
+	cli_printf("=======================\n");
 }

@@ -1,3 +1,4 @@
+#include "sim_api.h"
 #include "vic2.h"
 #include <stdio.h>
 #include <string.h>
@@ -523,28 +524,28 @@ void vic2_print_info(const memory_t *mem)
     uint32_t cg_addr     = vic_bank + (uint32_t)((memsetup >> 1) & 0x7) * 2048u;
     uint32_t bm_addr     = vic_bank + (uint32_t)(((memsetup >> 3) & 1) * 0x2000u);
 
-    printf("VIC-II State:\n");
-    printf("  Mode     : %s\n", mode);
-    printf("  D011     : $%02X  (ECM=%d BMM=%d DEN=%d RSEL=%d yscroll=%d)\n",
+    cli_printf("VIC-II State:\n");
+    cli_printf("  Mode     : %s\n", mode);
+    cli_printf("  D011     : $%02X  (ECM=%d BMM=%d DEN=%d RSEL=%d yscroll=%d)\n",
            ctrl1, ecm, bmm, den, (ctrl1>>3)&1, ctrl1&7);
-    printf("  D016     : $%02X  (MCM=%d CSEL=%d xscroll=%d)\n",
+    cli_printf("  D016     : $%02X  (MCM=%d CSEL=%d xscroll=%d)\n",
            ctrl2, mcm, (ctrl2>>3)&1, ctrl2&7);
-    printf("  D018     : $%02X\n", memsetup);
-    printf("  Bank     : %d ($%04X-$%04X)  CIA2PA=$%02X\n",
+    cli_printf("  D018     : $%02X\n", memsetup);
+    cli_printf("  Bank     : %d ($%04X-$%04X)  CIA2PA=$%02X\n",
            bank, (unsigned)vic_bank, (unsigned)(vic_bank + 0x3FFF), cia2a);
-    printf("  Screen   : $%04X\n", (unsigned)screen_addr);
+    cli_printf("  Screen   : $%04X\n", (unsigned)screen_addr);
     if (bmm)
-        printf("  Bitmap   : $%04X\n", (unsigned)bm_addr);
+        cli_printf("  Bitmap   : $%04X\n", (unsigned)bm_addr);
     else
-        printf("  CharGen  : $%04X\n", (unsigned)cg_addr);
-    printf("  Border   : %d (%s)\n", border, vic2_color_names[border]);
-    printf("  BG0      : %d (%s)\n", bg0,    vic2_color_names[bg0]);
+        cli_printf("  CharGen  : $%04X\n", (unsigned)cg_addr);
+    cli_printf("  Border   : %d (%s)\n", border, vic2_color_names[border]);
+    cli_printf("  BG0      : %d (%s)\n", bg0,    vic2_color_names[bg0]);
     if (ecm) {
-        printf("  BG1      : %d (%s)\n", bg1, vic2_color_names[bg1]);
-        printf("  BG2      : %d (%s)\n", bg2, vic2_color_names[bg2]);
-        printf("  BG3      : %d (%s)\n", bg3, vic2_color_names[bg3]);
+        cli_printf("  BG1      : %d (%s)\n", bg1, vic2_color_names[bg1]);
+        cli_printf("  BG2      : %d (%s)\n", bg2, vic2_color_names[bg2]);
+        cli_printf("  BG3      : %d (%s)\n", bg3, vic2_color_names[bg3]);
     }
-    printf("  Frame    : %dx%d px (active 320x200 at +%d,+%d)\n",
+    cli_printf("  Frame    : %dx%d px (active 320x200 at +%d,+%d)\n",
            VIC2_FRAME_W, VIC2_FRAME_H, VIC2_ACTIVE_X, VIC2_ACTIVE_Y);
 }
 
@@ -589,32 +590,32 @@ void vic2_print_regs(const memory_t *mem)
     else if ( bmm&&!ecm&& mcm)  mode = "Multicolour Bitmap";
     else                         mode = "Invalid";
 
-    printf("VIC-II Registers:\n");
-    printf("  Mode     : %s\n", mode);
-    printf("  D011=$%02X : ECM=%d BMM=%d DEN=%d RSEL=%d RST8=%d yscroll=%d\n",
+    cli_printf("VIC-II Registers:\n");
+    cli_printf("  Mode     : %s\n", mode);
+    cli_printf("  D011=$%02X : ECM=%d BMM=%d DEN=%d RSEL=%d RST8=%d yscroll=%d\n",
            ctrl1, ecm, bmm, den, rsel, rst8, yscroll);
-    printf("  D016=$%02X : MCM=%d CSEL=%d xscroll=%d\n",
+    cli_printf("  D016=$%02X : MCM=%d CSEL=%d xscroll=%d\n",
            ctrl2, mcm, csel, xscroll);
-    printf("  D018=$%02X : screen=bits[7:4]  char/bm=bits[3:1]\n", memsetup);
-    printf("  D012=$%02X : Raster line = %d ($%03X)\n",
+    cli_printf("  D018=$%02X : screen=bits[7:4]  char/bm=bits[3:1]\n", memsetup);
+    cli_printf("  D012=$%02X : Raster line = %d ($%03X)\n",
            raster, raster_line, raster_line);
-    printf("  D019=$%02X : IRQ=%d  RST=%d MBC=%d MMC=%d LP=%d\n",
+    cli_printf("  D019=$%02X : IRQ=%d  RST=%d MBC=%d MMC=%d LP=%d\n",
            d019, (d019>>7)&1, d019&1, (d019>>1)&1, (d019>>2)&1, (d019>>3)&1);
-    printf("  D01A=$%02X : ERST=%d EMBC=%d EMMC=%d ELP=%d\n",
+    cli_printf("  D01A=$%02X : ERST=%d EMBC=%d EMMC=%d ELP=%d\n",
            d01a, d01a&1, (d01a>>1)&1, (d01a>>2)&1, (d01a>>3)&1);
-    printf("  Bank     : %d  ($%04X-$%04X)  CIA2PA=$%02X\n",
+    cli_printf("  Bank     : %d  ($%04X-$%04X)  CIA2PA=$%02X\n",
            bank, (unsigned)vic_bank, (unsigned)(vic_bank + 0x3FFF), cia2a);
-    printf("  Screen   : $%04X\n", (unsigned)screen_addr);
+    cli_printf("  Screen   : $%04X\n", (unsigned)screen_addr);
     if (bmm)
-        printf("  Bitmap   : $%04X\n", (unsigned)bm_addr);
+        cli_printf("  Bitmap   : $%04X\n", (unsigned)bm_addr);
     else
-        printf("  CharGen  : $%04X\n", (unsigned)cg_addr);
-    printf("  ColourRAM: $D800\n");
-    printf("  D020 Border: %d (%s)\n",   border, vic2_color_names[border]);
-    printf("  D021   BG0: %d (%s)\n",    bg0,    vic2_color_names[bg0]);
-    printf("  D022   BG1: %d (%s)\n",    bg1,    vic2_color_names[bg1]);
-    printf("  D023   BG2: %d (%s)\n",    bg2,    vic2_color_names[bg2]);
-    printf("  D024   BG3: %d (%s)\n",    bg3,    vic2_color_names[bg3]);
+        cli_printf("  CharGen  : $%04X\n", (unsigned)cg_addr);
+    cli_printf("  ColourRAM: $D800\n");
+    cli_printf("  D020 Border: %d (%s)\n",   border, vic2_color_names[border]);
+    cli_printf("  D021   BG0: %d (%s)\n",    bg0,    vic2_color_names[bg0]);
+    cli_printf("  D022   BG1: %d (%s)\n",    bg1,    vic2_color_names[bg1]);
+    cli_printf("  D023   BG2: %d (%s)\n",    bg2,    vic2_color_names[bg2]);
+    cli_printf("  D024   BG3: %d (%s)\n",    bg3,    vic2_color_names[bg3]);
 }
 
 void vic2_print_sprites(const memory_t *mem)
@@ -633,9 +634,9 @@ void vic2_print_sprites(const memory_t *mem)
     uint32_t vic_bank    = (uint32_t)((~cia2a) & 3) * 0x4000u;
     uint32_t screen_base = vic_bank + (uint32_t)((d018 >> 4) & 0xF) * 1024u;
 
-    printf("VIC-II Sprites  D015=$%02X  MC0=%d(%s)  MC1=%d(%s):\n",
+    cli_printf("VIC-II Sprites  D015=$%02X  MC0=%d(%s)  MC1=%d(%s):\n",
            d015, d025, vic2_color_names[d025], d026, vic2_color_names[d026]);
-    printf("  #  En   X    Y   Col            MCM XE  YE  BG  DataAddr\n");
+    cli_printf("  #  En   X    Y   Col            MCM XE  YE  BG  DataAddr\n");
 
     for (int sn = 0; sn < 8; sn++) {
         int      enabled = (d015 >> sn) & 1;
@@ -645,7 +646,7 @@ void vic2_print_sprites(const memory_t *mem)
         uint8_t  ptr     = mem->mem[(screen_base + 0x3F8 + sn) & 0xFFFF];
         uint32_t saddr   = (vic_bank + (uint32_t)ptr * 64u) & 0xFFFF;
 
-        printf("  %d  %-3s  %-4d %-3d  %X(%-10s)  %-3s %-3s %-3s %-3s $%04X\n",
+        cli_printf("  %d  %-3s  %-4d %-3d  %X(%-10s)  %-3s %-3s %-3s %-3s $%04X\n",
                sn, enabled ? "Yes" : "No", sx, sy,
                color, vic2_color_names[color],
                (d01c >> sn) & 1 ? "Y" : "-",
@@ -694,7 +695,7 @@ void vic2_json_info(const memory_t *mem)
     uint32_t cg_addr     = vic_bank + (uint32_t)((memsetup >> 1) & 0x7) * 2048u;
     uint32_t bm_addr     = vic_bank + (uint32_t)(((memsetup >> 3) & 1) * 0x2000u);
 
-    printf("{\"mode\":\"%s\","
+    cli_printf("{\"mode\":\"%s\","
            "\"d011\":%d,\"d016\":%d,\"d018\":%d,"
            "\"ecm\":%d,\"bmm\":%d,\"den\":%d,\"mcm\":%d,"
            "\"rsel\":%d,\"csel\":%d,"
@@ -761,7 +762,7 @@ void vic2_json_regs(const memory_t *mem)
     else if ( bmm&&!ecm&& mcm)  mode = "Multicolour Bitmap";
     else                         mode = "Invalid";
 
-    printf("{\"mode\":\"%s\","
+    cli_printf("{\"mode\":\"%s\","
            "\"d011\":%d,\"d016\":%d,\"d018\":%d,\"d012\":%d,"
            "\"ecm\":%d,\"bmm\":%d,\"den\":%d,\"mcm\":%d,"
            "\"rsel\":%d,\"csel\":%d,\"rst8\":%d,"
@@ -809,7 +810,7 @@ void vic2_json_sprites(const memory_t *mem)
     uint32_t vic_bank    = (uint32_t)((~cia2a) & 3) * 0x4000u;
     uint32_t screen_base = vic_bank + (uint32_t)((d018 >> 4) & 0xF) * 1024u;
 
-    printf("{\"d015\":%d,\"mc0\":%d,\"mc0_name\":\"%s\",\"mc1\":%d,\"mc1_name\":\"%s\",\"sprites\":[",
+    cli_printf("{\"d015\":%d,\"mc0\":%d,\"mc0_name\":\"%s\",\"mc1\":%d,\"mc1_name\":\"%s\",\"sprites\":[",
            d015, d025, vic2_color_names[d025], d026, vic2_color_names[d026]);
 
     for (int sn = 0; sn < 8; sn++) {
@@ -820,8 +821,8 @@ void vic2_json_sprites(const memory_t *mem)
         uint8_t  ptr     = mem->mem[(screen_base + 0x3F8 + sn) & 0xFFFF];
         uint32_t saddr   = (vic_bank + (uint32_t)ptr * 64u) & 0xFFFF;
 
-        if (sn > 0) printf(",");
-        printf("{\"index\":%d,\"enabled\":%d,\"x\":%d,\"y\":%d,"
+        if (sn > 0) cli_printf(",");
+        cli_printf("{\"index\":%d,\"enabled\":%d,\"x\":%d,\"y\":%d,"
                "\"color\":%d,\"color_name\":\"%s\","
                "\"multicolor\":%d,\"expand_x\":%d,\"expand_y\":%d,"
                "\"behind_bg\":%d,\"data_addr\":%u}",
@@ -830,7 +831,7 @@ void vic2_json_sprites(const memory_t *mem)
                (d01c >> sn) & 1, (d01d >> sn) & 1, (d017 >> sn) & 1,
                (d01b >> sn) & 1, (unsigned)saddr);
     }
-    printf("]}");
+    cli_printf("]}");
 }
 
 void vic2_render_sprite(const memory_t *mem, int sn, uint8_t *buf) {
