@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - New `examples/45gs02_factorial.asm` — computes N! (N ≤ 12) using the MEGA65 hardware multiplier, stack-pushed factors, and the 32-bit Q register; includes EXPECT comment verified at N=12 (12! = `$1C8CFC00`).
 
 ### Fixed
+- `tools/run_tests.py`: Tests without an `// EXPECT:` clause now skip simulator execution entirely and pass on assembly success alone. Previously the simulator was always launched, causing the `all_65c02.asm` and `all_65ce02.asm` coverage files to time out or crash (the 65CE02's 16-bit stack pointer would wrap into MEGA65 I/O-mapped memory during the unintended BRK loop, triggering I/O handlers and eventually a segfault).
+- Removed `tests/code/sid_test.asm` — the file contained an infinite `jmp loop` with no `EXPECT:` clause or termination condition, making it meaningless as a test.
 - `cli/main.cpp`: `-p <processor>` flag now sets `machine_type` alongside `cpu_type` (e.g. `-p 45gs02` now correctly activates the MEGA65 I/O subsystem). Previously `machine_type` was left at its `MACHINE_C64` default, so the MEGA65 math coprocessor was never registered and writes to `$D770–$D777` silently fell through without triggering multiplication.
 - `mega65_io.cpp`: MEGA65 math coprocessor now implements the correct 32-bit register layout — MULTINA (`$D770–$D773`), MULTINB (`$D774–$D777`), MULTOUT (`$D778–$D77F`) — matching the hardware specification. The previous implementation used a 16-bit layout with MULTINA at `$D770–$D771` and erroneously placed MULTINB at `$D772–$D773`.
 - `patterns.cpp` (`mul8_mega65`): Fixed label addresses for MULTINB — was incorrectly using `$D772–$D773` (the upper half of MULTINA) instead of `$D774–$D777`. Result was always zero.

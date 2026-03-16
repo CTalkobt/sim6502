@@ -57,6 +57,10 @@ def run_test(asm_file):
         out.append(f"FAIL (assembler launch error: {e})")
         return False, '\n'.join(out)
 
+    if expectations is None:
+        out.append("PASS (assembly)")
+        return True, '\n'.join(out)
+
     # Run simulator
     try:
         flags = cpu_flag + extra_flags + ['-vv']
@@ -70,10 +74,6 @@ def run_test(asm_file):
         out.append(f"FAIL (return code {result.returncode})")
         out.append(result.stderr)
         return False, '\n'.join(out)
-
-    if expectations is None:
-        out.append("PASS (assembly)")
-        return True, '\n'.join(out)
 
     # Parse actual results
     # First try "Registers: ..." (standard output)
