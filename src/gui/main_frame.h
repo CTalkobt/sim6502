@@ -51,6 +51,7 @@ private:
     // Event Handlers - View
     void OnGoToAddress(wxCommandEvent& event);
     void OnTogglePane(wxCommandEvent& event);
+    void OnWindowArrange(wxCommandEvent& event);
 
     void OnTimer(wxTimerEvent& event);
     void OnQuit(wxCommandEvent& event);

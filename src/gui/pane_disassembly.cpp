@@ -60,10 +60,10 @@ PaneDisassembly::PaneDisassembly(wxWindow* parent, sim_session_t *sim)
     
     // Toolbar
     wxToolBar* toolBar = new wxToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTB_HORIZONTAL | wxTB_FLAT);
-    toolBar->AddTool(901, "Sync to PC", wxArtProvider::GetBitmap(wxART_GO_HOME));
+    toolBar->AddTool(901, "Sync to PC", wxArtProvider::GetBitmap(wxART_GO_HOME), "Scroll disassembly to follow the current Program Counter");
     toolBar->AddSeparator();
-    toolBar->AddTool(902, "Page Up", wxArtProvider::GetBitmap(wxART_GO_UP));
-    toolBar->AddTool(903, "Page Down", wxArtProvider::GetBitmap(wxART_GO_DOWN));
+    toolBar->AddTool(902, "Page Up", wxArtProvider::GetBitmap(wxART_GO_UP), "Scroll disassembly up by one page");
+    toolBar->AddTool(903, "Page Down", wxArtProvider::GetBitmap(wxART_GO_DOWN), "Scroll disassembly down by one page");
     toolBar->AddSeparator();
     toolBar->AddControl(new wxStaticText(toolBar, wxID_ANY, " Address: $"));
     m_addrSearch = new wxTextCtrl(toolBar, wxID_ANY, "0000", wxDefaultPosition, wxSize(60, -1), wxTE_PROCESS_ENTER);

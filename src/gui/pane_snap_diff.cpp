@@ -8,8 +8,8 @@ PaneSnapDiff::PaneSnapDiff(wxWindow* parent, sim_session_t *sim)
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     
     wxToolBar* toolBar = new wxToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTB_HORIZONTAL | wxTB_FLAT);
-    toolBar->AddTool(401, "Take Snapshot", wxArtProvider::GetBitmap(wxART_FILE_SAVE));
-    toolBar->AddTool(402, "Clear", wxArtProvider::GetBitmap(wxART_DELETE));
+    toolBar->AddTool(401, "Take Snapshot", wxArtProvider::GetBitmap(wxART_FILE_SAVE), "Take a memory baseline to track subsequent modifications");
+    toolBar->AddTool(402, "Clear", wxArtProvider::GetBitmap(wxART_DELETE), "Clear the list of memory differences");
     toolBar->Realize();
     sizer->Add(toolBar, 0, wxEXPAND);
 

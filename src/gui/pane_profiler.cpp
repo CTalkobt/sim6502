@@ -10,7 +10,7 @@ PaneProfiler::PaneProfiler(wxWindow* parent, sim_session_t *sim)
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     
     wxToolBar* toolBar = new wxToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTB_HORIZONTAL | wxTB_FLAT);
-    toolBar->AddTool(601, "Clear", wxArtProvider::GetBitmap(wxART_DELETE));
+    toolBar->AddTool(601, "Clear", wxArtProvider::GetBitmap(wxART_DELETE), "Reset all profiler execution and cycle counts to zero");
     toolBar->Realize();
     sizer->Add(toolBar, 0, wxEXPAND);
 

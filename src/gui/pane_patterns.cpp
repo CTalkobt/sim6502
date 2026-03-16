@@ -10,7 +10,7 @@ PanePatterns::PanePatterns(wxWindow* parent, sim_session_t *sim)
     wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
     
     wxToolBar* toolBar = new wxToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTB_HORIZONTAL | wxTB_FLAT);
-    toolBar->AddTool(801, "Insert (Copy)", wxArtProvider::GetBitmap(wxART_COPY));
+    toolBar->AddTool(801, "Insert (Copy)", wxArtProvider::GetBitmap(wxART_COPY), "Copy the selected assembly idiom to the clipboard");
     toolBar->Realize();
     mainSizer->Add(toolBar, 0, wxEXPAND);
 

@@ -10,9 +10,9 @@ PaneBreakpoints::PaneBreakpoints(wxWindow* parent, sim_session_t *sim)
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     
     wxToolBar* toolBar = new wxToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTB_HORIZONTAL | wxTB_FLAT);
-    toolBar->AddTool(101, "Add", wxArtProvider::GetBitmap(wxART_NEW));
-    toolBar->AddTool(102, "Delete", wxArtProvider::GetBitmap(wxART_DELETE));
-    toolBar->AddTool(103, "Clear All", wxArtProvider::GetBitmap(wxART_CROSS_MARK));
+    toolBar->AddTool(101, "Add", wxArtProvider::GetBitmap(wxART_NEW), "Add a new breakpoint at a specific address");
+    toolBar->AddTool(102, "Delete", wxArtProvider::GetBitmap(wxART_DELETE), "Delete the selected breakpoint");
+    toolBar->AddTool(103, "Clear All", wxArtProvider::GetBitmap(wxART_CROSS_MARK), "Clear all breakpoints");
     toolBar->Realize();
     sizer->Add(toolBar, 0, wxEXPAND);
 

@@ -114,6 +114,10 @@ void MainFrame::InitMenuBar() {
     layoutMenu->Append(ID_VIEW_LAYOUT_RESET, "Reset to Default");
     viewMenu->AppendSubMenu(layoutMenu, "Layout");
 
+    // --- Window Menu ---
+    wxMenu *windowMenu = new wxMenu;
+    windowMenu->Append(ID_WINDOW_ARRANGE, "&Arrange	Shift+F12", "Re-sequence all active panes to be visible");
+
     // --- Help Menu ---
     wxMenu *helpMenu = new wxMenu;
     helpMenu->Append(wxID_ABOUT, "&About...");
@@ -123,6 +127,7 @@ void MainFrame::InitMenuBar() {
     menuBar->Append(simMenu, "&Simulation");
     menuBar->Append(machMenu, "&Machine");
     menuBar->Append(viewMenu, "&View");
+    menuBar->Append(windowMenu, "&Window");
     menuBar->Append(helpMenu, "&Help");
     SetMenuBar(menuBar);
 }

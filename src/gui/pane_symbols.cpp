@@ -61,8 +61,8 @@ PaneSymbols::PaneSymbols(wxWindow* parent, sim_session_t *sim)
     wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
     
     wxToolBar* toolBar = new wxToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTB_HORIZONTAL | wxTB_FLAT);
-    toolBar->AddTool(501, "Load", wxArtProvider::GetBitmap(wxART_FILE_OPEN));
-    toolBar->AddTool(502, "Save", wxArtProvider::GetBitmap(wxART_FILE_SAVE));
+    toolBar->AddTool(501, "Load", wxArtProvider::GetBitmap(wxART_FILE_OPEN), "Load symbols from a .sym file");
+    toolBar->AddTool(502, "Save", wxArtProvider::GetBitmap(wxART_FILE_SAVE), "Save symbols to a .sym file");
     toolBar->AddSeparator();
     toolBar->AddControl(new wxStaticText(toolBar, wxID_ANY, " Filter: "));
     m_filter = new wxTextCtrl(toolBar, wxID_ANY, "", wxDefaultPosition, wxSize(150, -1));

@@ -37,8 +37,8 @@ PaneMemory::PaneMemory(wxWindow* parent, sim_session_t *sim, int index)
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     
     wxToolBar* toolBar = new wxToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTB_HORIZONTAL | wxTB_FLAT);
-    toolBar->AddTool(1001, "Page Up (-256)", wxArtProvider::GetBitmap(wxART_GO_UP));
-    toolBar->AddTool(1002, "Page Down (+256)", wxArtProvider::GetBitmap(wxART_GO_DOWN));
+    toolBar->AddTool(1001, "Page Up (-256)", wxArtProvider::GetBitmap(wxART_GO_UP), "Scroll memory view up by 256 bytes");
+    toolBar->AddTool(1002, "Page Down (+256)", wxArtProvider::GetBitmap(wxART_GO_DOWN), "Scroll memory view down by 256 bytes");
     toolBar->AddSeparator();
     toolBar->AddControl(new wxStaticText(toolBar, wxID_ANY, " Address: $"));
     m_addrSearch = new wxTextCtrl(toolBar, wxID_ANY, "0000", wxDefaultPosition, wxSize(60, -1), wxTE_PROCESS_ENTER);

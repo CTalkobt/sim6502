@@ -22,8 +22,8 @@ PaneTestRunner::PaneTestRunner(wxWindow* parent, sim_session_t *sim)
     m_scratchAddr = new wxTextCtrl(toolBar, wxID_ANY, "0000", wxDefaultPosition, wxSize(60, -1));
     toolBar->AddControl(m_scratchAddr);
     toolBar->AddSeparator();
-    toolBar->AddTool(701, "Add Row", wxArtProvider::GetBitmap(wxART_NEW));
-    toolBar->AddTool(702, "Run All", wxArtProvider::GetBitmap(wxART_GO_FORWARD));
+    toolBar->AddTool(701, "Add Row", wxArtProvider::GetBitmap(wxART_NEW), "Add a new test case to the runner");
+    toolBar->AddTool(702, "Run All", wxArtProvider::GetBitmap(wxART_GO_FORWARD), "Execute all defined test cases");
     toolBar->Realize();
     mainSizer->Add(toolBar, 0, wxEXPAND);
 

@@ -67,6 +67,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU_RANGE(ID_VIEW_PANE_REGISTERS, ID_VIEW_PANE_VIC_REGS, MainFrame::OnTogglePane)
     EVT_MENU(ID_VIEW_LAYOUT_SAVE, MainFrame::OnTogglePane)
     EVT_MENU(ID_VIEW_LAYOUT_RESET, MainFrame::OnTogglePane)
+    EVT_MENU(ID_WINDOW_ARRANGE, MainFrame::OnWindowArrange)
 wxEND_EVENT_TABLE()
 
 MainFrame::MainFrame(const wxString& title)
@@ -153,11 +154,52 @@ void MainFrame::RegisterPane(SimPane* pane, int menu_id, const wxAuiPaneInfo& in
 
 void MainFrame::UpdatePaneVisibility(int menu_id) {
     if (m_panes.count(menu_id)) {
+        SimPane* pane = m_panes[menu_id];
         wxMenuItem* item = GetMenuBar()->FindItem(menu_id);
-        bool show = (item && item->IsCheckable()) ? item->IsChecked() : m_aui.GetPane(m_panes[menu_id]).IsShown();
-        m_aui.GetPane(m_panes[menu_id]).Show(show);
+        bool show = (item && item->IsCheckable()) ? item->IsChecked() : m_aui.GetPane(pane).IsShown();
+        
+        m_aui.GetPane(pane).Show(show);
+        if (show) {
+            // Ensure the pane is not buried in a tabbed group
+            wxAuiPaneInfo& info = m_aui.GetPane(pane);
+            if (info.IsDocked()) {
+                m_aui.Update(); // Ensure everything is calculated
+            }
+        }
         m_aui.Update();
     }
+}
+
+void MainFrame::OnWindowArrange(wxCommandEvent& WXUNUSED(event)) {
+    // Re-sequence all active panes to be visible on the screen.
+    // We'll reset to a known-good docked state and force updates.
+    m_initial_layout_done = false;
+
+    // Show core panes that must always be visible
+    int core_ids[] = {
+        ID_VIEW_PANE_REGISTERS,
+        ID_VIEW_PANE_DISASSEMBLY,
+        ID_VIEW_PANE_CONSOLE,
+        ID_VIEW_PANE_TRACE,
+        ID_VIEW_PANE_SNAP_DIFF
+    };
+
+    for (int id : core_ids) {
+        if (m_panes.count(id)) {
+            m_aui.GetPane(m_panes[id]).Show(true);
+            CheckMenuItem(id, true);
+        }
+    }
+
+    // Ensure all floating panes are docked for "Arrangement"
+    for (auto const& [menu_id, pane] : m_panes) {
+        if (m_aui.GetPane(pane).IsShown()) {
+            m_aui.GetPane(pane).Dock();
+        }
+    }
+
+    m_aui.Update();
+    UpdateStatus();
 }
 
 void MainFrame::CheckMenuItem(int menu_id, bool check) {
