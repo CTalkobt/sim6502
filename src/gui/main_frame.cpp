@@ -80,7 +80,9 @@ MainFrame::MainFrame(const wxString& title)
       m_theme(2),
       m_ui_scale(1.0f),
       m_running(false),
-      m_initial_layout_done(false)
+      m_initial_layout_done(false),
+      m_cycle_limit(0),
+      m_speed_scale(0.0f)
 {
     m_sim = sim_create("6502");
 
@@ -276,7 +278,20 @@ void MainFrame::UpdateStatus() {
 
 void MainFrame::OnTimer(wxTimerEvent& WXUNUSED(event)) {
     if (m_sim && m_running) {
-        sim_step(m_sim, 5000); 
+        if (m_speed_scale > 0.0f) {
+            // Run exactly the right number of cycles for the requested speed.
+            // Timer fires at ~62.5 Hz (16 ms); C64 PAL clock = 985248 Hz.
+            unsigned long cycles_per_tick = (unsigned long)(m_speed_scale * 985248.0f / 62.5f);
+            if (cycles_per_tick < 1) cycles_per_tick = 1;
+            sim_step_cycles(m_sim, cycles_per_tick);
+        } else {
+            sim_step(m_sim, 5000);
+        }
+        if (m_cycle_limit > 0) {
+            const CPU *cpu = sim_get_cpu(m_sim);
+            if (cpu && (unsigned long)cpu->cycles >= m_cycle_limit)
+                m_running = false;
+        }
     }
     
     // Refresh all panes
@@ -396,6 +411,43 @@ void MainFrame::LoadFile(const wxString& path) {
                          "Assembly Error", wxOK | wxICON_ERROR);
         }
     }
+}
+
+void MainFrame::ApplyProcessor(const wxString& proc) {
+    if (m_sim)
+        sim_set_processor(m_sim, proc.mb_str());
+}
+
+void MainFrame::ApplyMachine(const wxString& target) {
+    if (!m_sim) return;
+    machine_type_t mt = MACHINE_RAW6502;
+    if      (target == "c64")    mt = MACHINE_C64;
+    else if (target == "c128")   mt = MACHINE_C128;
+    else if (target == "mega65") mt = MACHINE_MEGA65;
+    else if (target == "x16")    mt = MACHINE_X16;
+    sim_set_machine_type(m_sim, mt);
+}
+
+void MainFrame::ApplyBreakpoint(const wxString& addrStr) {
+    if (!m_sim) return;
+    wxString s = addrStr;
+    if (s.StartsWith("$"))                         s = s.Mid(1);
+    else if (s.StartsWith("0x") || s.StartsWith("0X")) s = s.Mid(2);
+    unsigned long addr = 0;
+    s.ToULong(&addr, 16);
+    sim_break_set(m_sim, (uint16_t)addr, nullptr);
+}
+
+void MainFrame::ApplyCycleLimit(unsigned long limit) {
+    m_cycle_limit = limit;
+}
+
+void MainFrame::ApplySpeedScale(float scale) {
+    m_speed_scale = scale;
+}
+
+void MainFrame::ApplyDebug() {
+    if (m_sim) sim_set_debug(m_sim, true);
 }
 
 void MainFrame::OnSaveBin(wxCommandEvent& WXUNUSED(event)) {

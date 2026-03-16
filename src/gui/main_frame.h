@@ -14,6 +14,12 @@ public:
     virtual ~MainFrame();
 
     void LoadFile(const wxString& path);
+    void ApplyProcessor(const wxString& proc);
+    void ApplyMachine(const wxString& target);
+    void ApplyBreakpoint(const wxString& addr);
+    void ApplyCycleLimit(unsigned long limit);
+    void ApplySpeedScale(float scale);
+    void ApplyDebug();
 
 private:
     void InitMenuBar();
@@ -73,11 +79,13 @@ private:
     std::vector<SimPane*>   m_pane_list;
 
     // Settings
-    int   m_base_font_size;
-    int   m_theme; // 0=Dark, 1=Light, 2=Auto
-    float m_ui_scale;
-    bool  m_running;
-    bool  m_initial_layout_done;
+    int           m_base_font_size;
+    int           m_theme; // 0=Dark, 1=Light, 2=Auto
+    float         m_ui_scale;
+    bool          m_running;
+    bool          m_initial_layout_done;
+    unsigned long m_cycle_limit;  // 0 = no limit
+    float         m_speed_scale;  // 0.0 = unlimited
 
     wxDECLARE_EVENT_TABLE();
 };

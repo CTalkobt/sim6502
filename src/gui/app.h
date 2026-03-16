@@ -11,7 +11,13 @@ public:
     virtual bool OnCmdLineParsed(wxCmdLineParser& parser) override;
 
 private:
-    wxString m_filename;
+    wxString      m_filename;
+    wxString      m_processor;    // from -p/--processor
+    wxString      m_machine;      // from -t/--target
+    wxString      m_breakpoint;   // from -b/--break
+    unsigned long m_cycle_limit;  // from -L/--limit  (0 = none)
+    double        m_speed_scale;  // from -S/--speed  (-1 = not set)
+    bool          m_debug;        // from --debug
 };
 
 DECLARE_APP(Sim6502App)
