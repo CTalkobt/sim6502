@@ -6,6 +6,7 @@
 #include <cstring>
 
 /* Mock symbols for CLI commands - using C++ linkage to match StepCmd.cpp etc. */
+/* Duplicate definitions removed as they are now in libsim6502.a (commands.cpp) 
 int g_json_mode = 0;
 int s_snap_active = 0;
 
@@ -16,9 +17,11 @@ void cli_snap_record(uint16_t addr, uint8_t before, uint8_t after, uint16_t writ
 void json_err(const char *cmd, const char *msg) { (void)cmd; (void)msg; }
 void json_ok(const char *cmd) { (void)cmd; }
 
-// Missing from previous run:
 int cli_hist_step_back(CPU *cpu, memory_t *mem) { (void)cpu; (void)mem; return 0; }
 int cli_hist_step_fwd(CPU *cpu, memory_t *mem, dispatch_table_t *dt, cpu_type_t cpu_type) { (void)cpu; (void)mem; (void)dt; (void)cpu_type; return 0; }
+*/
+extern int g_json_mode;
+extern int s_snap_active;
 
 TEST_CASE("CLI - Command Coverage", "[cli][registry]") {
     CommandRegistry registry;

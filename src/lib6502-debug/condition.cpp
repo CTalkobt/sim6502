@@ -13,11 +13,19 @@ int parse_mon_value(const char **pp, unsigned long *out) {
     if (*p == '$') {
         if (!isxdigit((unsigned char)p[1])) return 0;
         val = strtoul(p + 1, &end, 16);
+    } else if (*p == '0' && (p[1] == 'x' || p[1] == 'X')) {
+        val = strtoul(p, &end, 16);
     } else if (*p == '%') {
         if (p[1] != '0' && p[1] != '1') return 0;
         val = strtoul(p + 1, &end, 2);
-    } else if (isdigit((unsigned char)*p)) {
-        val = strtoul(p, &end, 10);
+    } else if (*p == '#') {
+        if (!isdigit((unsigned char)p[1])) return 0;
+        val = strtoul(p + 1, &end, 10);
+    } else if (isxdigit((unsigned char)*p)) {
+        // Default to hex for monitor compatibility if it starts with a hex digit.
+        // For conditions, this still allows registers like A-F if they are not
+        // handled as numbers first (see next_tok).
+        val = strtoul(p, &end, 16);
     } else {
         return 0;
     }
@@ -66,7 +74,7 @@ static void next_tok(cpu_t *cpu) {
     if (*s_p == ')') { s_tok.type = TOK_RPAREN; s_p++; return; }
     if (*s_p == '~') { s_tok.type = TOK_OP; s_tok.op[0] = '~'; s_tok.op[1] = '\0'; s_p++; return; }
     
-    if (*s_p == '$' || *s_p == '%' || isdigit((unsigned char)*s_p)) {
+    if (*s_p == '$' || *s_p == '%' || *s_p == '#' || isdigit((unsigned char)*s_p)) {
         s_tok.type = TOK_NUM;
         parse_mon_value(&s_p, &s_tok.val);
         return;

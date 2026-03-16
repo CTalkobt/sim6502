@@ -110,6 +110,7 @@ int cli_hist_step_fwd(cpu_t *cpu, memory_t *mem, dispatch_table_t *dt, cpu_type_
 }
 
 int handle_trap_local(const symbol_table_t *st, cpu_t *cpu, memory_t *mem) {
+    if (!st) return 0;
     for (int i = 0; i < st->count; i++) {
         if (st->symbols[i].address != cpu->pc) continue;
 

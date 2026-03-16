@@ -5,7 +5,7 @@
 
 /* --- Expression Evaluator --- */
 
-/* Parse a $hex, %binary, or decimal token. */
+/* Parse a $hex, %binary, #decimal, or default hex token. */
 int parse_mon_value(const char **pp, unsigned long *out);
 
 /* Get value of a register or flag by name. */

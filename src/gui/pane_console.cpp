@@ -22,7 +22,7 @@ PaneConsole::PaneConsole(wxWindow* parent, sim_session_t *sim)
         ((PaneConsole*)userdata)->Log(text);
     }, this);
 
-    Log("6502 Simulator Console Ready.", *wxBLUE);
+    Log("6502 Simulator Console Ready.\n", *wxBLUE);
 }
 
 void PaneConsole::RefreshPane(const SimSnapshot &snap) {
@@ -32,7 +32,6 @@ void PaneConsole::RefreshPane(const SimSnapshot &snap) {
 void PaneConsole::Log(const wxString& text, const wxColour& col) {
     m_output->SetDefaultStyle(wxTextAttr(col));
     m_output->AppendText(text);
-    if (!text.EndsWith("\n")) m_output->AppendText("\n");
     m_output->SetDefaultStyle(wxTextAttr(m_output->GetForegroundColour()));
 }
 
@@ -40,7 +39,7 @@ void PaneConsole::OnSubmit(wxCommandEvent& WXUNUSED(event)) {
     wxString cmd = m_input->GetValue();
     if (cmd.IsEmpty()) return;
 
-    Log("> " + cmd, wxColour(0, 128, 0));
+    Log("> " + cmd + "\n", wxColour(0, 128, 0));
     m_history.push_back(cmd);
     m_history_pos = -1;
     m_input->Clear();
