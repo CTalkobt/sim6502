@@ -200,11 +200,11 @@ int main(int argc, char *argv[]) {
 		else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--processor") == 0) {
 			if (i + 1 < argc) {
 				const char *p = argv[++i];
-				if (strcmp(p, "6502") == 0) cpu_type = CPU_6502;
-				else if (strcmp(p, "6502-undoc") == 0) cpu_type = CPU_6502_UNDOCUMENTED;
-				else if (strcmp(p, "65c02") == 0) cpu_type = CPU_65C02;
-				else if (strcmp(p, "65ce02") == 0) cpu_type = CPU_65CE02;
-				else if (strcmp(p, "45gs02") == 0) cpu_type = CPU_45GS02;
+				if      (strcmp(p, "6502")      == 0) { cpu_type = CPU_6502;             machine_type = MACHINE_C64;    }
+				else if (strcmp(p, "6502-undoc")== 0) { cpu_type = CPU_6502_UNDOCUMENTED; machine_type = MACHINE_C64;    }
+				else if (strcmp(p, "65c02")     == 0) { cpu_type = CPU_65C02;            machine_type = MACHINE_X16;    }
+				else if (strcmp(p, "65ce02")    == 0) { cpu_type = CPU_65CE02;           machine_type = MACHINE_MEGA65; }
+				else if (strcmp(p, "45gs02")    == 0) { cpu_type = CPU_45GS02;           machine_type = MACHINE_MEGA65; }
 				cpu_type_provided = 1;
 			}
 		} else if (strcmp(argv[i], "--debug") == 0) {

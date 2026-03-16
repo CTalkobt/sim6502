@@ -187,7 +187,7 @@ static void machine_init_hardware(sim_session_t *s) {
         delete s->mem->io_registry;
     }
     s->mem->io_registry = new IORegistry(s->cpu->get_interrupt_controller());
-    
+
     switch (s->machine_type) {
         case MACHINE_RAW6502:
             // No I/O devices registered

@@ -7,24 +7,48 @@ enum { DMA_MODE_LEGACY = 0, DMA_MODE_ENHANCED = 1 };
 
 bool MathCoprocessorHandler::io_write(memory_t *mem, uint16_t addr, uint8_t val) {
     mem->mem[addr] = val;
-    if (addr >= 0xD770 && addr <= 0xD773) {
-        unsigned int a = mem->mem[0xD770] | ((unsigned int)mem->mem[0xD771] << 8);
-        unsigned int b = mem->mem[0xD772] | ((unsigned int)mem->mem[0xD773] << 8);
+    
+    // According to MEGA65 book, MULTINA ($D770-$D773) and MULTINB ($D774-$D777)
+    // are the inputs for BOTH multiplication and division.
+    if (addr >= 0xD770 && addr <= 0xD777) {
+        unsigned int a = mem->mem[0xD770] | ((unsigned int)mem->mem[0xD771] << 8) |
+                         ((unsigned int)mem->mem[0xD772] << 16) | ((unsigned int)mem->mem[0xD773] << 24);
+        unsigned int b = mem->mem[0xD774] | ((unsigned int)mem->mem[0xD775] << 8) |
+                         ((unsigned int)mem->mem[0xD776] << 16) | ((unsigned int)mem->mem[0xD777] << 24);
+        
+        // 1. Multiplication: MULTOUT ($D778-$D77F) = MULTINA * MULTINB
         unsigned long long p = (unsigned long long)a * b;
-        mem->mem[0xD778] = (unsigned char)(p);
-        mem->mem[0xD779] = (unsigned char)(p >> 8);
-        mem->mem[0xD77A] = (unsigned char)(p >> 16);
-        mem->mem[0xD77B] = (unsigned char)(p >> 24);
-    } else if (addr >= 0xD768 && addr <= 0xD76B) {
-        unsigned int a = mem->mem[0xD768] | ((unsigned int)mem->mem[0xD769] << 8);
-        unsigned int b = mem->mem[0xD76A] | ((unsigned int)mem->mem[0xD76B] << 8);
+        for (int i = 0; i < 8; i++) {
+            mem->mem[0xD778 + i] = (unsigned char)(p >> (i * 8));
+        }
+
+        // 2. Division: DIVOUT ($D768-$D76F). 
+        // DIVOUT(4-7) [$D76C-$D76F] = Whole part (quotient)
+        // DIVOUT(0-3) [$D768-$D76B] = Fractional part (remainder)
         unsigned int q = 0, r = 0;
-        if (b) { q = a / b; r = a % b; }
-        mem->mem[0xD778] = (unsigned char)(q);
-        mem->mem[0xD779] = (unsigned char)(q >> 8);
-        mem->mem[0xD77A] = (unsigned char)(r);
-        mem->mem[0xD77B] = (unsigned char)(r >> 8);
+        if (b != 0) {
+            q = a / b;
+            r = a % b;
+        } else {
+            q = 0xFFFFFFFF; // Division by zero behavior
+            r = a;
+        }
+
+        // Write remainder to $D768-$D76B
+        for (int i = 0; i < 4; i++) {
+            mem->mem[0xD768 + i] = (unsigned char)(r >> (i * 8));
+        }
+        // Write quotient to $D76C-$D76F
+        for (int i = 0; i < 4; i++) {
+            mem->mem[0xD76C + i] = (unsigned char)(q >> (i * 8));
+        }
+
+        // Set Busy bits (D70F). Book says MULBUSY is 0, DIVBUSY can be set but
+        // for simulation we can keep it simple as it's "immediate" for now.
+        // Bit 7: DIVBUSY, Bit 6: MULBUSY
+        mem->mem[0xD70F] &= 0x3F; 
     }
+    
     return true;
 }
 
@@ -77,8 +101,11 @@ void mega65_io_register(memory_t *mem) {
 
     vic2_io_register(mem);
 
-    mem->io_registry->register_handler(0xD768, 0xD76B, &math_handler);
-    mem->io_registry->register_handler(0xD770, 0xD773, &math_handler);
+    // Register $D70F for Busy bits
+    mem->io_registry->register_handler(0xD70F, 0xD70F, &math_handler);
+    // Register $D770-$D777 for Inputs
+    mem->io_registry->register_handler(0xD770, 0xD777, &math_handler);
+
     mem->io_registry->register_handler(0xD700, 0xD705, &dma_handler);
     mem->io_registry->rebuild_map(mem);
 }
