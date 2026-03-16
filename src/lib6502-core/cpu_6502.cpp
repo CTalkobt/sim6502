@@ -9,6 +9,7 @@ CPU6502::CPU6502() {
     dt = std::make_unique<dispatch_table_t>();
     for (int i = 0; i < 256; i++) {
         dt->base[i].fn = nullptr;
+        dt->eom[i].fn = nullptr;
         dt->quad[i].fn = nullptr;
         dt->quad_eom[i].fn = nullptr;
     }

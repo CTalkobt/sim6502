@@ -9,6 +9,9 @@ public:
     virtual bool OnInit() override;
     virtual void OnInitCmdLine(wxCmdLineParser& parser) override;
     virtual bool OnCmdLineParsed(wxCmdLineParser& parser) override;
+
+private:
+    wxString m_filename;
 };
 
 DECLARE_APP(Sim6502App)

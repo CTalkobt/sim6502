@@ -13,6 +13,8 @@ public:
     MainFrame(const wxString& title);
     virtual ~MainFrame();
 
+    void LoadFile(const wxString& path);
+
 private:
     void InitMenuBar();
     void InitToolBar();
@@ -62,6 +64,8 @@ private:
     wxAuiManager   m_aui;
     wxTimer        m_timer;
     wxAuiToolBar  *m_toolbar;
+    wxComboBox    *m_procCombo;
+    wxComboBox    *m_machCombo;
 
     std::map<int, SimPane*> m_panes;
     std::vector<SimPane*>   m_pane_list;

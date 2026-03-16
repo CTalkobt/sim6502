@@ -21,6 +21,7 @@ typedef struct {
 /* Full dispatch table: base, quad-prefix, and quad-EOM-prefix slots. */
 typedef struct {
 	dispatch_entry_t base[256];     /* indexed by single opcode byte */
+	dispatch_entry_t eom[256];      /* 45GS02: $EA prefix, indexed by 2nd byte */
 	dispatch_entry_t quad[256];     /* 45GS02: $42 $42 prefix, indexed by 3rd byte */
 	dispatch_entry_t quad_eom[256]; /* 45GS02: $42 $42 $EA prefix, indexed by 4th byte */
 } dispatch_table_t;

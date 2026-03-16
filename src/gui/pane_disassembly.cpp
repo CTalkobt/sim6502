@@ -5,9 +5,9 @@
 
 class DisasmListCtrl : public wxListCtrl {
 public:
-    DisasmListCtrl(wxWindow* parent, sim_session_t* sim)
+    DisasmListCtrl(wxWindow* parent, sim_session_t* sim, PaneDisassembly* owner)
         : wxListCtrl(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_VIRTUAL | wxLC_SINGLE_SEL),
-          m_sim(sim), m_current_pc(0) {}
+          m_sim(sim), m_owner(owner), m_current_pc(0) {}
 
     void SetPC(uint16_t pc) {
         if (m_current_pc != pc) {
@@ -17,7 +17,7 @@ public:
     }
 
     wxString OnGetItemText(long item, long column) const override {
-        uint16_t addr = (uint16_t)item;
+        uint16_t addr = m_owner->GetAddressForRow((int)item);
         sim_disasm_entry_t entry;
         sim_disassemble_entry(m_sim, addr, &entry);
 
@@ -37,7 +37,8 @@ public:
     }
 
     wxListItemAttr* OnGetItemAttr(long item) const override {
-        if (item == (long)m_current_pc) {
+        uint16_t addr = m_owner->GetAddressForRow((int)item);
+        if (addr == m_current_pc) {
             static wxListItemAttr pcAttr(*wxWHITE, *wxBLUE, wxNullFont);
             return &pcAttr;
         }
@@ -45,21 +46,24 @@ public:
     }
 
 private:
-    sim_session_t* m_sim;
-    uint16_t       m_current_pc;
+    sim_session_t*   m_sim;
+    PaneDisassembly* m_owner;
+    uint16_t         m_current_pc;
 };
 
 PaneDisassembly::PaneDisassembly(wxWindow* parent, sim_session_t *sim)
-    : SimPane(parent, sim), m_followPC(true) 
+    : SimPane(parent, sim), m_base_addr(0), m_followPC(true) 
 {
+    m_last_cpu_type = sim_get_cpu_type(m_sim);
+    m_last_state = SIM_IDLE;
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     
     // Toolbar
     wxToolBar* toolBar = new wxToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTB_HORIZONTAL | wxTB_FLAT);
     toolBar->AddTool(901, "Sync to PC", wxArtProvider::GetBitmap(wxART_GO_HOME));
     toolBar->AddSeparator();
-    toolBar->AddTool(902, "Page Up (-256)", wxArtProvider::GetBitmap(wxART_GO_UP));
-    toolBar->AddTool(903, "Page Down (+256)", wxArtProvider::GetBitmap(wxART_GO_DOWN));
+    toolBar->AddTool(902, "Page Up", wxArtProvider::GetBitmap(wxART_GO_UP));
+    toolBar->AddTool(903, "Page Down", wxArtProvider::GetBitmap(wxART_GO_DOWN));
     toolBar->AddSeparator();
     toolBar->AddControl(new wxStaticText(toolBar, wxID_ANY, " Address: $"));
     m_addrSearch = new wxTextCtrl(toolBar, wxID_ANY, "0000", wxDefaultPosition, wxSize(60, -1), wxTE_PROCESS_ENTER);
@@ -67,7 +71,7 @@ PaneDisassembly::PaneDisassembly(wxWindow* parent, sim_session_t *sim)
     toolBar->Realize();
     sizer->Add(toolBar, 0, wxEXPAND);
 
-    m_list = new DisasmListCtrl(this, m_sim);
+    m_list = new DisasmListCtrl(this, m_sim, this);
     m_list->InsertColumn(0, "BP", wxLIST_FORMAT_CENTER, 30);
     m_list->InsertColumn(1, "Addr", wxLIST_FORMAT_LEFT, 60);
     m_list->InsertColumn(2, "Bytes", wxLIST_FORMAT_LEFT, 100);
@@ -76,7 +80,7 @@ PaneDisassembly::PaneDisassembly(wxWindow* parent, sim_session_t *sim)
     m_list->InsertColumn(5, "Cyc", wxLIST_FORMAT_LEFT, 40);
     m_list->InsertColumn(6, "Symbol", wxLIST_FORMAT_LEFT, 150);
 
-    m_list->SetItemCount(65536);
+    UpdateRowAddresses(0x0000);
 
     sizer->Add(m_list, 1, wxEXPAND);
     SetSizer(sizer);
@@ -88,8 +92,38 @@ PaneDisassembly::PaneDisassembly(wxWindow* parent, sim_session_t *sim)
     m_addrSearch->Bind(wxEVT_TEXT_ENTER, &PaneDisassembly::OnGoToAddress, this);
 }
 
+void PaneDisassembly::UpdateRowAddresses(uint16_t start_addr) {
+    m_base_addr = start_addr;
+    m_row_addresses.clear();
+    
+    uint32_t addr = start_addr;
+    // Disassemble up to 2000 instructions or until we hit the end of memory
+    for (int i = 0; i < 2000 && addr < 0x10000; i++) {
+        m_row_addresses.push_back((uint16_t)addr);
+        sim_disasm_entry_t entry;
+        sim_disassemble_entry(m_sim, (uint16_t)addr, &entry);
+        addr += entry.size;
+    }
+    
+    m_list->SetItemCount((long)m_row_addresses.size());
+    m_list->Refresh();
+}
+
+uint16_t PaneDisassembly::GetAddressForRow(int row) const {
+    if (row < 0 || row >= (int)m_row_addresses.size()) return 0;
+    return m_row_addresses[row];
+}
+
 void PaneDisassembly::RefreshPane(const SimSnapshot &snap) {
     if (snap.cpu) {
+        cpu_type_t current_cpu_type = sim_get_cpu_type(m_sim);
+        if (current_cpu_type != m_last_cpu_type || (m_last_state == SIM_IDLE && snap.state == SIM_READY)) {
+            m_last_cpu_type = current_cpu_type;
+            m_last_state = snap.state;
+            UpdateRowAddresses(snap.cpu->pc);
+        }
+        m_last_state = snap.state;
+
         m_list->SetPC(snap.cpu->pc);
         if (m_followPC) {
             ScrollTo(snap.cpu->pc);
@@ -98,7 +132,25 @@ void PaneDisassembly::RefreshPane(const SimSnapshot &snap) {
 }
 
 void PaneDisassembly::ScrollTo(uint16_t addr) {
-    m_list->EnsureVisible(addr);
+    // Check if addr is already in our current range
+    int found_row = -1;
+    for (size_t i = 0; i < m_row_addresses.size(); i++) {
+        if (m_row_addresses[i] == addr) {
+            found_row = (int)i;
+            break;
+        }
+    }
+
+    if (found_row != -1) {
+        m_list->EnsureVisible(found_row);
+    } else {
+        // Not in range, re-center view around this address
+        // Try to start a bit before the target address if possible, but 6502 is variable length
+        // so we just start at the requested address for simplicity in this implementation.
+        UpdateRowAddresses(addr);
+        m_list->EnsureVisible(0);
+    }
+
     // Refresh address search text
     if (!m_addrSearch->HasFocus()) {
         m_addrSearch->ChangeValue(wxString::Format("%04X", addr));
@@ -106,7 +158,7 @@ void PaneDisassembly::ScrollTo(uint16_t addr) {
 }
 
 void PaneDisassembly::OnToggleBreakpoint(wxListEvent& event) {
-    uint16_t addr = (uint16_t)event.GetIndex();
+    uint16_t addr = GetAddressForRow((int)event.GetIndex());
     if (sim_has_breakpoint(m_sim, addr)) {
         sim_break_clear(m_sim, addr);
     } else {
@@ -134,18 +186,29 @@ void PaneDisassembly::OnGoToAddress(wxCommandEvent& WXUNUSED(event)) {
 
 void PaneDisassembly::OnPrevPage(wxCommandEvent& WXUNUSED(event)) {
     m_followPC = false;
-    long top = m_list->GetTopItem();
-    long next = top - 256;
-    if (next < 0) next = 0;
-    ScrollTo((uint16_t)next);
+    // For flow-based, page up means starting the base address earlier.
+    // We'll just subtract some bytes and hope for the best, or better, subtract row count.
+    int top = m_list->GetTopItem();
+    if (top > 0) {
+        m_list->EnsureVisible(0);
+    } else {
+        uint16_t new_base = (m_base_addr > 0x100) ? m_base_addr - 0x100 : 0;
+        UpdateRowAddresses(new_base);
+    }
 }
 
 void PaneDisassembly::OnNextPage(wxCommandEvent& WXUNUSED(event)) {
     m_followPC = false;
-    long top = m_list->GetTopItem();
-    long next = top + 256;
-    if (next > 65535) next = 65535;
-    ScrollTo((uint16_t)next);
+    int count = m_list->GetCountPerPage();
+    int top = m_list->GetTopItem();
+    int target = top + count;
+    
+    if (target < (int)m_row_addresses.size()) {
+        m_list->EnsureVisible(target);
+    } else {
+        uint16_t last_addr = m_row_addresses.back();
+        UpdateRowAddresses(last_addr);
+    }
 }
 
 wxString PaneDisassembly::GetPaneTitle() const { return "Disassembly"; }

@@ -16,8 +16,10 @@ public:
     wxString GetPaneName() const override;
 
     void ScrollTo(uint16_t addr);
+    uint16_t GetAddressForRow(int row) const;
 
 private:
+    void UpdateRowAddresses(uint16_t start_addr);
     void OnToggleBreakpoint(wxListEvent& event);
     void OnSyncToPC(wxCommandEvent& event);
     void OnGoToAddress(wxCommandEvent& event);
@@ -26,6 +28,10 @@ private:
 
     DisasmListCtrl* m_list;
     wxTextCtrl*     m_addrSearch;
+    uint16_t        m_base_addr;
+    std::vector<uint16_t> m_row_addresses;
+    cpu_type_t      m_last_cpu_type;
+    sim_state_t     m_last_state;
     bool            m_followPC;
 };
 

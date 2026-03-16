@@ -22,7 +22,7 @@ void dispatch_build(dispatch_table_t *dt,
 		if (olen == 1) {
 			slot = &dt->base[key];
 		} else if (olen == 2 && handlers[i].opcode_bytes[0] == 0xEA) {
-			continue;
+			slot = &dt->eom[key];
 		} else if (olen == 3 && handlers[i].opcode_bytes[0] == 0x42 &&
 		           handlers[i].opcode_bytes[1] == 0x42) {
 			slot = &dt->quad[key];
@@ -43,16 +43,21 @@ void dispatch_build(dispatch_table_t *dt,
 const dispatch_entry_t *peek_dispatch(const CPUState *cpu, const memory_t *mem,
 		const dispatch_table_t *dt, cpu_type_t cpu_type) {
 	unsigned char byte0 = mem_read((memory_t *)mem, cpu->pc);
-	if (cpu_type == CPU_45GS02 && byte0 == 0x42) {
-		unsigned char byte1 = mem_read((memory_t *)mem, (unsigned short)(cpu->pc + 1));
-		if (byte1 == 0x42) {
-			unsigned char byte2 = mem_read((memory_t *)mem, (unsigned short)(cpu->pc + 2));
-			if (byte2 == 0xEA) {
-				unsigned char byte3 = mem_read((memory_t *)mem, (unsigned short)(cpu->pc + 3));
-				if (dt->quad_eom[byte3].fn) return &dt->quad_eom[byte3];
-			} else {
-				if (dt->quad[byte2].fn) return &dt->quad[byte2];
+	if (cpu_type == CPU_45GS02) {
+		if (byte0 == 0x42) {
+			unsigned char byte1 = mem_read((memory_t *)mem, (unsigned short)(cpu->pc + 1));
+			if (byte1 == 0x42) {
+				unsigned char byte2 = mem_read((memory_t *)mem, (unsigned short)(cpu->pc + 2));
+				if (byte2 == 0xEA) {
+					unsigned char byte3 = mem_read((memory_t *)mem, (unsigned short)(cpu->pc + 3));
+					if (dt->quad_eom[byte3].fn) return &dt->quad_eom[byte3];
+				} else {
+					if (dt->quad[byte2].fn) return &dt->quad[byte2];
+				}
 			}
+		} else if (byte0 == 0xEA) {
+			unsigned char byte1 = mem_read((memory_t *)mem, (unsigned short)(cpu->pc + 1));
+			if (dt->eom[byte1].fn) return &dt->eom[byte1];
 		}
 	}
 	return &dt->base[byte0];
@@ -64,18 +69,25 @@ int disasm_one(const memory_t *mem, const dispatch_table_t *dt,
     unsigned char b0 = mem->mem[addr];
     const dispatch_entry_t *e = NULL;
     int prefix_len = 0;
-    if (cpu_type == CPU_45GS02 && b0 == 0x42) {
-        unsigned char b1 = mem->mem[(unsigned short)(addr + 1)];
-        if (b1 == 0x42) {
-            unsigned char b2 = mem->mem[(unsigned short)(addr + 2)];
-            if (b2 == 0xEA) {
-                unsigned char b3 = mem->mem[(unsigned short)(addr + 3)];
-                if (dt->quad_eom[b3].fn) { e = &dt->quad_eom[b3]; prefix_len = 3; }
-            } else {
-                if (dt->quad[b2].fn) { e = &dt->quad[b2]; prefix_len = 2; }
+
+    if (cpu_type == CPU_45GS02) {
+        if (b0 == 0x42) {
+            unsigned char b1 = mem->mem[(unsigned short)(addr + 1)];
+            if (b1 == 0x42) {
+                unsigned char b2 = mem->mem[(unsigned short)(addr + 2)];
+                if (b2 == 0xEA) {
+                    unsigned char b3 = mem->mem[(unsigned short)(addr + 3)];
+                    if (dt->quad_eom[b3].fn) { e = &dt->quad_eom[b3]; prefix_len = 3; }
+                } else {
+                    if (dt->quad[b2].fn) { e = &dt->quad[b2]; prefix_len = 2; }
+                }
             }
+        } else if (b0 == 0xEA) {
+            unsigned char b1 = mem->mem[(unsigned short)(addr + 1)];
+            if (dt->eom[b1].fn) { e = &dt->eom[b1]; prefix_len = 1; }
         }
     }
+
     if (!e) {
         const dispatch_entry_t *be = &dt->base[b0];
         if (be->fn) e = be;
@@ -139,18 +151,25 @@ int disasm_one_entry(const memory_t *mem, const dispatch_table_t *dt,
     unsigned char b0 = mem->mem[addr];
     const dispatch_entry_t *e = NULL;
     int prefix_len = 0;
-    if (cpu_type == CPU_45GS02 && b0 == 0x42) {
-        unsigned char b1 = mem->mem[(unsigned short)(addr + 1)];
-        if (b1 == 0x42) {
-            unsigned char b2 = mem->mem[(unsigned short)(addr + 2)];
-            if (b2 == 0xEA) {
-                unsigned char b3 = mem->mem[(unsigned short)(addr + 3)];
-                if (dt->quad_eom[b3].fn) { e = &dt->quad_eom[b3]; prefix_len = 3; }
-            } else {
-                if (dt->quad[b2].fn) { e = &dt->quad[b2]; prefix_len = 2; }
+
+    if (cpu_type == CPU_45GS02) {
+        if (b0 == 0x42) {
+            unsigned char b1 = mem->mem[(unsigned short)(addr + 1)];
+            if (b1 == 0x42) {
+                unsigned char b2 = mem->mem[(unsigned short)(addr + 2)];
+                if (b2 == 0xEA) {
+                    unsigned char b3 = mem->mem[(unsigned short)(addr + 3)];
+                    if (dt->quad_eom[b3].fn) { e = &dt->quad_eom[b3]; prefix_len = 3; }
+                } else {
+                    if (dt->quad[b2].fn) { e = &dt->quad[b2]; prefix_len = 2; }
+                }
             }
+        } else if (b0 == 0xEA) {
+            unsigned char b1 = mem->mem[(unsigned short)(addr + 1)];
+            if (dt->eom[b1].fn) { e = &dt->eom[b1]; prefix_len = 1; }
         }
     }
+
     if (!e) {
         const dispatch_entry_t *be = &dt->base[b0];
         if (be->fn) e = be;

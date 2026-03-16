@@ -72,6 +72,8 @@ MainFrame::MainFrame(const wxString& title)
     : wxFrame(NULL, wxID_ANY, title, wxDefaultPosition, wxSize(1280, 800)),
       m_timer(this, 1),
       m_toolbar(NULL),
+      m_procCombo(NULL),
+      m_machCombo(NULL),
       m_base_font_size(13),
       m_theme(2),
       m_ui_scale(1.0f),
@@ -183,13 +185,13 @@ void MainFrame::InitToolBar() {
 
     wxArrayString procs;
     procs.Add("6502"); procs.Add("6502-undoc"); procs.Add("65C02"); procs.Add("65CE02"); procs.Add("45GS02");
-    wxComboBox *procCombo = new wxComboBox(m_toolbar, ID_TOOLBAR_PROC_COMBO, "6502", wxDefaultPosition, wxSize(100, -1), procs, wxCB_READONLY);
-    m_toolbar->AddControl(procCombo);
+    m_procCombo = new wxComboBox(m_toolbar, ID_TOOLBAR_PROC_COMBO, "6502", wxDefaultPosition, wxSize(100, -1), procs, wxCB_READONLY);
+    m_toolbar->AddControl(m_procCombo);
 
     wxArrayString machs;
     machs.Add("raw6502"); machs.Add("c64"); machs.Add("c128"); machs.Add("mega65"); machs.Add("x16");
-    wxComboBox *machCombo = new wxComboBox(m_toolbar, ID_TOOLBAR_MACH_COMBO, "c64", wxDefaultPosition, wxSize(100, -1), machs, wxCB_READONLY);
-    m_toolbar->AddControl(machCombo);
+    m_machCombo = new wxComboBox(m_toolbar, ID_TOOLBAR_MACH_COMBO, "c64", wxDefaultPosition, wxSize(100, -1), machs, wxCB_READONLY);
+    m_toolbar->AddControl(m_machCombo);
 
     m_toolbar->Realize();
     
@@ -209,7 +211,18 @@ void MainFrame::InitStatusBar() {
 void MainFrame::UpdateStatus() {
     SetStatusText(m_running ? "RUNNING" : "PAUSED", 0);
     if (m_sim) {
-        SetStatusText(sim_processor_name(m_sim), 1);
+        wxString procName = sim_processor_name(m_sim);
+        SetStatusText(procName, 1);
+        if (m_procCombo && m_procCombo->GetValue() != procName) {
+            m_procCombo->SetValue(procName);
+        }
+
+        machine_type_t machType = sim_get_machine_type(m_sim);
+        wxString machName = sim_machine_name(machType);
+        if (m_machCombo && m_machCombo->GetValue() != machName) {
+            m_machCombo->SetValue(machName);
+        }
+
         CPU *cpu = sim_get_cpu(m_sim);
         if (cpu) {
             SetStatusText(wxString::Format("Cycles: %lu", cpu->cycles), 2);
@@ -310,23 +323,26 @@ void MainFrame::OnBrowseLoad(wxCommandEvent& WXUNUSED(event)) {
                      "Supported files (*.asm;*.prg;*.bin)|*.asm;*.prg;*.bin|Assembly (*.asm)|*.asm|PRG files (*.prg)|*.prg|Binary (*.bin)|*.bin|All files (*.*)|*.*",
                      wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     if (dlg.ShowModal() == wxID_OK) {
-        wxString path = dlg.GetPath();
-        if (path.Lower().EndsWith(".bin") || path.Lower().EndsWith(".prg")) {
-            LoadBinaryDialog binDlg(this, path);
-            if (binDlg.ShowModal() == wxID_OK) {
-                m_running = false;
-                if (path.Lower().EndsWith(".prg")) {
-                    sim_load_prg(m_sim, path.mb_str(), binDlg.ShouldOverride() ? binDlg.GetAddress() : 0);
-                } else {
-                    sim_load_bin(m_sim, path.mb_str(), binDlg.GetAddress());
-                }
-            }
-        } else {
+        LoadFile(dlg.GetPath());
+    }
+}
+
+void MainFrame::LoadFile(const wxString& path) {
+    if (path.Lower().EndsWith(".bin") || path.Lower().EndsWith(".prg")) {
+        LoadBinaryDialog binDlg(this, path);
+        if (binDlg.ShowModal() == wxID_OK) {
             m_running = false;
-            if (sim_load_asm(m_sim, path.mb_str()) != 0) {
-                wxMessageBox(wxString::Format("Failed to load '%s':\n%s", path, sim_get_last_error(m_sim)),
-                             "Assembly Error", wxOK | wxICON_ERROR);
+            if (path.Lower().EndsWith(".prg")) {
+                sim_load_prg(m_sim, path.mb_str(), binDlg.ShouldOverride() ? binDlg.GetAddress() : 0);
+            } else {
+                sim_load_bin(m_sim, path.mb_str(), binDlg.GetAddress());
             }
+        }
+    } else {
+        m_running = false;
+        if (sim_load_asm(m_sim, path.mb_str()) != 0) {
+            wxMessageBox(wxString::Format("Failed to load '%s':\n%s", path, sim_get_last_error(m_sim)),
+                         "Assembly Error", wxOK | wxICON_ERROR);
         }
     }
 }

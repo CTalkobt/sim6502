@@ -11,6 +11,7 @@ static const wxCmdLineEntryDesc g_cmdLineDesc[] = {
     { wxCMD_LINE_SWITCH, "vv", "", "verbosity 2", wxCMD_LINE_VAL_NONE, 0 },
     { wxCMD_LINE_SWITCH, "vvv", "", "verbosity 3", wxCMD_LINE_VAL_NONE, 0 },
     { wxCMD_LINE_SWITCH, "h", "help", "show help", wxCMD_LINE_VAL_NONE, wxCMD_LINE_OPTION_HELP },
+    { wxCMD_LINE_PARAM,  NULL, NULL, "input file", wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL },
     { wxCMD_LINE_NONE, NULL, NULL, NULL, wxCMD_LINE_VAL_NONE, 0 }
 };
 
@@ -40,6 +41,10 @@ bool Sim6502App::OnInit() {
     MainFrame *frame = new MainFrame("6502 Simulator");
     frame->Show(true);
 
+    if (!m_filename.IsEmpty()) {
+        frame->LoadFile(m_filename);
+    }
+
     return true;
 }
 
@@ -48,6 +53,8 @@ void Sim6502App::OnInitCmdLine(wxCmdLineParser& parser) {
 }
 
 bool Sim6502App::OnCmdLineParsed(wxCmdLineParser& parser) {
-    (void)parser;
+    if (parser.GetParamCount() > 0) {
+        m_filename = parser.GetParam(0);
+    }
     return true;
 }
