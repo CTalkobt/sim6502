@@ -17,6 +17,11 @@ PaneConsole::PaneConsole(wxWindow* parent, sim_session_t *sim)
     
     m_history_pos = -1;
 
+    // Set up logging from sim core back to this pane
+    sim_set_log_callback(m_sim, [](const char *text, void *userdata) {
+        ((PaneConsole*)userdata)->Log(text);
+    }, this);
+
     Log("6502 Simulator Console Ready.", *wxBLUE);
 }
 
@@ -40,18 +45,10 @@ void PaneConsole::OnSubmit(wxCommandEvent& WXUNUSED(event)) {
     m_history_pos = -1;
     m_input->Clear();
 
-    if (cmd == "help") {
-        Log("Available commands: step, reset, cls");
-    } else if (cmd == "step") {
-        sim_step(m_sim, 1);
-        Log("Stepped 1 instruction.");
-    } else if (cmd == "reset") {
-        sim_reset(m_sim);
-        Log("Simulator reset.");
-    } else if (cmd == "cls") {
+    if (cmd == "cls") {
         m_output->Clear();
     } else {
-        Log("Unknown command: " + cmd, *wxRED);
+        sim_exec_command(m_sim, cmd.ToUTF8());
     }
 }
 

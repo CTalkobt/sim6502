@@ -19,7 +19,17 @@ void json_err(const char *cmd, const char *msg);
 /* Enable JSON output mode for all interactive commands (0=text, 1=JSON) */
 void cli_set_json_mode(int v);
 
+typedef void (*cli_log_cb)(const char *text, void *userdata);
+void cli_set_log_callback(cli_log_cb cb, void *userdata);
+void cli_printf(const char *fmt, ...);
+
 /* --- Interactive Modes --- */
+
+bool cli_process_command(const std::string& line,
+                        CPU *cpu, memory_t *mem,
+                        cpu_type_t *p_cpu_type,
+                        breakpoint_list_t *breakpoints,
+                        symbol_table_t *symbols);
 
 void run_interactive_mode(cpu_t *cpu, memory_t *mem,
                           cpu_type_t *p_cpu_type,

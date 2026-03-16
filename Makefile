@@ -57,10 +57,23 @@ DBG_SRCS = \
 	src/lib6502-debug/condition.cpp \
 	src/lib6502-debug/debug_context.cpp
 
+# --- lib6502-commands (Shared CLI logic) ---
+CMD_SRCS = \
+	src/cli/commands.cpp \
+	src/cli/commands/StepCmd.cpp \
+	src/cli/commands/NextCmd.cpp \
+	src/cli/commands/FinishCmd.cpp \
+	src/cli/commands/HistoryCmd.cpp \
+	src/cli/commands/BreakCmd.cpp \
+	src/cli/commands/EnvCmd.cpp \
+	src/cli/commands/DevicesCmd.cpp \
+	src/cli/commands/IdiomsCmd.cpp \
+	src/cli/commands/CommandRegistry.cpp
+
 # --- sim_api (front-facing) ---
 API_SRCS = src/sim_api.cpp
 
-ALL_LIB_SRCS = $(CORE_SRCS) $(MEM_SRCS) $(DEV_SRCS) $(TOOL_SRCS) $(DBG_SRCS) $(API_SRCS)
+ALL_LIB_SRCS = $(CORE_SRCS) $(MEM_SRCS) $(DEV_SRCS) $(TOOL_SRCS) $(DBG_SRCS) $(CMD_SRCS) $(API_SRCS)
 ALL_LIB_OBJS = $(ALL_LIB_SRCS:.cpp=.o)
 
 LIB_TARGET = libsim6502.a
@@ -97,18 +110,7 @@ src/sim_api.o: src/sim_api.cpp
 	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) -c -o $@ $<
 
 # --- CLI Frontend ---
-CLI_COMMANDS_SRCS = \
-	src/cli/commands/StepCmd.cpp \
-	src/cli/commands/NextCmd.cpp \
-	src/cli/commands/FinishCmd.cpp \
-	src/cli/commands/HistoryCmd.cpp \
-	src/cli/commands/BreakCmd.cpp \
-	src/cli/commands/EnvCmd.cpp \
-	src/cli/commands/DevicesCmd.cpp \
-	src/cli/commands/IdiomsCmd.cpp \
-	src/cli/commands/CommandRegistry.cpp
-
-CLI_SRCS = src/cli/main.cpp src/cli/commands.cpp $(CLI_COMMANDS_SRCS)
+CLI_SRCS = src/cli/main.cpp
 CLI_OBJS = $(CLI_SRCS:.cpp=.o)
 TARGET   = sim6502
 
@@ -170,10 +172,9 @@ src/gui/%.o: src/gui/%.cpp
 # --- Unit Testing ---
 UNIT_TEST_SRCS = tests/unit/test_main.cpp tests/unit/test_cpu_arithmetic.cpp tests/unit/test_cpu_opcodes.cpp tests/unit/test_cpu_45gs02.cpp tests/unit/test_cpu_decode.cpp tests/unit/test_memory.cpp tests/unit/test_toolchain.cpp tests/unit/test_debug.cpp tests/unit/test_sim_api.cpp tests/unit/test_devices.cpp tests/unit/test_integration.cpp tests/unit/test_fuzz.cpp tests/unit/test_cli.cpp tests/unit/test_regression.cpp tests/unit/test_patterns_logic.cpp tests/unit/test_templates_logic.cpp
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.cpp=.o)
-UNIT_TEST_CLI_OBJS = $(CLI_COMMANDS_SRCS:.cpp=.o)
 UNIT_TEST_TARGET = unit-tests
 
-$(UNIT_TEST_TARGET): $(UNIT_TEST_OBJS) $(UNIT_TEST_CLI_OBJS) $(LIB_TARGET)
+$(UNIT_TEST_TARGET): $(UNIT_TEST_OBJS) $(LIB_TARGET)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(SDL2_LIBS) $(GL_LIBS)
 
 tests/unit/%.o: tests/unit/%.cpp tests/unit/catch.hpp

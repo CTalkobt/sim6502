@@ -38,40 +38,40 @@ static int handle_trap_main(const symbol_table_t *st, cpu_t *cpu, memory_t *mem)
         if (st->symbols[i].address != cpu->pc) continue;
 
         if (st->symbols[i].type == SYM_INSPECT) {
-            printf("[INSPECT] %s at $%04X\n", st->symbols[i].name, cpu->pc);
+            cli_printf("[INSPECT] %s at $%04X\n", st->symbols[i].name, cpu->pc);
             
             if (strcasecmp(st->symbols[i].name, "cpu") == 0) {
                 if (cpu->pc > 0) { // Check if it's a 45GS02-style state (loosely)
-                    printf("  REGS: A=%02X X=%02X Y=%02X Z=%02X B=%02X S=%04X P=%02X PC=%04X\n",
+                    cli_printf("  REGS: A=%02X X=%02X Y=%02X Z=%02X B=%02X S=%04X P=%02X PC=%04X\n",
                            cpu->a, cpu->x, cpu->y, cpu->z, cpu->b, cpu->s, cpu->p, cpu->pc);
                 } else {
-                    printf("  REGS: A=%02X X=%02X Y=%02X S=%02X P=%02X PC=%04X\n",
+                    cli_printf("  REGS: A=%02X X=%02X Y=%02X S=%02X P=%02X PC=%04X\n",
                            cpu->a, cpu->x, cpu->y, (uint8_t)cpu->s, cpu->p, cpu->pc);
                 }
             } else {
                 /* Try to find device by name */
                 IOHandler *h = mem->io_registry ? mem->io_registry->find_handler(st->symbols[i].name) : nullptr;
                 if (h) {
-                    printf("  Device: %s\n", h->get_handler_name());
+                    cli_printf("  Device: %s\n", h->get_handler_name());
                     /* Print registers if they fit in 32 bytes (common for our devices) */
-                    printf("  Registers: ");
+                    cli_printf("  Registers: ");
                     for (int r = 0; r < 32; r++) {
                         uint8_t val = 0;
                         if (h->io_read(mem, (uint16_t)r, &val)) {
-                            printf("%02X ", val);
-                            if ((r+1)%8 == 0 && r < 31) printf("\n             ");
+                            cli_printf("%02X ", val);
+                            if ((r+1)%8 == 0 && r < 31) cli_printf("\n             ");
                         }
                     }
-                    printf("\n");
+                    cli_printf("\n");
                 } else {
                     /* Not a named device, treat name as a potential hex address or just dump around PC */
                     const char *nptr = st->symbols[i].name;
                     if (*nptr == '$') nptr++;
                     unsigned long addr = strtoul(nptr, NULL, 16);
                     if (addr == 0 && nptr[0] != '0') addr = cpu->pc;
-                    printf("  Memory at $%04lX: ", addr);
-                    for (int r = 0; r < 16; r++) printf("%02X ", mem_read(mem, (uint16_t)(addr + r)));
-                    printf("\n");
+                    cli_printf("  Memory at $%04lX: ", addr);
+                    for (int r = 0; r < 16; r++) cli_printf("%02X ", mem_read(mem, (uint16_t)(addr + r)));
+                    cli_printf("\n");
                 }
             }
             continue; /* Check for more symbols at this address */
@@ -79,12 +79,12 @@ static int handle_trap_main(const symbol_table_t *st, cpu_t *cpu, memory_t *mem)
 
         if (st->symbols[i].type != SYM_TRAP) continue;
         
-        printf("[TRAP] %-20s $%04X  A=%02X X=%02X Y=%02X",
+        cli_printf("[TRAP] %-20s $%04X  A=%02X X=%02X Y=%02X",
             st->symbols[i].name, cpu->pc, cpu->a, cpu->x, cpu->y);
-        if (cpu->pc > 0) printf(" Z=%02X B=%02X", cpu->z, cpu->b);
-        printf(" S=%02X P=%02X", cpu->s, cpu->p);
-        if (st->symbols[i].comment[0]) printf("  ; %s", st->symbols[i].comment);
-        printf("\n");
+        if (cpu->pc > 0) cli_printf(" Z=%02X B=%02X", cpu->z, cpu->b);
+        cli_printf(" S=%02X P=%02X", cpu->s, cpu->p);
+        if (st->symbols[i].comment[0]) cli_printf("  ; %s", st->symbols[i].comment);
+        cli_printf("\n");
 
         cpu->cycles += 6;
         cpu->s++;
@@ -384,7 +384,7 @@ int main(int argc, char *argv[]) {
 
     LOG_V2("DEBUG: Entering execution loop. PC=$%04X cycles=%lu limit=%lu speed=%.2f\n",
            cpu_ptr->pc, cpu_ptr->cycles, cycle_limit, (double)speed_scale);
-    printf("\nStarting execution at 0x%04X...\n", cpu_ptr->pc);
+    cli_printf("\nStarting execution at 0x%04X...\n", cpu_ptr->pc);
     fflush(stdout);
 	while (cpu_ptr->cycles < cycle_limit) {
 		int tr = handle_trap_main(symbols, cpu_ptr, cpu_ptr->mem);
@@ -399,7 +399,7 @@ int main(int argc, char *argv[]) {
 		if (te && te->mnemonic && strcmp(te->mnemonic, "STP") == 0) { stop_reason = 2; break; }
 
 		if (breakpoint_hit(&breakpoints, cpu_ptr)) {
-            printf("STOP at $%04X\n", cpu_ptr->pc);
+            cli_printf("STOP at $%04X\n", cpu_ptr->pc);
             stop_reason = 3; break;
         }
 
@@ -420,16 +420,16 @@ int main(int argc, char *argv[]) {
 	}
 
     switch(stop_reason) {
-        case 0: printf("\nExecution Stopped: Cycle limit (%lu) reached. Use '-L <n>' or '-c run' for longer execution.\n", cycle_limit); break;
-        case 1: printf("\nExecution Finished: Program returned (RTS).\n"); break;
-        case 2: printf("\nExecution Finished: STP encountered.\n"); break;
-        default: printf("\nExecution Finished.\n"); break;
+        case 0: cli_printf("\nExecution Stopped: Cycle limit (%lu) reached. Use '-L <n>' or '-c run' for longer execution.\n", cycle_limit); break;
+        case 1: cli_printf("\nExecution Finished: Program returned (RTS).\n"); break;
+        case 2: cli_printf("\nExecution Finished: STP encountered.\n"); break;
+        default: cli_printf("\nExecution Finished.\n"); break;
     }
 
 	if (cpu_type == CPU_45GS02)
-		printf("Registers: A=%02X X=%02X Y=%02X Z=%02X B=%02X S=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, cpu_ptr->z, cpu_ptr->b, (uint8_t)cpu_ptr->s, cpu_ptr->pc);
+		cli_printf("Registers: A=%02X X=%02X Y=%02X Z=%02X B=%02X S=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, cpu_ptr->z, cpu_ptr->b, (uint8_t)cpu_ptr->s, cpu_ptr->pc);
 	else
-		printf("Registers: A=%02X X=%02X Y=%02X S=%02X P=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, (uint8_t)cpu_ptr->s, cpu_ptr->p, cpu_ptr->pc);
+		cli_printf("Registers: A=%02X X=%02X Y=%02X S=%02X P=%02X PC=%04X\n", cpu_ptr->a, cpu_ptr->x, cpu_ptr->y, (uint8_t)cpu_ptr->s, cpu_ptr->p, cpu_ptr->pc);
 
     if (show_memory) memory_dump(mem, mem_start, mem_end);
 	if (show_symbols) symbol_display(symbols);

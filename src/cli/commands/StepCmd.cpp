@@ -1,3 +1,4 @@
+#include "../commands.h"
 #include "StepCmd.h"
 #include "cpu_engine.h"
 #include "condition.h"
@@ -51,7 +52,7 @@ bool StepCmd::execute(const std::vector<std::string>& args,
     }
 
     if (g_json_mode) json_exec_result("step", stop_reason, cpu);
-    else printf("STOP $%04X\n", cpu->pc);
+    else cli_printf("STOP $%04X\n", cpu->pc);
 
     return true;
 }

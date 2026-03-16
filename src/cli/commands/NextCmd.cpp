@@ -1,3 +1,4 @@
+#include "../commands.h"
 #include "NextCmd.h"
 #include "cpu_engine.h"
 #include <stdio.h>
@@ -58,14 +59,14 @@ bool NextCmd::execute(const std::vector<std::string>& args,
         breakpoint_remove(breakpoints, next_pc);
         
         if (g_json_mode) json_exec_result("next", stop_reason, cpu);
-        else printf("STOP at $%04X (%s)\n", cpu->pc, stop_reason);
+        else cli_printf("STOP at $%04X (%s)\n", cpu->pc, stop_reason);
     } else {
         // Normal step
         mem->mem_writes = 0;
         int tr = handle_trap_local(symbols, cpu, mem);
         if (tr < 0) { 
             if (g_json_mode) json_exec_result("next", "trap", cpu);
-            else printf("STOP at $%04X (trap)\n", cpu->pc);
+            else cli_printf("STOP at $%04X (trap)\n", cpu->pc);
             return true;
         }
         
@@ -75,7 +76,7 @@ bool NextCmd::execute(const std::vector<std::string>& args,
         cli_hist_push(&pre, mem);
         
         if (g_json_mode) json_exec_result("next", "step", cpu);
-        else printf("STOP at $%04X\n", cpu->pc);
+        else cli_printf("STOP at $%04X\n", cpu->pc);
     }
     
     return true;

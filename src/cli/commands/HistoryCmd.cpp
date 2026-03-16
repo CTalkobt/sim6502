@@ -1,3 +1,4 @@
+#include "../commands.h"
 #include "HistoryCmd.h"
 #include "cpu_engine.h"
 #include <stdio.h>
@@ -15,15 +16,15 @@ bool HistoryCmd::execute(const std::vector<std::string>& args,
     
     if (args[0] == "sb" || args[0] == "stepback") {
         if (cli_hist_step_back(cpu, mem)) {
-            printf("BACK  PC=%04X\n", cpu->pc);
+            cli_printf("BACK  PC=%04X\n", cpu->pc);
         } else {
-            printf("No history to step back into.\n");
+            cli_printf("No history to step back into.\n");
         }
     } else if (args[0] == "sf" || args[0] == "stepfwd") {
         if (cli_hist_step_fwd(cpu, mem, dt, *p_cpu_type)) {
-            printf("FWD   PC=%04X\n", cpu->pc);
+            cli_printf("FWD   PC=%04X\n", cpu->pc);
         } else {
-            printf("Already at the present.\n");
+            cli_printf("Already at the present.\n");
         }
     }
     

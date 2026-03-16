@@ -14,6 +14,8 @@
 #include "patterns.h"
 #include "cpu_engine.h"
 #include "cpu_6502.h"
+#include "cli/commands.h"
+#include "cli/commands/CommandRegistry.h"
 #include "device/mega65_io.h"
 #include "device/vic2_io.h"
 #include "device/vic2.h"
@@ -44,6 +46,8 @@ struct sim_session {
     char              last_error[2048];
     sim_event_cb      event_cb;
     void             *event_userdata;
+    sim_log_cb        log_cb;
+    void             *log_userdata;
     DebugContext     *debug_ctx;
     std::vector<IOHandler*> dynamic_handlers;
 
@@ -67,6 +71,8 @@ struct sim_session {
         last_error[0] = '\0';
         event_cb = nullptr;
         event_userdata = nullptr;
+        log_cb = nullptr;
+        log_userdata = nullptr;
         debug_ctx = nullptr;
     }
 
@@ -732,6 +738,25 @@ int sim_get_last_writes(sim_session_t *s, uint16_t *addrs, int max_count) {
     for (int i = 0; i < n; i++) addrs[i] = s->mem->mem_addr[i];
     return n;
 }
+void sim_set_log_callback(sim_session_t *s, sim_log_cb cb, void *userdata) {
+    if (s) {
+        s->log_cb = cb;
+        s->log_userdata = userdata;
+    }
+}
+
+void sim_exec_command(sim_session_t *s, const char *cmd) {
+    if (!s || !cmd) return;
+    
+    // Set up the CLI logger to use our session callback
+    cli_set_log_callback((cli_log_cb)s->log_cb, s->log_userdata);
+    
+    cli_process_command(cmd, s->cpu, s->mem, &s->cpu_type, s->breakpoints, s->symbols);
+    
+    // Clear the logger to avoid accidental use
+    cli_set_log_callback(nullptr, nullptr);
+}
+
 void sim_set_pc(sim_session_t *s, uint16_t pc) { if (s) s->cpu->pc = pc; }
 void sim_set_reg_byte(sim_session_t *s, const char *name, uint8_t val) {
     /* (uint16_t)val zero-extends correctly, which is safe and deliberate even 

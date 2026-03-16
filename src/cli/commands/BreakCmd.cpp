@@ -1,3 +1,4 @@
+#include "../commands.h"
 #include "BreakCmd.h"
 #include "condition.h"
 #include <stdio.h>
@@ -17,7 +18,7 @@ bool BreakCmd::execute(const std::vector<std::string>& args,
     
     if (args.size() < 2) {
         if (g_json_mode) json_err("break", "Usage: break <addr> [condition]");
-        else printf("Usage: break <addr> [condition]\n");
+        else cli_printf("Usage: break <addr> [condition]\n");
         return false;
     }
 
@@ -30,11 +31,11 @@ bool BreakCmd::execute(const std::vector<std::string>& args,
             condition += args[i];
         }
         breakpoint_add(breakpoints, (unsigned short)addr, condition.empty() ? NULL : condition.c_str());
-        if (g_json_mode) printf("{\"cmd\":\"break\",\"ok\":true,\"data\":{\"address\":%lu}}\n", addr & 0xFFFF);
+        if (g_json_mode) cli_printf("{\"cmd\":\"break\",\"ok\":true,\"data\":{\"address\":%lu}}\n", addr & 0xFFFF);
         return true;
     } else {
         if (g_json_mode) json_err("break", "Usage: break <addr> [condition]");
-        else printf("Usage: break <addr> [condition]\n");
+        else cli_printf("Usage: break <addr> [condition]\n");
         return false;
     }
 }

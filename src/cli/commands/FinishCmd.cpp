@@ -1,3 +1,4 @@
+#include "../commands.h"
 #include "FinishCmd.h"
 #include "cpu_engine.h"
 #include <stdio.h>
@@ -25,7 +26,7 @@ bool FinishCmd::execute(const std::vector<std::string>& args,
     
     if (return_addr == 1) {
         if (g_json_mode) json_exec_result("finish", "error", cpu);
-        else printf("Error: Stack looks empty, cannot finish.\n");
+        else cli_printf("Error: Stack looks empty, cannot finish.\n");
         return true;
     }
     
@@ -50,7 +51,7 @@ bool FinishCmd::execute(const std::vector<std::string>& args,
     }
     
     if (g_json_mode) json_exec_result("finish", stop_reason, cpu);
-    else printf("STOP at $%04X (%s)\n", cpu->pc, stop_reason);
+    else cli_printf("STOP at $%04X (%s)\n", cpu->pc, stop_reason);
     
     return true;
 }
