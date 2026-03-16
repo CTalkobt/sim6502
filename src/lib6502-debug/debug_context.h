@@ -4,6 +4,7 @@
 #include "cpu_observer.h"
 #include "debug_types.h"
 #include <stdint.h>
+#include <vector>
 
 struct SnapNode;  /* Defined in debug_context.cpp */
 class CPU;        /* Defined in cpu.h */
@@ -51,8 +52,9 @@ public:
     /* ---- Trace ---- */
     void enable_trace(int on)     { trace_enabled_ = on; }
     int  trace_is_enabled() const { return trace_enabled_; }
-    void clear_trace()            { trace_head_ = 0; trace_count_ = 0; }
-    int  trace_count()      const { return trace_count_; }
+    void clear_trace()            { trace_buf_.clear(); }
+    int  trace_count()      const { return (int)trace_buf_.size(); }
+    uint64_t trace_total()  const { return (uint64_t)trace_buf_.size(); }
     int  get_trace(int slot, sim_trace_entry_t *entry);
 
 private:
@@ -71,9 +73,9 @@ private:
     uint32_t *prof_cycles_;
     int prof_enabled_;
 
-    /* Trace ring buffer */
-    sim_trace_entry_t *trace_buf_;
-    int trace_head_, trace_count_, trace_enabled_;
+    /* Trace: linear storage up to SIM_TRACE_DEPTH */
+    std::vector<sim_trace_entry_t> trace_buf_;
+    int trace_enabled_;
 };
 
 #endif

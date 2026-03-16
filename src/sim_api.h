@@ -56,6 +56,7 @@ int sim_step_over(sim_session_t *s);
 int sim_step_out(sim_session_t *s);
 int sim_step_cycles(sim_session_t *s, unsigned long max_cycles);
 void sim_reset(sim_session_t *s);
+void sim_clear_cycles(sim_session_t *s);
 
 /* Disassembler */
 typedef struct {
@@ -146,6 +147,7 @@ void sim_trace_enable(sim_session_t *s, int enable);
 int sim_trace_is_enabled(sim_session_t *s);
 void sim_trace_clear(sim_session_t *s);
 int sim_trace_count(sim_session_t *s);
+uint64_t sim_trace_total_count(sim_session_t *s);
 int sim_trace_get(sim_session_t *s, int slot, sim_trace_entry_t *entry);
 int sim_trace_run(sim_session_t *s, int start_addr, int max_instr, int stop_on_brk, sim_trace_entry_t *entries, int entries_cap, char *stop_reason_out, int stop_reason_sz);
 

@@ -31,6 +31,7 @@ private:
     void OnStepInto(wxCommandEvent& event);
     void OnStepOver(wxCommandEvent& event);
     void OnReset(wxCommandEvent& event);
+    void OnClearCycles(wxCommandEvent& event);
     void OnToggleBreakpoint(wxCommandEvent& event);
     void OnStepBack(wxCommandEvent& event);
     void OnStepForward(wxCommandEvent& event);

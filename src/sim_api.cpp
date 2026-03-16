@@ -555,8 +555,15 @@ int sim_step_cycles(sim_session_t *s, unsigned long max_cycles) {
 void sim_reset(sim_session_t *s) {
     if (!s) return;
     s->cpu->reset(); s->cpu->pc = s->start_addr;
+    s->cpu->cycles = 0;
     if (s->cpu_type == CPU_45GS02) s->cpu->set_flag( FLAG_E, 1);
     s->state = (s->filename[0] != '\0') ? SIM_READY : SIM_IDLE;
+}
+
+void sim_clear_cycles(sim_session_t *s) {
+    if (s && s->cpu) {
+        s->cpu->cycles = 0;
+    }
 }
 
 int sim_disassemble_one(sim_session_t *s, uint16_t addr, char *buf, size_t len) {
@@ -709,6 +716,7 @@ void sim_trace_enable(sim_session_t *s, int enable) { if (s) s->debug_ctx->enabl
 int sim_trace_is_enabled(sim_session_t *s) { return s ? s->debug_ctx->trace_is_enabled() : 0; }
 void sim_trace_clear(sim_session_t *s) { if (s) s->debug_ctx->clear_trace(); }
 int sim_trace_count(sim_session_t *s) { return s ? s->debug_ctx->trace_count() : 0; }
+uint64_t sim_trace_total_count(sim_session_t *s) { return s ? s->debug_ctx->trace_total() : 0; }
 int sim_trace_get(sim_session_t *s, int slot, sim_trace_entry_t *entry) {
     return s ? s->debug_ctx->get_trace(slot, entry) : 0;
 }

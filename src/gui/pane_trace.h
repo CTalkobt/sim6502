@@ -2,9 +2,7 @@
 #define SIM_PANE_TRACE_H
 
 #include "pane_base.h"
-#include <wx/notebook.h>
 #include <wx/listctrl.h>
-#include <wx/textctrl.h>
 
 class TraceListCtrl : public wxListCtrl {
 public:
@@ -25,11 +23,13 @@ public:
 private:
     void OnClear(wxCommandEvent& event);
     void OnEnable(wxCommandEvent& event);
+    void OnToggleFollow(wxCommandEvent& event);
 
-    wxNotebook*     m_notebook;
-    wxTextCtrl*     m_liveLog;
     TraceListCtrl*  m_traceList;
     bool            m_enabled;
+    bool            m_follow;
+    uint64_t        m_last_trace_total;
+    uint64_t        m_last_cycles;
 };
 
 #endif

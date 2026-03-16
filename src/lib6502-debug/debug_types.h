@@ -4,18 +4,20 @@
 #include <stdint.h>
 #include "cpu_state.h"
 
-/* Trace ring buffer depth */
-#define SIM_TRACE_DEPTH 256
+/* Trace buffer depth (100k entries ~ 12MB RAM) */
+#define SIM_TRACE_DEPTH 100000
 
 /* History ring buffer default depth */
 #define SIM_HIST_DEFAULT_DEPTH (1 << 17)
 
 /* Single trace entry */
 typedef struct {
+    uint32_t timestamp;
     uint16_t pc;
     char     disasm[64];
     CPUState cpu;
     int      cycles_delta;
+    uint64_t cycles_total;
 } sim_trace_entry_t;
 
 /* Single history entry */

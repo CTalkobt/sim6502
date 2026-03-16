@@ -46,6 +46,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU(ID_SIM_STEP_INTO, MainFrame::OnStepInto)
     EVT_MENU(ID_SIM_STEP_OVER, MainFrame::OnStepOver)
     EVT_MENU(ID_SIM_RESET, MainFrame::OnReset)
+    EVT_MENU(ID_SIM_CLEAR_CYCLES, MainFrame::OnClearCycles)
     EVT_MENU(ID_SIM_TOGGLE_BREAKPOINT, MainFrame::OnToggleBreakpoint)
     EVT_MENU(ID_SIM_STEP_BACK, MainFrame::OnStepBack)
     EVT_MENU(ID_SIM_STEP_FORWARD, MainFrame::OnStepForward)
@@ -171,15 +172,16 @@ void MainFrame::InitToolBar() {
                                   wxAUI_TB_DEFAULT_STYLE | wxAUI_TB_HORIZONTAL);
 
     // Placeholder for icons - in a real app we'd load bitmaps
-    m_toolbar->AddTool(ID_FILE_LOAD, "Load", wxArtProvider::GetBitmap(wxART_FILE_OPEN));
+    m_toolbar->AddTool(ID_FILE_LOAD, "Load", wxArtProvider::GetBitmap(wxART_FILE_OPEN), "Load/Reload source file");
     m_toolbar->AddSeparator();
-    m_toolbar->AddTool(ID_SIM_STEP_INTO, "Step Into", wxArtProvider::GetBitmap(wxART_GO_FORWARD));
-    m_toolbar->AddTool(ID_SIM_STEP_OVER, "Step Over", wxArtProvider::GetBitmap(wxART_REDO));
-    m_toolbar->AddTool(ID_SIM_RUN, "Run", wxArtProvider::GetBitmap(wxART_GO_FORWARD));
-    m_toolbar->AddTool(ID_SIM_PAUSE, "Pause", wxArtProvider::GetBitmap(wxART_DELETE));
-    m_toolbar->AddTool(ID_SIM_RESET, "Reset", wxArtProvider::GetBitmap(wxART_UNDO));
+    m_toolbar->AddTool(ID_SIM_STEP_INTO, "Step Into", wxArtProvider::GetBitmap(wxART_GO_FORWARD), "Step into (single instruction)");
+    m_toolbar->AddTool(ID_SIM_STEP_OVER, "Step Over", wxArtProvider::GetBitmap(wxART_REDO), "Step over subroutine/next instruction");
+    m_toolbar->AddTool(ID_SIM_RUN, "Run", wxArtProvider::GetBitmap(wxART_GO_FORWARD), "Run simulation");
+    m_toolbar->AddTool(ID_SIM_PAUSE, "Pause", wxArtProvider::GetBitmap(wxART_DELETE), "Pause simulation");
+    m_toolbar->AddTool(ID_SIM_RESET, "Reset", wxArtProvider::GetBitmap(wxART_UNDO), "Reset CPU");
+    m_toolbar->AddTool(ID_SIM_CLEAR_CYCLES, "Clear Cyc", wxArtProvider::GetBitmap(wxART_DELETE), "Clear total cycle count");
     m_toolbar->AddSeparator();
-    m_toolbar->AddTool(ID_SIM_TOGGLE_BREAKPOINT, "Breakpoint", wxArtProvider::GetBitmap(wxART_LIST_VIEW));
+    m_toolbar->AddTool(ID_SIM_TOGGLE_BREAKPOINT, "Breakpoint", wxArtProvider::GetBitmap(wxART_LIST_VIEW), "Toggle breakpoint at current PC");
 
     m_toolbar->AddStretchSpacer();
 
@@ -278,6 +280,13 @@ void MainFrame::OnReset(wxCommandEvent& WXUNUSED(event)) {
     if (m_sim) {
         sim_reset(m_sim);
         m_running = false;
+        UpdateStatus();
+    }
+}
+
+void MainFrame::OnClearCycles(wxCommandEvent& WXUNUSED(event)) {
+    if (m_sim) {
+        sim_clear_cycles(m_sim);
         UpdateStatus();
     }
 }

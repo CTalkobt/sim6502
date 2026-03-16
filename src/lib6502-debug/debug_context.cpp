@@ -2,6 +2,7 @@
 #include "cpu.h"
 #include <stdlib.h>
 #include <string.h>
+#include <chrono>
 
 struct SnapNode {
     uint16_t  addr;
@@ -23,14 +24,14 @@ DebugContext::DebugContext()
       hist_write_(0), hist_count_(0), hist_enabled_(0), hist_pos_(0),
       snap_active_(0),
       prof_exec_(nullptr), prof_cycles_(nullptr), prof_enabled_(0),
-      trace_buf_(nullptr), trace_head_(0), trace_count_(0), trace_enabled_(0)
+      trace_enabled_(0)
 {
     memset(snap_buckets_, 0, sizeof(snap_buckets_));
     hist_buf_    = new sim_history_entry_t[hist_cap_]();
     hist_enabled_ = (hist_buf_ != nullptr) ? 1 : 0;
     prof_exec_   = new uint32_t[65536]();
     prof_cycles_ = new uint32_t[65536]();
-    trace_buf_   = new sim_trace_entry_t[SIM_TRACE_DEPTH]();
+    trace_buf_.reserve(1024);
 }
 
 DebugContext::~DebugContext() {
@@ -38,7 +39,6 @@ DebugContext::~DebugContext() {
     delete[] hist_buf_;
     delete[] prof_exec_;
     delete[] prof_cycles_;
-    delete[] trace_buf_;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -145,9 +145,8 @@ void DebugContext::clear_profiler() {
 /* -------------------------------------------------------------------------- */
 
 int DebugContext::get_trace(int slot, sim_trace_entry_t *entry) {
-    if (slot < 0 || slot >= trace_count_ || !trace_buf_) return 0;
-    int idx = (trace_head_ - 1 - slot + SIM_TRACE_DEPTH) % SIM_TRACE_DEPTH;
-    *entry = trace_buf_[idx];
+    if (slot < 0 || slot >= (int)trace_buf_.size() || !entry) return 0;
+    *entry = trace_buf_[slot];
     return 1;
 }
 
@@ -192,14 +191,22 @@ void DebugContext::on_after_execute(uint16_t pre_pc,
         if (hist_count_ < hist_cap_) hist_count_++;
     }
 
-    /* --- Trace ring buffer --- */
-    if (trace_enabled_ && trace_buf_) {
-        sim_trace_entry_t *te = &trace_buf_[trace_head_];
-        te->pc           = pre_pc;
-        te->cpu          = post_state;
-        te->cycles_delta = (int)cycles_delta;
-        trace_head_ = (trace_head_ + 1) % SIM_TRACE_DEPTH;
-        if (trace_count_ < SIM_TRACE_DEPTH) trace_count_++;
+    /* --- Trace storage --- */
+    if (trace_enabled_) {
+        if (trace_buf_.size() >= SIM_TRACE_DEPTH) {
+            // Cap reached
+        } else {
+            sim_trace_entry_t te;
+            auto now = std::chrono::steady_clock::now();
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+            te.timestamp    = (uint32_t)(ms & 0xFFFFFFFF);
+            te.pc           = pre_pc;
+            te.cpu          = post_state;
+            te.cycles_delta = (int)cycles_delta;
+            te.cycles_total = post_state.cycles;
+            te.disasm[0]    = '\0'; 
+            trace_buf_.push_back(te);
+        }
     }
 
     /* --- Profiler --- */
