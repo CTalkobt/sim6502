@@ -9,7 +9,26 @@ PaneVICRegs::PaneVICRegs(wxWindow* parent, sim_session_t *sim)
     sizer->Add(m_pg, 1, wxEXPAND);
     SetSizer(sizer);
 
+    m_pg->Bind(wxEVT_PG_CHANGED, &PaneVICRegs::OnPropertyChange, this);
+
     InitProperties();
+}
+
+void PaneVICRegs::OnPropertyChange(wxPropertyGridEvent& event) {
+    wxPGProperty* prop = event.GetProperty();
+    if (!prop) return;
+
+    wxString name = prop->GetName();
+    wxVariant value = prop->GetValue();
+    wxString valStr = value.GetString();
+
+    long addrVal;
+    if (name.ToLong(&addrVal, 16)) {
+        long byteVal;
+        if (valStr.ToLong(&byteVal, 16)) {
+            sim_mem_write_byte(m_sim, (uint16_t)addrVal, (uint8_t)byteVal);
+        }
+    }
 }
 
 void PaneVICRegs::InitProperties() {

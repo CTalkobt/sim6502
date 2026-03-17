@@ -13,6 +13,7 @@ public:
 
 private:
     void InitProperties();
+    void OnPropertyChange(wxPropertyGridEvent& event);
 
     wxPropertyGrid* m_pg;
 };
