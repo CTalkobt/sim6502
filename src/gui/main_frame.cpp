@@ -63,9 +63,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
 
     EVT_MENU(ID_VIEW_GO_TO_ADDRESS, MainFrame::OnGoToAddress)
     EVT_MENU(ID_MACH_ADD_DEVICE, MainFrame::OnAddDevice)
-    EVT_MENU(ID_MACH_SID_DEBUGGER, MainFrame::OnTogglePane)
-    EVT_MENU(ID_MACH_AUDIO_MIXER, MainFrame::OnTogglePane)
-    EVT_MENU_RANGE(ID_VIEW_PANE_REGISTERS, ID_VIEW_PANE_VIC_REGS, MainFrame::OnTogglePane)
+    EVT_MENU_RANGE(ID_VIEW_PANE_REGISTERS, ID_VIEW_PANE_AUDIO_MIXER, MainFrame::OnTogglePane)
     EVT_MENU(ID_VIEW_LAYOUT_SAVE, MainFrame::OnTogglePane)
     EVT_MENU(ID_VIEW_LAYOUT_RESET, MainFrame::OnTogglePane)
     EVT_MENU(ID_WINDOW_ARRANGE, MainFrame::OnWindowArrange)
@@ -142,8 +140,8 @@ void MainFrame::InitPanes() {
     RegisterPane(new PaneVICScreen(this, m_sim), ID_VIEW_PANE_VIC_SCREEN, wxAuiPaneInfo().Name("VICScreen").Caption("VIC-II Screen").Right().Position(9).Hide());
     RegisterPane(new PaneVICSprites(this, m_sim), ID_VIEW_PANE_VIC_SPRITES, wxAuiPaneInfo().Name("VICSprites").Caption("VIC-II Sprites").Right().Position(10).Hide());
     RegisterPane(new PaneVICRegs(this, m_sim), ID_VIEW_PANE_VIC_REGS, wxAuiPaneInfo().Name("VICRegs").Caption("VIC-II Registers").Right().Position(11).Hide());
-    RegisterPane(new PaneSIDDebugger(this, m_sim), ID_MACH_SID_DEBUGGER, wxAuiPaneInfo().Name("SIDDebugger").Caption("SID Debugger").Right().Position(12).Hide());
-    RegisterPane(new PaneAudioMixer(this, m_sim), ID_MACH_AUDIO_MIXER, wxAuiPaneInfo().Name("AudioMixer").Caption("Audio Mixer").Right().Position(13).Hide());
+    RegisterPane(new PaneSIDDebugger(this, m_sim), ID_VIEW_PANE_SID_DEBUGGER, wxAuiPaneInfo().Name("SIDDebugger").Caption("SID Debugger").Right().Position(12).Hide());
+    RegisterPane(new PaneAudioMixer(this, m_sim), ID_VIEW_PANE_AUDIO_MIXER, wxAuiPaneInfo().Name("AudioMixer").Caption("Audio Mixer").Right().Position(13).Hide());
 }
 
 void MainFrame::RegisterPane(SimPane* pane, int menu_id, const wxAuiPaneInfo& info) {

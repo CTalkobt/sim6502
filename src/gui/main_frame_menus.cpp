@@ -48,10 +48,6 @@ void MainFrame::InitMenuBar() {
     typeMenu->AppendRadioItem(ID_MACH_TYPE_X16, "x16");
     machMenu->AppendSubMenu(typeMenu, "Machine Selection");
 
-    machMenu->AppendSeparator();
-    machMenu->AppendCheckItem(ID_MACH_SID_DEBUGGER, "SID Debugger");
-    machMenu->AppendCheckItem(ID_MACH_AUDIO_MIXER, "Audio Mixer");
-
     // --- View Menu ---
     wxMenu *viewMenu = new wxMenu;
 
@@ -90,15 +86,26 @@ void MainFrame::InitMenuBar() {
     // Hardware panes
     wxMenu *hwMenu = new wxMenu;
     hwMenu->AppendCheckItem(ID_VIEW_PANE_DEVICES, "I/O Devices");
-    hwMenu->AppendCheckItem(ID_VIEW_PANE_VIC_SCREEN, "VIC-II Screen");
-    hwMenu->AppendCheckItem(ID_VIEW_PANE_VIC_SPRITES, "VIC-II Sprites");
-    hwMenu->AppendCheckItem(ID_VIEW_PANE_VIC_REGS, "VIC-II Registers");
+
+    wxMenu *videoMenu = new wxMenu;
+    videoMenu->AppendCheckItem(ID_VIEW_PANE_VIC_SCREEN, "VIC-II Screen");
+    videoMenu->AppendCheckItem(ID_VIEW_PANE_VIC_SPRITES, "VIC-II Sprites");
+    videoMenu->AppendCheckItem(ID_VIEW_PANE_VIC_REGS, "VIC-II Registers");
+    hwMenu->AppendSubMenu(videoMenu, "Video");
+    
+    wxMenu *audioMenu = new wxMenu;
+    audioMenu->AppendCheckItem(ID_VIEW_PANE_SID_DEBUGGER, "SID Debugger");
+    audioMenu->AppendCheckItem(ID_VIEW_PANE_AUDIO_MIXER, "Audio Mixer");
+    hwMenu->AppendSubMenu(audioMenu, "Audio");
+
     viewMenu->AppendSubMenu(hwMenu, "Hardware");
 
     viewMenu->AppendSeparator();
     viewMenu->Append(ID_VIEW_GO_TO_ADDRESS, "&Go to Address...\tCtrl+G");
     
     viewMenu->AppendSeparator();
+    wxMenu *settingsMenu = new wxMenu;
+
     wxMenu *fontSizeMenu = new wxMenu;
     fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_10, "10 px");
     fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_11, "11 px");
@@ -110,19 +117,20 @@ void MainFrame::InitMenuBar() {
     fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_18, "18 px");
     fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_20, "20 px");
     fontSizeMenu->AppendRadioItem(ID_VIEW_FONT_SIZE_24, "24 px");
-    viewMenu->AppendSubMenu(fontSizeMenu, "Font Size");
+    settingsMenu->AppendSubMenu(fontSizeMenu, "Font Size");
 
     wxMenu *themeMenu = new wxMenu;
     themeMenu->AppendRadioItem(ID_VIEW_THEME_AUTO, "Auto (OS)");
     themeMenu->AppendRadioItem(ID_VIEW_THEME_DARK, "Dark");
     themeMenu->AppendRadioItem(ID_VIEW_THEME_LIGHT, "Light");
-    viewMenu->AppendSubMenu(themeMenu, "Theme");
+    settingsMenu->AppendSubMenu(themeMenu, "Theme");
 
-    viewMenu->AppendSeparator();
     wxMenu *layoutMenu = new wxMenu;
     layoutMenu->Append(ID_VIEW_LAYOUT_SAVE, "Save Layout...");
     layoutMenu->Append(ID_VIEW_LAYOUT_RESET, "Reset to Default");
-    viewMenu->AppendSubMenu(layoutMenu, "Layout");
+    settingsMenu->AppendSubMenu(layoutMenu, "Layout");
+
+    viewMenu->AppendSubMenu(settingsMenu, "Settings");
 
     // --- Window Menu ---
     wxMenu *windowMenu = new wxMenu;
