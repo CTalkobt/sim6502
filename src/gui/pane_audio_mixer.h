@@ -3,6 +3,10 @@
 
 #include "pane_base.h"
 #include <wx/slider.h>
+#include <wx/checkbox.h>
+#include <wx/stattext.h>
+#include <wx/scrolwin.h>
+#include <vector>
 
 class PaneAudioMixer : public SimPane {
 public:
@@ -12,9 +16,26 @@ public:
     wxString GetPaneName() const override { return "AudioMixer"; }
 
 private:
-    void OnVolumeChange(wxCommandEvent& event);
+    struct SIDControl {
+        wxSlider* volumeSlider;
+        wxCheckBox* muteCheckbox;
+        wxStaticText* volLabel;
+        wxSlider* panSlider = nullptr;
+        wxStaticText* panLabel = nullptr;
+        int lastVolume;
+        uint16_t addr;
+    };
 
-    wxSlider* m_volumeSlider;
+    void OnVolumeChange(wxCommandEvent& event);
+    void OnMuteToggle(wxCommandEvent& event);
+    void OnPanChange(wxCommandEvent& event);
+    void UpdateVolumeLabel(SIDControl& ctrl);
+    void UpdatePanLabel(SIDControl& ctrl);
+    void CreateControls();
+
+    std::vector<SIDControl> m_sids;
+    wxScrolledWindow* m_scrollWin;
+    wxBoxSizer* m_mainSizer;
 };
 
 #endif
