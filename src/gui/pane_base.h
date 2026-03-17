@@ -3,6 +3,7 @@
 
 #include <wx/wx.h>
 #include <wx/aui/aui.h>
+#include <wx/config.h>
 #include "sim_api.h"
 
 struct SimSnapshot {
@@ -19,6 +20,10 @@ public:
     virtual void RefreshPane(const SimSnapshot &snap) = 0;
     virtual wxString GetPaneTitle() const = 0;
     virtual wxString GetPaneName() const = 0;
+
+    // Session persistence – override in panes that have user-defined state
+    virtual void SaveState(wxConfigBase* /*cfg*/) {}
+    virtual void LoadState(wxConfigBase* /*cfg*/) {}
 
 protected:
     sim_session_t *m_sim;

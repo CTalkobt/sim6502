@@ -331,9 +331,7 @@ int sim_load_asm(sim_session_t *s, const char *path) {
         symbol_lookup_name(s->symbols, "main", &start_addr);
         if (start_addr == (unsigned short)bundle_load_addr) symbol_lookup_name(s->symbols, "start", &start_addr);
 
-        // We don't have exact byte count from load_toolchain_bundle easily,
-        // but it loaded a PRG/BIN. We'll set a placeholder or find it from symbols.
-        binary_load_common(s, start_addr, 0); 
+        binary_load_common(s, start_addr, 0);
         return 0;
     }
     

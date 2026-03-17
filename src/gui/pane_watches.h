@@ -16,6 +16,8 @@ public:
     void RefreshPane(const SimSnapshot &snap) override;
     wxString GetPaneTitle() const override { return "Watch List"; }
     wxString GetPaneName() const override { return "Watches"; }
+    void SaveState(wxConfigBase* cfg) override;
+    void LoadState(wxConfigBase* cfg) override;
 
 private:
     void OnAdd(wxCommandEvent& event);

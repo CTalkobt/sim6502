@@ -25,6 +25,7 @@
 #include "dialogs.h"
 #include <wx/statusbr.h>
 #include <wx/filedlg.h>
+#include <wx/filename.h>
 #include <wx/msgdlg.h>
 #include <wx/textdlg.h>
 #include <wx/choicdlg.h>
@@ -216,16 +217,16 @@ void MainFrame::InitToolBar() {
                                   wxAUI_TB_DEFAULT_STYLE | wxAUI_TB_HORIZONTAL);
 
     // Placeholder for icons - in a real app we'd load bitmaps
-    m_toolbar->AddTool(ID_FILE_LOAD, "Load", wxArtProvider::GetBitmap(wxART_FILE_OPEN), "Load/Reload source file");
+    m_toolbar->AddTool(ID_FILE_LOAD, "Load", wxArtProvider::GetBitmap(wxART_FILE_OPEN), "Load/Reload source file (Ctrl+L)");
     m_toolbar->AddSeparator();
-    m_toolbar->AddTool(ID_SIM_STEP_INTO, "Step Into", wxArtProvider::GetBitmap(wxART_GO_FORWARD), "Step into (single instruction)");
-    m_toolbar->AddTool(ID_SIM_STEP_OVER, "Step Over", wxArtProvider::GetBitmap(wxART_REDO), "Step over subroutine/next instruction");
-    m_toolbar->AddTool(ID_SIM_RUN, "Run", wxArtProvider::GetBitmap(wxART_GO_FORWARD), "Run simulation");
-    m_toolbar->AddTool(ID_SIM_PAUSE, "Pause", wxArtProvider::GetBitmap(wxART_DELETE), "Pause simulation");
-    m_toolbar->AddTool(ID_SIM_RESET, "Reset", wxArtProvider::GetBitmap(wxART_UNDO), "Reset CPU");
+    m_toolbar->AddTool(ID_SIM_STEP_INTO, "Step Into", wxArtProvider::GetBitmap(wxART_GO_FORWARD), "Step Into — execute one instruction (F7)");
+    m_toolbar->AddTool(ID_SIM_STEP_OVER, "Step Over", wxArtProvider::GetBitmap(wxART_REDO), "Step Over — execute through subroutine (F8)");
+    m_toolbar->AddTool(ID_SIM_RUN, "Run", wxArtProvider::GetBitmap(wxART_GO_FORWARD), "Run simulation (F5)");
+    m_toolbar->AddTool(ID_SIM_PAUSE, "Pause", wxArtProvider::GetBitmap(wxART_DELETE), "Pause simulation (F6 / Esc)");
+    m_toolbar->AddTool(ID_SIM_RESET, "Reset", wxArtProvider::GetBitmap(wxART_UNDO), "Reset CPU and registers (Ctrl+R)");
     m_toolbar->AddTool(ID_SIM_CLEAR_CYCLES, "Clear Cyc", wxArtProvider::GetBitmap(wxART_DELETE), "Clear total cycle count");
     m_toolbar->AddSeparator();
-    m_toolbar->AddTool(ID_SIM_TOGGLE_BREAKPOINT, "Breakpoint", wxArtProvider::GetBitmap(wxART_LIST_VIEW), "Toggle breakpoint at current PC");
+    m_toolbar->AddTool(ID_SIM_TOGGLE_BREAKPOINT, "Breakpoint", wxArtProvider::GetBitmap(wxART_LIST_VIEW), "Toggle breakpoint at current PC (F9)");
 
     m_toolbar->AddStretchSpacer();
 
@@ -255,8 +256,20 @@ void MainFrame::InitStatusBar() {
 }
 
 void MainFrame::UpdateStatus() {
-    SetStatusText(m_running ? "RUNNING" : "PAUSED", 0);
     if (m_sim) {
+        sim_state_t state = sim_get_state(m_sim);
+        wxString stateStr;
+        if (state == SIM_IDLE) {
+            stateStr = "\u25cf IDLE";        // ● IDLE
+        } else if (m_running) {
+            stateStr = "\u25ba RUNNING";     // ► RUNNING
+        } else if (state == SIM_FINISHED) {
+            stateStr = "\u25a0 FINISHED";    // ■ FINISHED
+        } else {
+            stateStr = "\u23f8 PAUSED";      // ⏸ PAUSED
+        }
+        SetStatusText(stateStr, 0);
+
         wxString procName = sim_processor_name(m_sim);
         SetStatusText(procName, 1);
         if (m_procCombo && m_procCombo->GetValue() != procName) {
@@ -273,6 +286,17 @@ void MainFrame::UpdateStatus() {
         if (cpu) {
             SetStatusText(wxString::Format("Cycles: %lu", cpu->cycles), 2);
         }
+
+        // Keep title bar in sync with the currently loaded file
+        const char* filename = sim_get_filename(m_sim);
+        if (filename && strcmp(filename, "(none)") != 0) {
+            wxFileName fn(filename);
+            SetTitle(wxString("6502 Simulator \u2014 ") + fn.GetFullName());
+        } else {
+            SetTitle("6502 Simulator");
+        }
+    } else {
+        SetStatusText("\u25cf IDLE", 0);
     }
 }
 
@@ -580,6 +604,32 @@ void MainFrame::LoadSettings() {
                 CheckMenuItem(menu_id, m_aui.GetPane(pane).IsShown());
             }
         }
+
+        // Restore breakpoints
+        if (m_sim) {
+            int bpCount = 0;
+            cfg->Read("Breakpoints/Count", &bpCount, 0);
+            for (int i = 0; i < bpCount; i++) {
+                int addr = 0;
+                wxString cond;
+                bool enabled = true;
+                cfg->Read(wxString::Format("Breakpoints/Addr_%d", i), &addr, 0);
+                cfg->Read(wxString::Format("Breakpoints/Cond_%d", i), &cond, "");
+                cfg->Read(wxString::Format("Breakpoints/Enabled_%d", i), &enabled, true);
+                sim_break_set(m_sim, (uint16_t)addr,
+                              cond.IsEmpty() ? nullptr : cond.mb_str().data());
+                if (!enabled) {
+                    // Toggle off: find the index of the newly added BP
+                    int newIdx = sim_break_count(m_sim) - 1;
+                    if (newIdx >= 0) sim_break_toggle(m_sim, newIdx);
+                }
+            }
+        }
+
+        // Let each pane restore its own state (watches, etc.)
+        for (auto pane : m_pane_list) {
+            pane->LoadState(cfg);
+        }
     }
 
     wxString env_scale;
@@ -607,22 +657,43 @@ void MainFrame::LoadSettings() {
 
 void MainFrame::SaveSettings() {
     wxConfigBase *cfg = wxConfigBase::Get();
-    if (cfg) {
-        cfg->Write("Settings/FontSize", m_base_font_size);
-        cfg->Write("Settings/Theme", m_theme);
-        
-        wxSize sz = GetSize();
-        cfg->Write("Window/Width", sz.x);
-        cfg->Write("Window/Height", sz.y);
-        
-        wxPoint pos = GetPosition();
-        cfg->Write("Window/X", pos.x);
-        cfg->Write("Window/Y", pos.y);
+    if (!cfg) return;
 
-        cfg->Write("Layout/Perspective", m_aui.SavePerspective());
-        
-        cfg->Flush();
+    cfg->Write("Settings/FontSize", m_base_font_size);
+    cfg->Write("Settings/Theme", m_theme);
+
+    wxSize sz = GetSize();
+    cfg->Write("Window/Width", sz.x);
+    cfg->Write("Window/Height", sz.y);
+
+    wxPoint pos = GetPosition();
+    cfg->Write("Window/X", pos.x);
+    cfg->Write("Window/Y", pos.y);
+
+    cfg->Write("Layout/Perspective", m_aui.SavePerspective());
+
+    // Save breakpoints
+    if (m_sim) {
+        int bpCount = sim_break_count(m_sim);
+        cfg->Write("Breakpoints/Count", bpCount);
+        for (int i = 0; i < bpCount; i++) {
+            uint16_t addr;
+            char cond[128];
+            if (sim_break_get(m_sim, i, &addr, cond, sizeof(cond)) == 0) {
+                cfg->Write(wxString::Format("Breakpoints/Addr_%d", i), (int)addr);
+                cfg->Write(wxString::Format("Breakpoints/Cond_%d", i), wxString(cond));
+                cfg->Write(wxString::Format("Breakpoints/Enabled_%d", i),
+                           (bool)sim_break_is_enabled(m_sim, i));
+            }
+        }
     }
+
+    // Let each pane save its own state (watches, etc.)
+    for (auto pane : m_pane_list) {
+        pane->SaveState(cfg);
+    }
+
+    cfg->Flush();
 }
 
 void MainFrame::OnGoToAddress(wxCommandEvent& WXUNUSED(event)) {

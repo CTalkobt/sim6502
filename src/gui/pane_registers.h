@@ -2,6 +2,7 @@
 #define SIM_PANE_REGISTERS_H
 
 #include "pane_base.h"
+#include "cpu_types.h"
 #include <wx/listctrl.h>
 
 class PaneRegisters : public SimPane {
@@ -13,6 +14,7 @@ public:
 
 private:
     void UpdateRow(int row, const wxString& name, uint32_t val, uint32_t prev, bool is16 = false);
+    void RebuildRows(cpu_type_t cpu_type);
     void OnEditRegister(wxListEvent& event);
     void OnLeftClick(wxMouseEvent& event);
     void OnEditorEnter(wxCommandEvent& event);
@@ -28,6 +30,8 @@ private:
     CPUState    m_current_cpu;
     CPUState    m_prev_cpu;
     bool        m_prev_valid;
+    cpu_type_t  m_last_cpu_type;
+    bool        m_has_z_b;   // true for 65CE02 / 45GS02
 };
 
 #endif

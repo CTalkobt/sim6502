@@ -3,10 +3,10 @@
 #include <wx/msgdlg.h>
 
 PaneRegisters::PaneRegisters(wxWindow* parent, sim_session_t *sim)
-    : SimPane(parent, sim) 
+    : SimPane(parent, sim)
 {
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
-    
+
     m_list = new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
     m_list->InsertColumn(0, "Register", wxLIST_FORMAT_LEFT, 80);
     m_list->InsertColumn(1, "Value", wxLIST_FORMAT_LEFT, 60);
@@ -19,10 +19,13 @@ PaneRegisters::PaneRegisters(wxWindow* parent, sim_session_t *sim)
     m_prev_valid = false;
     m_editRow = -1;
     m_textEditor = nullptr;
+    m_last_cpu_type = CPU_6502;
+    m_has_z_b = false;
     memset(&m_prev_cpu, 0, sizeof(m_prev_cpu));
     memset(&m_current_cpu, 0, sizeof(m_current_cpu));
 
-    for (int i = 0; i < 8; i++) {
+    // Insert the base 6 rows (no Z/B); RebuildRows adjusts when CPU type changes
+    for (int i = 0; i < 6; i++) {
         m_list->InsertItem(i, "");
     }
 
@@ -30,8 +33,26 @@ PaneRegisters::PaneRegisters(wxWindow* parent, sim_session_t *sim)
     m_list->Bind(wxEVT_LIST_ITEM_ACTIVATED, &PaneRegisters::OnEditRegister, this);
 }
 
+void PaneRegisters::RebuildRows(cpu_type_t cpu_type) {
+    bool needs_z_b = (cpu_type == CPU_65CE02 || cpu_type == CPU_45GS02);
+    if (needs_z_b == m_has_z_b && cpu_type == m_last_cpu_type) return;
+
+    HideEditor();
+    m_list->DeleteAllItems();
+    m_has_z_b = needs_z_b;
+    m_last_cpu_type = cpu_type;
+    m_prev_valid = false;
+
+    int count = m_has_z_b ? 8 : 6;
+    for (int i = 0; i < count; i++) {
+        m_list->InsertItem(i, "");
+    }
+}
+
 void PaneRegisters::RefreshPane(const SimSnapshot &snap) {
     if (!snap.cpu) return;
+
+    RebuildRows(sim_get_cpu_type(m_sim));
 
     // Rotate states if cycle count has moved
     if (snap.cpu->cycles != m_current_cpu.cycles) {
@@ -47,10 +68,15 @@ void PaneRegisters::RefreshPane(const SimSnapshot &snap) {
     UpdateRow(1, "A",  m_current_cpu.a,  m_prev_cpu.a);
     UpdateRow(2, "X",  m_current_cpu.x,  m_prev_cpu.x);
     UpdateRow(3, "Y",  m_current_cpu.y,  m_prev_cpu.y);
-    UpdateRow(4, "Z",  m_current_cpu.z,  m_prev_cpu.z);
-    UpdateRow(5, "B",  m_current_cpu.b,  m_prev_cpu.b);
-    UpdateRow(6, "SP", m_current_cpu.s,  m_prev_cpu.s, true);
-    UpdateRow(7, "P",  m_current_cpu.p,  m_prev_cpu.p);
+    if (m_has_z_b) {
+        UpdateRow(4, "Z",  m_current_cpu.z,  m_prev_cpu.z);
+        UpdateRow(5, "B",  m_current_cpu.b,  m_prev_cpu.b);
+        UpdateRow(6, "SP", m_current_cpu.s,  m_prev_cpu.s, true);
+        UpdateRow(7, "P",  m_current_cpu.p,  m_prev_cpu.p);
+    } else {
+        UpdateRow(4, "SP", m_current_cpu.s,  m_prev_cpu.s, true);
+        UpdateRow(5, "P",  m_current_cpu.p,  m_prev_cpu.p);
+    }
 }
 
 void PaneRegisters::UpdateRow(int row, const wxString& name, uint32_t val, uint32_t prev, bool is16) {
@@ -67,7 +93,7 @@ void PaneRegisters::UpdateRow(int row, const wxString& name, uint32_t val, uint3
         m_list->SetItem(row, 1, valStr);
 
         // Special handling for Processor Status flags column
-        if (row == 7) {
+        if (name == "P") {
             wxString flags;
             uint8_t p = (uint8_t)val;
             flags.Printf("%c%c%c%c%c%c%c%c (%02X)",
@@ -80,7 +106,7 @@ void PaneRegisters::UpdateRow(int row, const wxString& name, uint32_t val, uint3
                 (p & 0x02) ? 'Z' : '.',
                 (p & 0x01) ? 'C' : '.',
                 p);
-            m_list->SetItem(7, 3, flags);
+            m_list->SetItem(row, 3, flags);
         }
     }
     
@@ -136,18 +162,16 @@ void PaneRegisters::OpenEditorForRow(long row) {
         m_textEditor->SetSize(rect);
     }
 
+    wxString regName = m_list->GetItemText(row, 0);
     wxString currentVal;
-    switch (row) {
-        case 0: currentVal.Printf("%04X", m_current_cpu.pc); break;
-        case 1: currentVal.Printf("%02X", m_current_cpu.a);  break;
-        case 2: currentVal.Printf("%02X", m_current_cpu.x);  break;
-        case 3: currentVal.Printf("%02X", m_current_cpu.y);  break;
-        case 4: currentVal.Printf("%02X", m_current_cpu.z);  break;
-        case 5: currentVal.Printf("%02X", m_current_cpu.b);  break;
-        case 6: currentVal.Printf("%04X", m_current_cpu.s);  break;
-        case 7: currentVal.Printf("%02X", m_current_cpu.p);  break;
-        default: break;
-    }
+    if      (regName == "PC") currentVal.Printf("%04X", m_current_cpu.pc);
+    else if (regName == "A")  currentVal.Printf("%02X", m_current_cpu.a);
+    else if (regName == "X")  currentVal.Printf("%02X", m_current_cpu.x);
+    else if (regName == "Y")  currentVal.Printf("%02X", m_current_cpu.y);
+    else if (regName == "Z")  currentVal.Printf("%02X", m_current_cpu.z);
+    else if (regName == "B")  currentVal.Printf("%02X", m_current_cpu.b);
+    else if (regName == "SP") currentVal.Printf("%04X", m_current_cpu.s);
+    else if (regName == "P")  currentVal.Printf("%02X", m_current_cpu.p);
     m_textEditor->SetValue(currentVal);
     m_textEditor->Show();
     m_textEditor->SetFocus();

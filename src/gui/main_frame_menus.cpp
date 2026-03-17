@@ -54,39 +54,49 @@ void MainFrame::InitMenuBar() {
 
     // --- View Menu ---
     wxMenu *viewMenu = new wxMenu;
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_REGISTERS, "Registers");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_DISASSEMBLY, "Disassembly");
-    
+
+    // Core panes (always-visible defaults)
+    wxMenu *coreMenu = new wxMenu;
+    coreMenu->AppendCheckItem(ID_VIEW_PANE_REGISTERS, "Registers");
+    coreMenu->AppendCheckItem(ID_VIEW_PANE_DISASSEMBLY, "Disassembly");
+    coreMenu->AppendCheckItem(ID_VIEW_PANE_CONSOLE, "Console");
     wxMenu *memMenu = new wxMenu;
     memMenu->AppendCheckItem(ID_VIEW_PANE_MEMORY_1, "Memory View 1");
     memMenu->AppendCheckItem(ID_VIEW_PANE_MEMORY_2, "Memory View 2");
     memMenu->AppendCheckItem(ID_VIEW_PANE_MEMORY_3, "Memory View 3");
     memMenu->AppendCheckItem(ID_VIEW_PANE_MEMORY_4, "Memory View 4");
-    memMenu->AppendSeparator();
-    memMenu->Append(wxID_ANY, "Add Memory View");
-    viewMenu->AppendSubMenu(memMenu, "Memory Views");
+    coreMenu->AppendSubMenu(memMenu, "Memory Views");
+    viewMenu->AppendSubMenu(coreMenu, "Core");
 
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_CONSOLE, "Console");
+    // Debug panes
+    wxMenu *debugMenu = new wxMenu;
+    debugMenu->AppendCheckItem(ID_VIEW_PANE_BREAKPOINTS, "Breakpoints");
+    debugMenu->AppendCheckItem(ID_VIEW_PANE_TRACE, "Trace Log");
+    debugMenu->AppendCheckItem(ID_VIEW_PANE_STACK, "Stack");
+    debugMenu->AppendCheckItem(ID_VIEW_PANE_WATCHES, "Watch List");
+    debugMenu->AppendCheckItem(ID_VIEW_PANE_SNAP_DIFF, "Snapshot Diff");
+    viewMenu->AppendSubMenu(debugMenu, "Debug");
+
+    // Analysis panes
+    wxMenu *analysisMenu = new wxMenu;
+    analysisMenu->AppendCheckItem(ID_VIEW_PANE_IREF, "Instruction Ref");
+    analysisMenu->AppendCheckItem(ID_VIEW_PANE_SYMBOLS, "Symbols");
+    analysisMenu->AppendCheckItem(ID_VIEW_PANE_SOURCE, "Source View");
+    analysisMenu->AppendCheckItem(ID_VIEW_PANE_PROFILER, "Profiler");
+    analysisMenu->AppendCheckItem(ID_VIEW_PANE_TEST_RUNNER, "Test Runner");
+    analysisMenu->AppendCheckItem(ID_VIEW_PANE_PATTERNS, "Idiom Library");
+    viewMenu->AppendSubMenu(analysisMenu, "Analysis");
+
+    // Hardware panes
+    wxMenu *hwMenu = new wxMenu;
+    hwMenu->AppendCheckItem(ID_VIEW_PANE_DEVICES, "I/O Devices");
+    hwMenu->AppendCheckItem(ID_VIEW_PANE_VIC_SCREEN, "VIC-II Screen");
+    hwMenu->AppendCheckItem(ID_VIEW_PANE_VIC_SPRITES, "VIC-II Sprites");
+    hwMenu->AppendCheckItem(ID_VIEW_PANE_VIC_REGS, "VIC-II Registers");
+    viewMenu->AppendSubMenu(hwMenu, "Hardware");
+
     viewMenu->AppendSeparator();
-    viewMenu->Append(ID_VIEW_GO_TO_ADDRESS, "&Go to Address...	Ctrl+G");
-    viewMenu->AppendSeparator();
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_BREAKPOINTS, "Breakpoints");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_TRACE, "Trace Log");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_STACK, "Stack");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_WATCHES, "Watch List");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_SNAP_DIFF, "Snapshot Diff");
-    viewMenu->AppendSeparator();
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_IREF, "Instruction Ref");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_SYMBOLS, "Symbols");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_SOURCE, "Source View");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_PROFILER, "Profiler");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_TEST_RUNNER, "Test Runner");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_DEVICES, "I/O Devices");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_PATTERNS, "Idiom Library");
-    viewMenu->AppendSeparator();
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_VIC_SCREEN, "VIC-II Screen");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_VIC_SPRITES, "VIC-II Sprites");
-    viewMenu->AppendCheckItem(ID_VIEW_PANE_VIC_REGS, "VIC-II Registers");
+    viewMenu->Append(ID_VIEW_GO_TO_ADDRESS, "&Go to Address...\tCtrl+G");
     
     viewMenu->AppendSeparator();
     wxMenu *fontSizeMenu = new wxMenu;

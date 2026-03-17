@@ -2,6 +2,7 @@
 #include <wx/menu.h>
 #include <wx/textctrl.h>
 #include <wx/msgdlg.h>
+#include <wx/config.h>
 
 PaneWatches::PaneWatches(wxWindow* parent, sim_session_t *sim)
     : SimPane(parent, sim) 
@@ -39,6 +40,30 @@ void PaneWatches::RefreshPane(const SimSnapshot &snap) {
             m_list->SetItemTextColour(item, *wxRED);
             m_watches[i].last_val = val;
         }
+    }
+}
+
+void PaneWatches::SaveState(wxConfigBase* cfg) {
+    cfg->Write("Watches/Count", (int)m_watches.size());
+    for (int i = 0; i < (int)m_watches.size(); i++) {
+        cfg->Write(wxString::Format("Watches/Label_%d", i), m_watches[i].label);
+        cfg->Write(wxString::Format("Watches/Addr_%d", i), (int)m_watches[i].address);
+    }
+}
+
+void PaneWatches::LoadState(wxConfigBase* cfg) {
+    m_watches.clear();
+    int count = 0;
+    cfg->Read("Watches/Count", &count, 0);
+    for (int i = 0; i < count; i++) {
+        Watch w;
+        wxString defaultLabel = wxString::Format("Watch_%d", i);
+        cfg->Read(wxString::Format("Watches/Label_%d", i), &w.label, defaultLabel);
+        int addr = 0;
+        cfg->Read(wxString::Format("Watches/Addr_%d", i), &addr, 0);
+        w.address = (uint16_t)addr;
+        w.last_val = sim_mem_read_byte(m_sim, w.address);
+        m_watches.push_back(w);
     }
 }
 
