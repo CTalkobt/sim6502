@@ -323,6 +323,7 @@ void MainFrame::OnTimer(wxTimerEvent& WXUNUSED(event)) {
     snap.cpu = sim_get_cpu(m_sim);
     snap.mem = sim_get_memory(m_sim);
     snap.state = sim_get_state(m_sim);
+    snap.running = m_running;
 
     for (auto pane : m_pane_list) {
         if (m_aui.GetPane(pane).IsShown()) {

@@ -82,7 +82,7 @@ private:
     int           m_base_font_size;
     int           m_theme; // 0=Dark, 1=Light, 2=Auto
     float         m_ui_scale;
-    bool          m_running;
+    bool          m_running;      // UI-level "Run" state; true if the timer is actively calling sim_step()
     bool          m_initial_layout_done;
     unsigned long m_cycle_limit;  // 0 = no limit
     float         m_speed_scale;  // 0.0 = unlimited

@@ -172,7 +172,7 @@ src/gui/%.o: src/gui/%.cpp
 	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) $(WX_CFLAGS) -c -o $@ $<
 
 # --- Unit Testing ---
-UNIT_TEST_SRCS = tests/unit/test_main.cpp tests/unit/test_cpu_arithmetic.cpp tests/unit/test_cpu_opcodes.cpp tests/unit/test_cpu_45gs02.cpp tests/unit/test_cpu_decode.cpp tests/unit/test_memory.cpp tests/unit/test_toolchain.cpp tests/unit/test_debug.cpp tests/unit/test_sim_api.cpp tests/unit/test_devices.cpp tests/unit/test_integration.cpp tests/unit/test_fuzz.cpp tests/unit/test_cli.cpp tests/unit/test_regression.cpp tests/unit/test_patterns_logic.cpp tests/unit/test_templates_logic.cpp
+UNIT_TEST_SRCS = tests/unit/test_main.cpp tests/unit/test_cpu_arithmetic.cpp tests/unit/test_cpu_opcodes.cpp tests/unit/test_cpu_45gs02.cpp tests/unit/test_cpu_decode.cpp tests/unit/test_memory.cpp tests/unit/test_toolchain.cpp tests/unit/test_debug.cpp tests/unit/test_sim_api.cpp tests/unit/test_devices.cpp tests/unit/test_vic2_sprites.cpp tests/unit/test_integration.cpp tests/unit/test_fuzz.cpp tests/unit/test_cli.cpp tests/unit/test_regression.cpp tests/unit/test_patterns_logic.cpp tests/unit/test_templates_logic.cpp
 UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.cpp=.o)
 UNIT_TEST_TARGET = unit-tests
 

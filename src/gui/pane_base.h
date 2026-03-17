@@ -10,6 +10,7 @@ struct SimSnapshot {
     CPU *cpu;
     const memory_t *mem;
     sim_state_t state;
+    bool running;     // UI-level "Run" state; true if the timer is actively calling sim_step()
 };
 
 class SimPane : public wxPanel {

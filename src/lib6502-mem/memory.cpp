@@ -17,11 +17,19 @@ unsigned char mem_read_phys(memory_t *mem, unsigned int phys) {
 	return mem->far_pages[page][off];
 }
 
+unsigned char mem_read_phys(const memory_t *mem, unsigned int phys) {
+    return mem_read_phys(const_cast<memory_t*>(mem), phys);
+}
+
 unsigned char mem_peek(memory_t *mem, uint16_t addr) {
     uint8_t val;
     if (mem->io_handlers[addr] && mem->io_handlers[addr]->io_peek(mem, addr, &val))
         return val;
     return mem->mem[addr];
+}
+
+unsigned char mem_peek(const memory_t *mem, uint16_t addr) {
+    return mem_peek(const_cast<memory_t*>(mem), addr);
 }
 
 void mem_write_phys(memory_t *mem, unsigned int phys, unsigned char val) {

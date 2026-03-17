@@ -9,11 +9,13 @@
 /* Physical (raw) byte read — no MAP translation.
  * Used for far/flat 28-bit access and internally after MAP address translation. */
 unsigned char mem_read_phys(memory_t *mem, unsigned int phys);
+unsigned char mem_read_phys(const memory_t *mem, unsigned int phys);
 
 /**
  * Debug/Introspection Read: Returns value without side-effects.
  */
 unsigned char mem_peek(memory_t *mem, uint16_t addr);
+unsigned char mem_peek(const memory_t *mem, uint16_t addr);
 
 /**
  * Physical (raw) byte write — no MAP translation.
