@@ -40,6 +40,7 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
 /* --- Information Display --- */
 
 void print_help(const char *progname);
+void print_detailed_help(const char *cmd);
 void list_processors(void);
 void list_opcodes(cpu_type_t type);
 void print_opcode_info(cpu_type_t cpu_type, const char *mnemonic);

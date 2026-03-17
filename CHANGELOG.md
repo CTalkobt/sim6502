@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] - 2026-03-16
 
 ### Added
+- GUI console pane: `quit`/`exit` commands are now intercepted and display "Use File > Quit to exit." instead of silently doing nothing.
+- `cliIsInteractiveMode()` helper in `commands.cpp` — returns true when running in the text CLI (no log callback set), false when running inside the GUI console pane. Used to suppress GUI-irrelevant options from help output.
+
+### Fixed
+- `help <command>` in the GUI console pane now correctly renders the command's help text via the registered `CLICommand::render_help()` path. Previously the command could abort due to the help dispatch not routing through the registry.
+- `quit` no longer appears in the `help` command listing when running inside the GUI console pane.
+
+
 - `sim6502-gui` now accepts the same key command-line options as `sim6502`: `-p`/`--processor`, `-t`/`--target`, `-b`/`--break`, `-L`/`--limit`, `-S`/`--speed`, and `--debug`.
 - `-S` (speed scale) in the GUI drives `sim_step_cycles()` per timer tick, giving accurate cycle-budget execution at the requested clock rate (1.0 = C64 PAL 985 kHz, 0.0 = unlimited).
 - `-L` (cycle limit) in the GUI pauses the running simulation once `cpu->cycles` reaches the specified count.

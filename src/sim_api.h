@@ -159,6 +159,7 @@ void sim_set_log_callback(sim_session_t *s, sim_log_cb cb, void *userdata);
 void sim_exec_command(sim_session_t *s, const char *cmd);
 void cli_printf(const char *fmt, ...);
 void cli_set_log_callback(cli_log_cb cb, void *userdata);
+int  cliIsInteractiveMode(void);
 
 void sim_set_pc(sim_session_t *s, uint16_t pc);
 void sim_set_reg_byte(sim_session_t *s, const char *name, uint8_t val);

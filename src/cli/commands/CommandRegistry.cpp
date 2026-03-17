@@ -7,18 +7,22 @@
 #include "EnvCmd.h"
 #include "DevicesCmd.h"
 #include "IdiomsCmd.h"
+#include "HelpCmd.h"
 
 CommandRegistry::CommandRegistry() {
     registerCommand(std::make_unique<StepCmd>());
     registerCommand(std::make_unique<NextCmd>());
     registerCommand(std::make_unique<FinishCmd>());
+    registerCommand(std::make_unique<HelpCmd>());
     
     auto hist = std::make_unique<HistoryCmd>();
     commands["sb"] = std::move(hist);
+    commands["stepback"] = std::make_unique<HistoryCmd>();
     registerCommand(std::make_unique<HistoryCmd>()); // registers as "history"
     
     auto sf = std::make_unique<HistoryCmd>();
     commands["sf"] = std::move(sf);
+    commands["stepfwd"] = std::make_unique<HistoryCmd>();
 
     registerCommand(std::make_unique<BreakCmd>());
     registerCommand(std::make_unique<EnvCmd>());

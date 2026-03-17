@@ -46,6 +46,8 @@ void PaneConsole::OnSubmit(wxCommandEvent& WXUNUSED(event)) {
 
     if (cmd == "cls") {
         m_output->Clear();
+    } else if (cmd == "quit" || cmd == "exit") {
+        Log("Use File > Quit to exit.\n", *wxRED);
     } else {
         sim_exec_command(m_sim, cmd.ToUTF8());
     }

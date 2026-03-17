@@ -34,6 +34,14 @@ void cli_set_log_callback(cli_log_cb cb, void *userdata) {
     s_cli_log_userdata = userdata;
 }
 
+int cliIsInteractiveMode(void) {
+    /* The GUI sets a log callback before dispatching each command and clears
+     * it after.  Pure CLI (stdin/stdout) never sets one.  So the absence of
+     * a log callback reliably means we are running in the text-only CLI —
+     * i.e. interactive terminal mode rather than the GUI console pane. */
+    return s_cli_log == nullptr;
+}
+
 void cli_printf(const char *fmt, ...) {
     char buf[2048];
     va_list args;
@@ -453,12 +461,16 @@ static bool handle_manual_execution(const std::string& line, CPU *cpu, memory_t 
     return true;
 }
 
+static CommandRegistry& get_registry() {
+    static CommandRegistry registry;
+    return registry;
+}
+
 bool cli_process_command(const std::string& line,
                                   CPU *cpu, memory_t *mem,
                                   cpu_type_t *p_cpu_type,
                                   breakpoint_list_t *breakpoints,
                                   symbol_table_t *symbols) {
-    static CommandRegistry registry;
     // Trim leading/trailing whitespace and newlines
     std::string trimmed = line;
     size_t first = trimmed.find_first_not_of(" \t\r\n");
@@ -485,27 +497,14 @@ bool cli_process_command(const std::string& line,
     }
 
     const std::string& cmd = args[0];
-    CLICommand* command = registry.getCommand(cmd);
+    CLICommand* command = get_registry().getCommand(cmd);
     if (command) {
         return command->execute(args, cpu, mem, p_cpu_type, cpu->dispatch_table(), breakpoints, symbols);
     }
 
     if (cmd == "quit" || cmd == "exit") return false;
 
-    if (cmd == "help") {
-        cli_printf("Commands: step [n], run, stepback (sb), stepfwd (sf),\n"
-               "          break <addr>, clear <addr>, list, regs,\n"
-               "          mem <addr> [len], write <addr> <val>, reset,\n"
-               "          processors, processor <type>, info <opcode>,\n"
-               "          jump <addr>, set <reg> <val>, flag <flag> <0|1>,\n"
-               "          bload \"file\" [addr], bsave \"file\" <start> <end>,\n"
-               "          asm [addr], disasm [addr [count]],\n"
-               "          vic2.info, vic2.regs, vic2.sprites,\n"
-               "          sid.info, sid.regs,\n"
-               "          vic2.savescreen [file], vic2.savebitmap [file],\n"
-               "          validate <addr> [A=v X=v ...] : [A=v X=v ...]\n"
-               "          snapshot, diff, speed [scale], quit\n");
-    } else if (cmd == "run") {
+    if (cmd == "run") {
         const char *stop_reason = "brk";
         struct timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0);
         unsigned long cyc0 = cpu->cycles;
@@ -542,6 +541,148 @@ bool cli_process_command(const std::string& line,
     } else if (cmd == "write") {
         const char *p = line.c_str(); SKIP_CMD(p); unsigned long addr, val;
         if (parse_mon_value(&p, &addr) && parse_mon_value(&p, &val)) { mem_write(mem, (unsigned short)addr, (unsigned char)val); if (g_json_mode) json_ok("write"); else cli_printf("OK\n"); }
+    } else if (cmd == "list") {
+        if (g_json_mode) {
+            cli_printf("{\"cmd\":\"list\",\"ok\":true,\"data\":{\"breakpoints\":[");
+            for (int i = 0; i < breakpoints->count; i++) {
+                cli_printf("{\"address\":%u,\"enabled\":%d,\"condition\":\"%s\"}%s", 
+                    breakpoints->breakpoints[i].address,
+                    breakpoints->breakpoints[i].enabled,
+                    breakpoints->breakpoints[i].condition,
+                    i < breakpoints->count - 1 ? "," : "");
+            }
+            cli_printf("]}}\n");
+        } else {
+            breakpoint_list(breakpoints);
+        }
+    } else if (cmd == "clear") {
+        const char *p = line.c_str(); SKIP_CMD(p); unsigned long addr;
+        if (parse_mon_value(&p, &addr)) {
+            if (breakpoint_remove(breakpoints, (unsigned short)addr)) {
+                if (g_json_mode) cli_printf("{\"cmd\":\"clear\",\"ok\":true,\"data\":{\"address\":%lu}}\n", addr & 0xFFFF);
+                else cli_printf("Breakpoint at $%04lX removed.\n", addr & 0xFFFF);
+            } else {
+                if (g_json_mode) json_err("clear", "No breakpoint at address");
+                else cli_printf("No breakpoint at $%04lX.\n", addr & 0xFFFF);
+            }
+        } else {
+            if (g_json_mode) json_err("clear", "Usage: clear <addr>");
+            else cli_printf("Usage: clear <addr>\n");
+        }
+    } else if (cmd == "set") {
+        const char *p = line.c_str(); SKIP_CMD(p); char reg[16]; unsigned long val;
+        if (sscanf(p, "%15s", reg) == 1) {
+            p += strlen(reg);
+            if (parse_mon_value(&p, &val)) {
+                if      (strcasecmp(reg, "A") == 0) cpu->a = (uint8_t)val;
+                else if (strcasecmp(reg, "X") == 0) cpu->x = (uint8_t)val;
+                else if (strcasecmp(reg, "Y") == 0) cpu->y = (uint8_t)val;
+                else if (strcasecmp(reg, "Z") == 0) cpu->z = (uint8_t)val;
+                else if (strcasecmp(reg, "B") == 0) cpu->b = (uint8_t)val;
+                else if (strcasecmp(reg, "S") == 0 || strcasecmp(reg, "SP") == 0) cpu->s = (uint16_t)val;
+                else if (strcasecmp(reg, "P") == 0) cpu->p = (uint8_t)val;
+                else if (strcasecmp(reg, "PC") == 0) cpu->pc = (uint16_t)val;
+                else {
+                    if (g_json_mode) json_err("set", "Unknown register");
+                    else cli_printf("Unknown register: %s\n", reg);
+                    return true;
+                }
+                if (g_json_mode) json_ok("set");
+                else cli_printf("%s set to $%04lX\n", reg, val);
+            } else {
+                if (g_json_mode) json_err("set", "Value required");
+                else cli_printf("Usage: set <reg> <val>\n");
+            }
+        } else {
+            if (g_json_mode) json_err("set", "Usage: set <reg> <val>");
+            else cli_printf("Usage: set <reg> <val>\n");
+        }
+    } else if (cmd == "flag") {
+        const char *p = line.c_str(); SKIP_CMD(p); char flag_name[16]; unsigned long val;
+        if (sscanf(p, "%15s", flag_name) == 1) {
+            p += strlen(flag_name);
+            if (parse_mon_value(&p, &val)) {
+                uint8_t bit = 0;
+                if      (strcasecmp(flag_name, "C") == 0) bit = FLAG_C;
+                else if (strcasecmp(flag_name, "Z") == 0) bit = FLAG_Z;
+                else if (strcasecmp(flag_name, "I") == 0) bit = FLAG_I;
+                else if (strcasecmp(flag_name, "D") == 0) bit = FLAG_D;
+                else if (strcasecmp(flag_name, "B") == 0) bit = FLAG_B;
+                else if (strcasecmp(flag_name, "V") == 0) bit = FLAG_V;
+                else if (strcasecmp(flag_name, "N") == 0) bit = FLAG_N;
+                else if (strcasecmp(flag_name, "E") == 0) bit = FLAG_E;
+                else {
+                    if (g_json_mode) json_err("flag", "Unknown flag");
+                    else cli_printf("Unknown flag: %s\n", flag_name);
+                    return true;
+                }
+                if (val) cpu->p |= bit; else cpu->p &= ~bit;
+                if (g_json_mode) json_ok("flag");
+                else cli_printf("Flag %s set to %d\n", flag_name, val ? 1 : 0);
+            } else {
+                if (g_json_mode) json_err("flag", "Value required");
+                else cli_printf("Usage: flag <flag> <0|1>\n");
+            }
+        } else {
+            if (g_json_mode) json_err("flag", "Usage: flag <flag> <0|1>");
+            else cli_printf("Usage: flag <flag> <0|1>\n");
+        }
+    } else if (cmd == "bload") {
+        const char *p = line.c_str(); SKIP_CMD(p); char file[256]; unsigned long addr = cpu->pc;
+        if (sscanf(p, " \"%[^\"]\"", file) == 1) {
+            p = strchr(p, '\"') + 1; p = strchr(p, '\"') + 1;
+            parse_mon_value(&p, &addr);
+            FILE *f = fopen(file, "rb");
+            if (f) {
+                int n = 0, c;
+                while ((c = fgetc(f)) != EOF) {
+                    if (addr + n < 0x10000) mem_write(mem, (unsigned short)(addr + n), (unsigned char)c);
+                    n++;
+                }
+                fclose(f);
+                if (g_json_mode) cli_printf("{\"cmd\":\"bload\",\"ok\":true,\"data\":{\"address\":%lu,\"size\":%d}}\n", addr, n);
+                else cli_printf("Loaded %d bytes at $%04lX\n", n, addr);
+            } else {
+                if (g_json_mode) json_err("bload", "Failed to open file");
+                else cli_printf("Error: Could not open %s\n", file);
+            }
+        } else {
+             if (g_json_mode) json_err("bload", "Filename required");
+             else cli_printf("Usage: bload \"file\" [addr]\n");
+        }
+    } else if (cmd == "bsave") {
+        const char *p = line.c_str(); SKIP_CMD(p); char file[256]; unsigned long start, end;
+        if (sscanf(p, " \"%[^\"]\"", file) == 1) {
+            p = strchr(p, '\"') + 1; p = strchr(p, '\"') + 1;
+            if (parse_mon_value(&p, &start) && parse_mon_value(&p, &end)) {
+                FILE *f = fopen(file, "wb");
+                if (f) {
+                    for (unsigned long a = start; a <= end; a++) {
+                        fputc(mem_read(mem, (unsigned short)a), f);
+                    }
+                    fclose(f);
+                    if (g_json_mode) cli_printf("{\"cmd\":\"bsave\",\"ok\":true,\"data\":{\"path\":\"%s\"}}\n", file);
+                    else cli_printf("Saved $%04lX-$%04lX to %s\n", start, end, file);
+                } else {
+                    if (g_json_mode) json_err("bsave", "Failed to open file");
+                    else cli_printf("Error: Could not open %s for writing\n", file);
+                }
+            } else {
+                if (g_json_mode) json_err("bsave", "Range required");
+                else cli_printf("Usage: bsave \"file\" <start> <end>\n");
+            }
+        } else {
+            if (g_json_mode) json_err("bsave", "Filename required");
+            else cli_printf("Usage: bsave \"file\" <start> <end>\n");
+        }
+    } else if (cmd == "info") {
+        const char *p = line.c_str(); SKIP_CMD(p); char mnem[16];
+        if (sscanf(p, "%15s", mnem) == 1) {
+            print_opcode_info(*p_cpu_type, mnem);
+        } else {
+            if (g_json_mode) json_err("info", "Mnemonic required");
+            else cli_printf("Usage: info <mnemonic>\n");
+        }
     } else if (cmd == "mem") {
         const char *p = line.c_str(); SKIP_CMD(p); unsigned long addr, len = 16, tmp;
         if (parse_mon_value(&p, &addr)) {
@@ -680,6 +821,63 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
 
 void list_processors(void) { cli_printf("Available Processors: 6502, 6502-undoc, 65c02, 65ce02, 45gs02\n"); }
 void list_opcodes(cpu_type_t type) { (void)type; cli_printf("Opcode listing not implemented in CLI helpers yet.\n"); }
+
+void print_detailed_help(const char *cmd_name) {
+    CLICommand* command = get_registry().getCommand(cmd_name);
+    if (command) {
+        command->render_help();
+        return;
+    }
+
+    /* Hardcoded commands in cli_process_command */
+    if (strcmp(cmd_name, "run") == 0) {
+        cli_printf("Usage: run\nContinuously execute instructions until a BRK instruction, breakpoint, or trap is encountered.\n");
+    } else if (strcmp(cmd_name, "regs") == 0) {
+        cli_printf("Usage: regs\nDisplay current CPU register values (A, X, Y, S, P, PC) and total cycle count.\n");
+    } else if (strcmp(cmd_name, "jump") == 0) {
+        cli_printf("Usage: jump <addr>\nSet the Program Counter (PC) to the specified address.\n");
+    } else if (strcmp(cmd_name, "write") == 0) {
+        cli_printf("Usage: write <addr> <val>\nWrite a byte value <val> to the specified memory address <addr>.\n");
+    } else if (strcmp(cmd_name, "mem") == 0) {
+        cli_printf("Usage: mem <addr> [len]\nDump 'len' bytes of memory starting at <addr>. Default length is 16 bytes.\n");
+    } else if (strcmp(cmd_name, "list") == 0) {
+        cli_printf("Usage: list\nList all currently set breakpoints and their conditions.\n");
+    } else if (strcmp(cmd_name, "clear") == 0) {
+        cli_printf("Usage: clear <addr>\nRemove the breakpoint at the specified address.\n");
+    } else if (strcmp(cmd_name, "set") == 0) {
+        cli_printf("Usage: set <reg> <val>\nSet CPU register <reg> to value <val>. Supported: A, X, Y, Z, B, S, P, PC.\n");
+    } else if (strcmp(cmd_name, "flag") == 0) {
+        cli_printf("Usage: flag <f> <0|1>\nSet or clear CPU status flag <f>. Supported: C, Z, I, D, B, V, N, E.\n");
+    } else if (strcmp(cmd_name, "reset") == 0) {
+        cli_printf("Usage: reset\nPerform a CPU reset (sets PC to reset vector, etc.).\n");
+    } else if (strcmp(cmd_name, "processors") == 0) {
+        cli_printf("Usage: processors\nList all supported CPU architectures.\n");
+    } else if (strcmp(cmd_name, "processor") == 0) {
+        cli_printf("Usage: processor <type>\nSwitch the current CPU architecture. Example: processor 65c02\n");
+    } else if (strcmp(cmd_name, "info") == 0) {
+        cli_printf("Usage: info <mnemonic>\nShow detailed information about a specific instruction mnemonic.\n");
+    } else if (strcmp(cmd_name, "bload") == 0) {
+        cli_printf("Usage: bload \"file\" [addr]\nLoad a raw binary file into memory. Default address is the current PC.\n");
+    } else if (strcmp(cmd_name, "bsave") == 0) {
+        cli_printf("Usage: bsave \"file\" <start> <end>\nSave a memory range [start, end] to a binary file.\n");
+    } else if (strcmp(cmd_name, "disasm") == 0) {
+        cli_printf("Usage: disasm [addr [count]]\nDisassemble instructions starting at 'addr'. Default is current PC and 15 instructions.\n");
+    } else if (strncmp(cmd_name, "vic2.", 5) == 0) {
+        cli_printf("VIC-II commands: vic2.info, vic2.regs, vic2.sprites, vic2.savescreen, vic2.savebitmap\n");
+    } else if (strncmp(cmd_name, "sid.", 4) == 0) {
+        cli_printf("SID commands: sid.info, sid.regs\n");
+    } else if (strcmp(cmd_name, "snapshot") == 0) {
+        cli_printf("Usage: snapshot\nTake a memory snapshot for later comparison with 'diff'.\n");
+    } else if (strcmp(cmd_name, "diff") == 0) {
+        cli_printf("Usage: diff\nShow memory changes since the last 'snapshot'.\n");
+    } else if (strcmp(cmd_name, "speed") == 0) {
+        cli_printf("Usage: speed [scale]\nGet or set execution speed (1.0 = normal C64 PAL, 0.0 = unlimited).\n");
+    } else if (strcmp(cmd_name, "quit") == 0 || strcmp(cmd_name, "exit") == 0) {
+        cli_printf("Usage: quit\nExit the simulator.\n");
+    } else {
+        cli_printf("Unknown command: %s\n", cmd_name);
+    }
+}
 
 void print_help(const char *progname) {
     cli_printf("6502 Simulator v%s\nUsage: %s [options] <file.asm>\n\n", SIM_VERSION, progname);

@@ -69,7 +69,8 @@ CMD_SRCS = \
 	src/cli/commands/EnvCmd.cpp \
 	src/cli/commands/DevicesCmd.cpp \
 	src/cli/commands/IdiomsCmd.cpp \
-	src/cli/commands/CommandRegistry.cpp
+	src/cli/commands/HelpCmd.cpp \
+	src/cli/commands/CommandRegistry.cpp \
 
 # --- sim_api (front-facing) ---
 API_SRCS = src/sim_api.cpp
