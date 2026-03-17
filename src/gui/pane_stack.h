@@ -3,6 +3,8 @@
 
 #include "pane_base.h"
 #include <wx/listctrl.h>
+#include <wx/notebook.h>
+#include <wx/textctrl.h>
 
 class PaneStack : public SimPane {
 public:
@@ -12,7 +14,9 @@ public:
     wxString GetPaneName() const override { return "Stack"; }
 
 private:
-    wxListCtrl* m_list;
+    wxNotebook* m_notebook;
+    wxTextCtrl* m_memdump;   // "Stack Memory" tab — full $0100-$01FF hex dump
+    wxListCtrl* m_list;      // "Recent" tab — active stack entries
 };
 
 #endif
