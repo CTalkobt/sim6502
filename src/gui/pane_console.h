@@ -4,6 +4,7 @@
 #include "pane_base.h"
 #include <wx/textctrl.h>
 #include <vector>
+#include <string>
 
 class PaneConsole : public SimPane {
 public:
@@ -18,10 +19,17 @@ private:
     void OnSubmit(wxCommandEvent& event);
     void OnKeyDown(wxKeyEvent& event);
 
-    wxTextCtrl*           m_output;
-    wxTextCtrl*           m_input;
-    std::vector<wxString> m_history;
-    int                   m_history_pos;
+    // Applies one Tab-completion step to the current input.
+    void DoTabComplete();
+
+    wxTextCtrl*              m_output;
+    wxTextCtrl*              m_input;
+    std::vector<wxString>    m_history;
+    int                      m_history_pos;
+
+    // Tab-completion state: populated on first Tab, cleared by OnKeyDown on any other key.
+    std::vector<std::string> m_tab_matches;  // full input values for each completion candidate
+    int                      m_tab_idx;      // next match to cycle to (-1 = idle)
 };
 
 #endif

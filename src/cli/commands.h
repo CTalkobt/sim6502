@@ -11,6 +11,10 @@
 #include <vector>
 #include <string>
 
+// Returns alphabetically sorted list of all command names that start with
+// 'prefix'. Combines the dynamic CommandRegistry with all hardcoded commands.
+std::vector<std::string> cli_get_completions(const char *prefix);
+
 /* --- CLI Utilities --- */
 
 extern int g_json_mode;

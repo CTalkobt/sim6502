@@ -25,6 +25,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <vector>
+#include <algorithm>
 
 extern int g_verbose;
 #define LOG_V2(...) if (g_verbose >= 2) fprintf(stderr, __VA_ARGS__)
@@ -799,14 +800,35 @@ void sim_set_log_callback(sim_session_t *s, sim_log_cb cb, void *userdata) {
 
 void sim_exec_command(sim_session_t *s, const char *cmd) {
     if (!s || !cmd) return;
-    
+
     // Set up the CLI logger to use our session callback
     cli_set_log_callback((cli_log_cb)s->log_cb, s->log_userdata);
-    
+
     cli_process_command(cmd, s->cpu, s->mem, &s->cpu_type, s->breakpoints, s->symbols);
-    
+
     // Clear the logger to avoid accidental use
     cli_set_log_callback(nullptr, nullptr);
+}
+
+std::vector<std::string> sim_get_completions(const char *prefix) {
+    return cli_get_completions(prefix ? prefix : "");
+}
+
+std::vector<std::string> sim_get_symbol_completions(sim_session_t *s, const char *prefix) {
+    if (!s) return {};
+    const size_t plen = strlen(prefix ? prefix : "");
+    const char *pfx = prefix ? prefix : "";
+    std::vector<std::string> out;
+    for (int i = 0; i < s->symbols->count; i++) {
+        const symbol_t &sym = s->symbols->symbols[i];
+        // Only offer user-facing symbol types; skip internal metadata.
+        if (sym.type != SYM_LABEL && sym.type != SYM_CONSTANT &&
+            sym.type != SYM_TRAP  && sym.type != SYM_PROCESSOR) continue;
+        if (strncasecmp(sym.name, pfx, plen) == 0)
+            out.push_back(sym.name);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 void sim_set_pc(sim_session_t *s, uint16_t pc) { if (s) s->cpu->pc = pc; }

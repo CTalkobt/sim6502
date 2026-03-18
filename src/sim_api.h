@@ -7,6 +7,8 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <vector>
+#include <string>
 #include "cpu.h"
 #include "memory.h"
 #include "machine.h"
@@ -158,6 +160,10 @@ typedef void (*cli_log_cb)(const char *text, void *userdata);
 
 void sim_set_log_callback(sim_session_t *s, sim_log_cb cb, void *userdata);
 void sim_exec_command(sim_session_t *s, const char *cmd);
+// Returns alphabetically sorted command names that begin with 'prefix'.
+std::vector<std::string> sim_get_completions(const char *prefix);
+// Returns alphabetically sorted symbol names (labels + constants) matching 'prefix'.
+std::vector<std::string> sim_get_symbol_completions(sim_session_t *s, const char *prefix);
 void cli_printf(const char *fmt, ...);
 void cli_set_log_callback(cli_log_cb cb, void *userdata);
 int  cliIsInteractiveMode(void);

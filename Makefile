@@ -116,8 +116,16 @@ CLI_SRCS = src/cli/main.cpp
 CLI_OBJS = $(CLI_SRCS:.cpp=.o)
 TARGET   = sim6502
 
+# Optional readline support for Tab-completion in CLI interactive mode.
+# Enabled automatically when readline is present; define HAVE_READLINE=0 to disable.
+READLINE_LIBS   := $(shell pkg-config --libs readline 2>/dev/null || echo "")
+READLINE_CFLAGS := $(shell pkg-config --cflags readline 2>/dev/null || echo "")
+ifneq ($(READLINE_LIBS),)
+    CXXFLAGS += -DHAVE_READLINE $(READLINE_CFLAGS)
+endif
+
 $(TARGET): $(CLI_OBJS) $(LIB_TARGET)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(SDL2_LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(SDL2_LIBS) $(READLINE_LIBS)
 
 src/cli/%.o: src/cli/%.cpp
 	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) -c -o $@ $<
@@ -167,7 +175,7 @@ GUI_TARGET = sim6502-gui
 gui: $(GUI_TARGET)
 
 $(GUI_TARGET): $(GUI_OBJS) $(LIB_TARGET)
-	$(CXX) -o $@ $^ $(WX_LIBS) $(SDL2_LIBS) $(GL_LIBS)
+	$(CXX) -o $@ $^ $(WX_LIBS) $(SDL2_LIBS) $(GL_LIBS) $(READLINE_LIBS)
 
 src/gui/%.o: src/gui/%.cpp
 	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) $(WX_CFLAGS) -c -o $@ $<

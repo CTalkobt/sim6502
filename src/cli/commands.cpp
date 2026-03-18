@@ -1,6 +1,11 @@
 #include "sim_api.h"
 #include "commands.h"
 #include "version.h"
+#include <algorithm>
+#ifdef HAVE_READLINE
+#  include <readline/readline.h>
+#  include <readline/history.h>
+#endif
 #include "cpu_engine.h"
 #include "opcodes/opcodes.h"
 #include "condition.h"
@@ -466,6 +471,92 @@ static CommandRegistry& get_registry() {
     return registry;
 }
 
+std::vector<std::string> cli_get_completions(const char *prefix) {
+    // All commands handled directly in cli_process_command (not via registry).
+    static const char* const s_hardcoded[] = {
+        "asm", "bload", "bsave", "clear", "cls", "diff", "disasm", "exit",
+        "flag", "info", "jump", "list", "mem", "processor", "processors",
+        "quit", "regs", "reset", "run", "set", "sid.info", "sid.regs",
+        "snapshot", "speed", "symbols", "trace", "validate",
+        "vic2.info", "vic2.regs", "vic2.savebitmap", "vic2.savescreen",
+        "vic2.sprites", "write", nullptr
+    };
+
+    const size_t prefix_len = strlen(prefix);
+    std::vector<std::string> out;
+
+    // Registry-registered commands (dynamic, may overlap with hardcoded aliases)
+    for (const auto& kv : get_registry().getAllCommands()) {
+        if (kv.first.compare(0, prefix_len, prefix) == 0)
+            out.push_back(kv.first);
+    }
+
+    // Hardcoded commands — skip duplicates already added from the registry
+    for (int i = 0; s_hardcoded[i]; i++) {
+        if (strncmp(s_hardcoded[i], prefix, prefix_len) != 0) continue;
+        bool already = false;
+        for (const auto& s : out) { if (s == s_hardcoded[i]) { already = true; break; } }
+        if (!already) out.push_back(s_hardcoded[i]);
+    }
+
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+#ifdef HAVE_READLINE
+// Symbols available during the current readline session. Set by
+// run_interactive_mode so the completion callbacks can reach them.
+static const symbol_table_t *s_completion_symbols = nullptr;
+
+// Generator for command-name completion (first word).
+static char *cli_rl_cmd_generator(const char *text, int state) {
+    static std::vector<std::string> s_matches;
+    static size_t s_idx;
+    if (state == 0) {
+        s_matches = cli_get_completions(text);
+        s_idx = 0;
+    }
+    if (s_idx < s_matches.size())
+        return strdup(s_matches[s_idx++].c_str());
+    return nullptr;
+}
+
+// Generator for symbol-name completion (second and later words).
+// Only offers SYM_LABEL and SYM_CONSTANT entries — skips internal metadata.
+static char *cli_rl_sym_generator(const char *text, int state) {
+    static std::vector<std::string> s_sym_matches;
+    static size_t s_sym_idx;
+    if (state == 0) {
+        s_sym_matches.clear();
+        s_sym_idx = 0;
+        if (s_completion_symbols) {
+            const size_t len = strlen(text);
+            for (int i = 0; i < s_completion_symbols->count; i++) {
+                const symbol_t &sym = s_completion_symbols->symbols[i];
+                if (sym.type != SYM_LABEL && sym.type != SYM_CONSTANT &&
+                    sym.type != SYM_TRAP  && sym.type != SYM_PROCESSOR) continue;
+                if (strncasecmp(sym.name, text, len) == 0)
+                    s_sym_matches.push_back(sym.name);
+            }
+            std::sort(s_sym_matches.begin(), s_sym_matches.end());
+        }
+    }
+    if (s_sym_idx < s_sym_matches.size())
+        return strdup(s_sym_matches[s_sym_idx++].c_str());
+    return nullptr;
+}
+
+// Completion dispatcher: command names for the first word, symbol names for
+// all subsequent words. Always suppress readline's filename fallback.
+static char **cli_rl_completer(const char *text, int start, int end) {
+    (void)end;
+    rl_attempted_completion_over = 1; // never fall back to filename completion
+    if (start == 0)
+        return rl_completion_matches(text, cli_rl_cmd_generator);
+    return rl_completion_matches(text, cli_rl_sym_generator);
+}
+#endif
+
 bool cli_process_command(const std::string& line,
                                   CPU *cpu, memory_t *mem,
                                   cpu_type_t *p_cpu_type,
@@ -812,11 +903,26 @@ void run_interactive_mode(cpu_t *cpu, memory_t *mem,
     }
 
     if (!g_json_mode) cli_printf("6502 Simulator Interactive Mode\nType 'help' for commands.\n");
+#ifdef HAVE_READLINE
+    rl_attempted_completion_function = cli_rl_completer;
+    s_completion_symbols = symbols; // expose to symbol-completion callback
+    while (1) {
+        char *rl_line = readline("> ");
+        if (!rl_line) break; // EOF / Ctrl-D
+        strncpy(line_buf, rl_line, sizeof(line_buf) - 1);
+        line_buf[sizeof(line_buf) - 1] = '\0';
+        if (*rl_line) add_history(rl_line); // non-empty lines go into readline history
+        free(rl_line);
+        if (!cli_process_command(line_buf, cpu_obj, mem, p_cpu_type, breakpoints, symbols))
+            break;
+    }
+#else
     while (1) {
         cli_printf("> "); if (!fgets(line_buf, sizeof(line_buf), stdin)) break;
         if (!cli_process_command(line_buf, cpu_obj, mem, p_cpu_type, breakpoints, symbols))
             break;
     }
+#endif
 }
 
 void list_processors(void) { cli_printf("Available Processors: 6502, 6502-undoc, 65c02, 65ce02, 45gs02\n"); }
