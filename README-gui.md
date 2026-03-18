@@ -1,156 +1,390 @@
 # 6502 Simulator — Graphical Debugger (GUI)
 
-The `sim6502-gui` is a comprehensive, IDE-style debugger built with **Dear ImGui**. It provides a real-time, multi-pane view of the processor state and allows for interactive development and deep-dive debugging of 6502 (and compatible) assembly code.
+`sim6502-gui` is a comprehensive, IDE-style debugger built with **wxWidgets** and **wxAUI**. It provides a real-time, multi-pane view of the processor state, hardware devices, and visual outputs, and allows for interactive development and deep-dive debugging of 6502 (and compatible) assembly programs.
 
-## Key Features & Panes
+## Contents
 
-The GUI is designed with a flexible docking system, allowing you to rearrange, stack, or detach any of the following panes:
-
-### 1. Register Display
-- **Live State**: Real-time view of all CPU registers (A, X, Y, Z, B, SP, PC) and status flags.
-- **Diff Highlighting**: Registers that changed during the last execution step are highlighted.
-- **Interactive**: Toggle to **Expanded Mode** to edit any register value directly via hex input.
-
-### 2. Disassembly View
-- **Instruction Stream**: Real-time disassembly of memory around the Program Counter.
-- **Breakpoint Gutter**: Click in the left margin to toggle breakpoints (red dots).
-- **Symbol Integration**: Displays labels and constants from your symbol table directly in the code.
-- **Cycle Counts**: Shows the base cycle count for each instruction according to the active processor.
-
-### 3. Memory View
-- **Hex + ASCII Dump**: View any region of the 64KB (or 28-bit) memory space.
-- **Last-Write Highlighting**: Bytes modified by the most recent instruction are highlighted.
-- **Follow Modes**: Toggles to automatically track the Program Counter (PC) or Stack Pointer (SP).
-- **Multi-Instance**: Open up to 4 independent memory views at different addresses.
-
-### 4. CLI Console
-- **Full REPL**: A full-featured interactive terminal mirroring the CLI monitor mode.
-- **Command History**: Navigate previous commands with Up/Down arrows.
-- **Binary I/O**: Supports `bload` and `bsave` for loading/saving `.bin` and `.prg` files.
-
-### 5. Source Viewer
-- **Original Source**: View your `.asm` file alongside the disassembly.
-- **Line Highlighting**: The current execution line is highlighted in the source file.
-
-### 6. Profiler / Heatmap
-- **Visual Profiling**: A 256x256 pixel grid representing the 64KB memory map.
-- **Hotspots**: Pixel intensity indicates execution frequency or cycle consumption.
-- **Optimization Tool**: Quickly identify where your code is spending the most time.
-
-### 7. Stack Inspector
-- **Annotated Stack**: A specialized view of Page 1 ($0100-$01FF).
-- **Frame Analysis**: Attempts to identify return addresses and stack-pushed parameters.
-
-### 8. Instruction Reference
-- **Opcode Database**: Searchable database of every supported instruction.
-- **Details**: Shows all addressing modes, byte lengths, and cycle counts for each processor variant.
-
-### 9. Symbol Browser & Watch List
-- **Symbol Browser**: Search, inspect, and navigate to any loaded label or variable.
-- **Watch List**: Pin specific addresses to monitor their values as the program runs.
-
-### 10. Pattern Library (View menu → Pattern Library)
-
-- **Built-in snippet browser**: All built-in assembly snippet templates organised by category (math, memory, io, time) and processor variant (6502, 65C02, 45GS02/MEGA65).
-- **Filter**: Type to narrow the list by name, category, or processor.
-- **Detail view**: Full documented source for the selected snippet, including parameter equates and clobber notes.
-- **Copy to Clipboard**: One-click copy of the full snippet body, ready to paste into your source file.
-- **CLI equivalent**: `list_patterns` / `get_pattern <name>` in the interactive monitor or embedded console.
-- **MCP equivalent**: `list_patterns` and `get_pattern` tools.
-
-### 11. Test Runner (View menu → Test Runner)
-
-- **Subroutine test-vector table**: Define input and expected-output register values for any loaded subroutine, then run all vectors with one click.
-- **Pass/Fail reporting**: Each row shows per-register pass/fail with expected vs. actual values.
-- **JSON export**: Results can be exported as JSON for CI integration.
-- **CLI equivalent**: `validate <addr> [REG=val…] : [REG=val…]` in the interactive monitor.
-- **MCP equivalent**: `validate_routine` tool.
-
-### 12. Project Wizard (File menu → New Project...)
-
-Quickly bootstrap a new development environment using pre-defined templates.
-- **Template Selection**: Choose from minimal, standard C64, or advanced MEGA65 setups.
-- **Live Configuration**: Set project name, target directory, and template-specific variables (like `START_ADDR`) directly in the wizard.
-- **Auto-Load**: Upon creation, the wizard automatically generates the directory structure, Makefile, and boilerplate code, then loads the main assembly file into the Source Viewer.
-
-### 13. VIC-II Viewer (View menu → VIC-II Screen / Sprites / Registers)
-
-Three panes expose the Commodore 64 VIC-II video chip state for C64 / C128 / MEGA65 development:
-
-#### VIC-II Screen
-- **Live rendered frame**: Full 384×272 PAL frame — border, 320×200 active display area, and all enabled hardware sprites — rendered in real time via an OpenGL texture.
-- **All display modes**: Standard Char, Multicolour Char, Extended Colour (ECM), Standard Bitmap, and Multicolour Bitmap — rendering automatically follows the current D011/D016 mode register values.
-- **Sprites**: All 8 hardware sprites are rendered on top of the background in every mode (bitmap and character), with correct priority ordering (sprite 0 on top), X/Y expansion, multicolour, and X-MSB support.
-- **Scale controls**: 1×, 2×, 3× zoom.
-- **Freeze**: Lock the last rendered frame while execution continues, for comparison.
-- **Mode indicator**: Colour-coded label (green = char mode, yellow = bitmap mode, grey = display off) plus live addresses for Bank, Screen RAM, CharGen / Bitmap Base.
-- **CLI equivalent**: `vic2.savescreen [file]` saves the identical 384×272 frame as a PPM. `vic2.savebitmap [file]` saves the 320×200 active area (no border, sprites included) as a PPM.
-- **MCP equivalent**: `vic2_savescreen` and `vic2_savebitmap` tools.
-
-#### VIC-II Sprites
-- **Unified Sprite Editor**: A comprehensive pane for inspecting and modifying all 8 hardware sprites.
-- **Selection Bar**: Click any of the 8 thumbnails at the top to focus the editor on that specific sprite.
-- **Interactive Bitmap Editor**: A large pixel grid for direct drawing.
-    - **1bpp mode**: Toggle pixels between transparent and the sprite colour.
-    - **2bpp (Multicolour) mode**: Cycle through the four available colour indices.
-    - **Expansion Support**: The grid dynamically reflects **Expand X** and **Expand Y** settings, doubling pixel size in the editor to match hardware output.
-    - **Aspect Ratio**: Corrected pixel proportions to emulate the taller-than-wide PAL display.
-- **Hardware Attributes**: Real-time toggles for Enable, Multicolour, Expand X/Y, and Priority ($D01B).
-- **Colour Palettes**: Interactive palettes for the sprite's main colour ($D027+N) and shared multicolours ($D025/$D026).
-- **Freeze Update**: Locks the visual state of all sprites.
-    - **Safe Editing**: Essential for manual drawing; freezing prevents a running program from overwriting your changes in memory while you work.
-    - **Capture**: Useful for inspecting high-speed animations or "flicker" effects.
-- **CLI equivalent**: `vic2.sprites` prints all 8 sprite states.
-- **MCP equivalent**: `vic2_sprites` tool.
-
-#### VIC-II Registers
-- **Register table**: D011, D016, D018, D012 (raster line), D019 / D01A (interrupt flags) — each with raw hex and decoded field annotations (ECM/BMM/DEN/RSEL/RST8/yscroll, MCM/CSEL/xscroll, IRQ/RST/MBC/MMC/LP).
-- **Video addresses**: VIC bank (with address range), Screen RAM, Char Gen / Bitmap Base (label and value switch based on BMM), Colour RAM.
-- **Colour swatches**: 14×14 pixel palette swatches for Border (D020) and BG0–BG3 (D021–D024) with index and colour name.
-- **CLI equivalent**: `vic2.regs` in the interactive monitor or the embedded console outputs the same information in text form.
-- **MCP equivalent**: `vic2_regs` tool.
-
-## Speed Throttle
-
-The **Run** menu contains a **Throttle Speed** toggle and a scale slider:
-
-- **Throttle Speed** checkbox: when enabled, execution is rate-limited to the configured scale factor.
-- **Scale slider** (0.1×–10×): `1.0` = C64 PAL clock (~985 kHz); values above 1 run faster, below 1 run slower than a real C64.
-- The throttle state and scale are **persisted** in the ImGui INI file and restored on next launch.
-- **CLI equivalent**: `speed [scale]` — query or set the throttle from the interactive monitor or embedded console. `speed` alone prints the current setting.
-- **MCP equivalent**: `speed` tool (pass `scale` parameter to set, omit to query).
+1. [Launching](#launching)
+2. [Requirements & Building](#requirements--building)
+3. [Menu Reference](#menu-reference)
+4. [Panes Reference](#panes-reference)
+5. [Keyboard Shortcuts](#keyboard-shortcuts)
+6. [Settings & Layout](#settings--layout)
 
 ---
 
-## File Structure
+## Launching
 
-The engine is split into focused static libraries linked into `libsim6502.a`:
-
-- **`src/lib6502-core/`**: CPU engine and opcode handlers (dispatch loop, register model, all processor variants).
-- **`src/lib6502-mem/`**: Memory subsystem — 64KB flat memory, sparse 28-bit far memory, MAP translation, I/O device registry, IRQ/NMI.
-- **`src/lib6502-devices/`**: Hardware device emulation — VIC-II, SID, CIA, MEGA65 I/O, audio output.
-- **`src/lib6502-toolchain/`**: Source-level tools — KickAssembler auto-assembly and pseudo-op preprocessing, symbol table, list parser, disassembler, snippet library, project scaffolding.
-- **`src/lib6502-debug/`**: Debugging infrastructure — execution history, step-back/forward, breakpoints, conditional expression evaluator, trace ring buffer, snapshot/diff.
-- **`src/sim_api.cpp/h`**: Public C API consumed by both the CLI and GUI.
-- **`src/cli/`**: CLI entry point and Command Pattern commands.
-- **`src/gui/`**: Dear ImGui graphical debugger application.
-- **`src/mcp/`**: Node.js MCP server for LLM integration.
+```bash
+./sim6502-gui               # start with an empty workspace
+./sim6502-gui prog.asm      # load and auto-assemble a file on startup
+./sim6502-gui prog.prg      # load a binary on startup
+```
 
 ---
 
-## Breakpoint Conditions
+## Requirements & Building
 
-The GUI and CLI both support complex conditional breakpoints using standard assembler expression syntax.
+### System Requirements
 
-**Supported Operators**:
-- **Arithmetic**: `<<, >>, &, |, ^, ~`
-- **Logical**: `&&, ||, !, ==, !=, <, >, <=, >=`
-- **Parentheses**: `( )` for grouping and precedence.
+- **Linux**: `libwxgtk3.2-dev` (or equivalent wxWidgets 3.x package with GL, AUI, STC, and PropGrid support), `libgl-dev`, `pkg-config`.
+- **macOS**: `brew install wxwidgets` (ensure the formula includes GL and AUI support).
 
-**Example Conditions**:
-- `(A & $80) != 0` — Stop if bit 7 of A is set.
-- `X > $10 && .Z == 1` — Stop if X > 16 and the Zero flag is set.
-- `PC >= $C000 && PC <= $CFFF` — Stop if execution is within a specific range.
+### Building
+
+```bash
+make gui
+```
+
+---
+
+## Menu Reference
+
+### File
+
+| Item | Shortcut | Description |
+|------|----------|-------------|
+| New Project | Ctrl+N | Open the New Project Wizard to scaffold a project from a template |
+| Load | Ctrl+L | Load a file by path (`.asm`, `.prg`, `.bin`) |
+| Browse to Load... | | Open a file-picker dialog |
+| Save Binary/PRG... | | Save the current memory image to a `.bin` or `.prg` file |
+| Exit | Alt+F4 | Quit the application |
+
+### Simulation
+
+| Item | Shortcut | Description |
+|------|----------|-------------|
+| Run | F5 | Begin continuous execution |
+| Pause | F6 | Pause execution |
+| Step Into | F7 | Execute one instruction |
+| Step Over | F8 | Execute one instruction; if it is a JSR, run the subroutine as one step |
+| Reset | Ctrl+R | Reset CPU registers to their initial state |
+| Toggle Breakpoint | F9 | Toggle an execution breakpoint at the current PC |
+| Step Back | Shift+F7 | Undo the last instruction using execution history |
+| Step Forward | Shift+F8 | Re-execute a previously undone instruction |
+| Reverse Continue | Ctrl+Shift+R | Run backwards through execution history until a breakpoint |
+| Throttle Speed | | Open the speed-throttle dialog (`1.0` = C64 PAL ~985 kHz, `0` = unlimited) |
+
+### Machine
+
+| Item | Description |
+|------|-------------|
+| Add Optional Device... | Attach an additional hardware device to the address space |
+| Processor Selection | Radio sub-menu: **6502**, **6502-undoc**, **65C02**, **65CE02**, **45GS02** |
+| Machine Selection | Radio sub-menu: **raw6502**, **c64**, **c128**, **mega65**, **x16** |
+
+Switching the machine type reconfigures the I/O device map (VIC-II, SID, CIA, MEGA65 registers, etc.) and resets the simulator.
+
+### View
+
+Panes are organised into four sub-menus. Each item is a check-item that shows or hides the named pane.
+
+| Sub-menu | Panes |
+|----------|-------|
+| **Core** | Registers, Disassembly, Console, Memory View 1–4 |
+| **Debug** | Breakpoints, Trace Log, Stack, Watch List, Snapshot Diff |
+| **Analysis** | Instruction Ref, Symbols, Source View, Profiler, Test Runner, Idiom Library |
+| **Hardware > Video** | VIC-II Screen, VIC-II Character Editor, VIC-II Sprites, VIC-II Registers |
+| **Hardware > Audio** | SID Debugger, Audio Mixer |
+| **Hardware** | I/O Devices |
+
+Additional view items:
+- **Go to Address...** (Ctrl+G) — jump disassembly to a hex address.
+- **Settings** — Font Size, Theme, and Layout sub-menus (see [Settings & Layout](#settings--layout)).
+
+### Window
+
+| Item | Shortcut | Description |
+|------|----------|-------------|
+| Arrange | Shift+F12 | Re-sequence all active panes to be visible (fixes panes lost off-screen) |
+
+---
+
+## Panes Reference
+
+All panes dock, float, stack, and resize freely using wxAUI. Drag a pane's title bar to reposition it; double-click the title bar to float or re-dock it.
+
+---
+
+### Registers
+
+Displays all CPU registers in a four-column list: **Register**, **Value** (hex), **Dec** (decimal), **Prev** (previous value), and **Flags / Bits**.
+
+**Features:**
+- **Diff highlighting**: Registers that changed during the last execution step are shown in red.
+- **Inline editing**: Single-click or double-click the **Value** (hex) or **Dec** (decimal) column on any register row to open an inline text editor. Press Enter to commit; press Escape or click away to cancel.
+- **Pencil cursor**: Hovering over an editable cell (Value, Dec) or the P-register Flags column shows a pencil cursor to signal interactivity.
+- **Status flag toggling**: Clicking within the **Flags / Bits** column on the P-register row toggles individual bits (N, V, U, B, D, I, Z, C) based on the click X-position.
+- **CPU-adaptive rows**: The Z and B register rows are automatically shown only when the active processor type is **65CE02** or **45GS02**. For 6502 / 65C02 sessions, these rows are hidden.
+
+---
+
+### Disassembly
+
+Displays a scrolling stream of disassembled instructions centred on the current PC.
+
+**Features:**
+- **Breakpoint gutter**: Double-click any row to toggle an execution breakpoint (marked with `●`).
+- **PC tracking**: The current PC row is highlighted in blue and kept in view on every step.
+- **Symbol labels**: Labels from the loaded symbol table appear next to their addresses.
+- **Cycle counts**: The base cycle count for each instruction is shown according to the active processor variant.
+- **Address bar**: Type a hex address in the toolbar search field and press Enter to jump the disassembly view to that address (disables PC-follow mode).
+
+---
+
+### Memory Views (1–4)
+
+Up to four independent hex + ASCII dump windows, each showing a configurable memory region.
+
+**Features:**
+- Open each view independently from **View > Core > Memory Views**.
+- Scroll with the mouse wheel or scrollbar; Page Up/Down moves by 256 bytes.
+- Each view maintains its own scroll position independently.
+
+---
+
+### Console
+
+A full-featured interactive terminal mirroring the CLI monitor mode.
+
+**Features:**
+- **Complete command set**: Every CLI monitor command is available here (see the [Interactive Monitor](README.md#interactive-monitor) section in the main README).
+- **Command history**: Navigate previous commands with Up/Down arrow keys.
+- **Focus shortcut**: Press the backtick key (`` ` ``) from anywhere in the GUI to focus the console input field.
+- **Output log**: All simulator output including trace events, memory dumps, and error messages appears in the scrolling output area.
+
+---
+
+### Source View
+
+Displays the original `.asm` source file alongside the disassembly.
+
+**Features:**
+- **Current-line marker**: An arrow highlights the source line corresponding to the current PC; the view auto-scrolls to keep it visible during stepping.
+- **Syntax highlighting**: Assembly mnemonics, labels, and comments are colour-coded using wxStyledTextCtrl.
+- **Breakpoint margin**: Click in the left margin to set or clear a breakpoint on any source line.
+
+---
+
+### Profiler
+
+A 256×256 pixel visual map of the 64 KB address space showing execution frequency and cycle consumption.
+
+**Features:**
+- **Heatmap**: Pixel intensity indicates how frequently each address has been executed. Colours range from black (never executed) through red to yellow (hotspots).
+- **Hover tooltip**: Hovering the mouse over the heatmap shows the address and hit count for that location.
+- **Real-time update**: The heatmap updates on every display refresh (approximately 60 Hz).
+
+---
+
+### Breakpoints
+
+Manages all active execution breakpoints.
+
+**Toolbar buttons:**
+- **Add**: Prompts for an address (hex) and an optional condition expression.
+- **Delete**: Removes the selected breakpoint.
+- **Clear All**: Removes all breakpoints.
+
+Double-clicking a row in the list activates (toggles) the breakpoint.
+
+**Conditional breakpoints** use the same expression syntax as the CLI:
+
+```
+break $C000 (A & $40) != 0 && .Z == 1
+```
+
+---
+
+### Trace Log
+
+A rolling ring-buffer of recently executed instructions showing address, disassembly, and register state (A, X, Y, SP, P) at the time of execution.
+
+**Features:**
+- **Follow mode**: The list automatically scrolls to the newest entry during execution.
+- **Cycle counter**: The cumulative cycle count is displayed in the rightmost column.
+
+---
+
+### Stack Inspector
+
+Two-tab view of the hardware stack (page 1, $0100–$01FF):
+
+- **Stack Memory** tab: Hex dump of the entire stack page with the current SP position indicated.
+- **Recent** tab: Heuristic analysis of the current stack contents, annotating byte pairs as potential return addresses.
+
+---
+
+### Watch List
+
+Pin memory addresses to monitor their values in real time.
+
+**Adding watches:**
+- Right-click anywhere in the watch list to open the context menu and select **Add Watch**.
+
+**Features:**
+- **Change highlighting**: Watch entries that changed on the most recent execution step are highlighted in red.
+- **Live update**: Values refresh on every display tick while the simulator is running or paused.
+
+---
+
+### Snapshot Diff
+
+Records a memory baseline and tracks every byte that changes after the snapshot is taken.
+
+**Toolbar buttons:**
+- **Snap**: Capture the current memory state as a baseline. Subsequent execution records all writes relative to this baseline.
+- **Clear**: Invalidate the current snapshot and empty the diff table.
+
+**Columns**: Address, Before value, After value, Writer PC (address of the instruction that made the last write to each location).
+
+The diff table collapses consecutive modified addresses into ranges for readability.
+
+---
+
+### Instruction Ref
+
+Searchable database of every instruction supported by the active processor variant.
+
+**Layout:**
+- **Top list**: All mnemonics for the active processor. Type in the filter field to narrow by name.
+- **Detail panel**: Clicking a row shows all addressing modes, byte lengths, and cycle counts for that instruction.
+
+---
+
+### Symbols
+
+Search, inspect, and navigate all labels, constants, and annotations loaded from `.sym`, `.list`, or `.sym_add` files.
+
+**Features:**
+- **Filter field**: Type to narrow the symbol list by name or address.
+- **Load button**: Manually reload the symbol table if it has changed on disk.
+- **Columns**: Name, Type (label / constant / inspect / trap), Address.
+
+---
+
+### Test Runner
+
+Validates subroutines against register input/output test vectors.
+
+**Usage:**
+1. Enter the **Routine Address** (hex) of the subroutine under test.
+2. Enter a **Scratch Address** (hex) — a temporary memory area the test harness may use to save and restore state.
+3. Add test vectors in the table: input register values on the left, expected output values on the right.
+4. Click **Run All** to execute each vector and see immediate pass/fail results.
+
+---
+
+### Idiom Library (Patterns)
+
+Browser for documented, parameterised assembly snippets.
+
+**Usage:**
+1. Select a category and snippet from the list.
+2. The preview area shows the full annotated source with parameter descriptions.
+3. Click **Copy to Clipboard** to copy the snippet, then paste it into your source file.
+
+Built-in snippets cover 6502 and 45GS02 targets and include: 8-bit and 16-bit multiplication, memory copy/fill, BCD conversion, hardware math routines, and more.
+
+---
+
+### I/O Devices
+
+Live property-grid view of all mapped I/O device registers for the selected machine type.
+
+Shows decoded register state for devices including the CIA, SID, VIC-II, and MEGA65 extended I/O, updated in real time during execution.
+
+---
+
+### VIC-II Screen
+
+OpenGL-rendered live view of the full 384×272 PAL frame (border + active display + all sprites).
+
+**Features:**
+- **All display modes**: Standard Character, Multicolour Character, Extended Colour (ECM), Standard Bitmap, Multicolour Bitmap — all rendered correctly.
+- **Sprite rendering**: All 8 hardware sprites with X/Y expansion, multicolour, X-MSB, and correct sprite-background priority.
+- **Live updates**: The frame re-renders on every display tick, showing the exact state of VIC-II registers and video memory.
+
+---
+
+### VIC-II Character Editor
+
+Full-featured pixel editor for the character set stored in video memory.
+
+**Layout:**
+- **Character Selector** (left): 16×16 grid showing all 256 characters in the current character set, rendered with the current colour settings. Click any character to select it for editing.
+- **Big Editor** (centre): Zoomed pixel-level editor for the selected character. Click pixels to toggle them; hold and drag to paint. Supports multicolour (MCM) mode where pixel pairs represent four colours.
+- **Virtual Screen** (right): 40×25 scratchpad showing the font in use. Click any cell to paint the currently selected character at that position.
+- **Controls panel** (far right): Colour pickers for background and three multicolour indices; MCM mode toggle; address mode (auto from VIC-II registers vs. manual); character set load/save.
+
+**Toolbar:**
+| Button | Action |
+|--------|--------|
+| Lock / Unlock | Prevent accidental edits; the editor auto-locks when simulation is running |
+| Shift Up / Down / Left / Right | Shift the pixel data of the selected character by one pixel |
+| Flip Horizontal / Vertical | Mirror the character |
+| Rotate | Rotate the character pixel data |
+| MCM Grid | Overlay a 2×1 grid to visualise multicolour pixel boundaries |
+| Copy | Copy selected character data to an internal clipboard |
+| Paste | Paste clipboard data to the selected character slot |
+| Export as ASM | Generate `.byte` assembly statements for the selected character |
+| Export as PNG | Save the full character set grid as a PNG image |
+| Clear Scratchpad | Reset the virtual screen to all character 0 |
+| Load Character Set | Load raw binary data into the character set from a file |
+| Save Character Set | Save the character set data to a binary file |
+| Undo (Ctrl+Z) | Undo the last pixel edit |
+
+---
+
+### VIC-II Sprites
+
+Unified editor and viewer for all 8 hardware sprites.
+
+**Layout:**
+- **Thumbnail strip** (top): Eight sprite thumbnails, one per sprite. Click a thumbnail to select that sprite for editing.
+- **Big Editor** (centre): Zoomed pixel-level editor for the selected sprite (24×21 pixels). Click to toggle pixels; hold and drag to paint. Supports multicolour mode.
+- **Controls panel** (right): Per-sprite and shared multicolour colour pickers; MCM mode toggle; data address display.
+
+**Toolbar:**
+| Button | Action |
+|--------|--------|
+| Lock / Unlock | Prevent accidental edits while simulation is running |
+| Undo | Undo the last pixel edit |
+| Rotate 90° | Rotate sprite pixel data 90 degrees clockwise |
+| Rotate 180° | Rotate sprite pixel data 180 degrees |
+| Invert | Invert all pixels in the sprite |
+| Save Blob | Save sprite data to a binary file |
+| Load Blob | Load sprite data from a binary file |
+| MCM | Toggle multicolour mode for the selected sprite |
+
+---
+
+### VIC-II Registers
+
+Decoded read-only view of all VIC-II control registers displayed in a property grid.
+
+Shows decoded values for: sprite X/Y positions, display mode bits (D011, D016), raster line (D012, 9-bit), memory layout register (D018), interrupt status (D019) and enable (D01A), sprite flags (multicolour, expansion, enable, priority, collision), bank selection, and all colour registers (D020 border, D021–D024 background 0–3, D025–D026 sprite multicolour, D027–D02E per-sprite colour).
+
+---
+
+### SID Debugger
+
+Visualises SID register state and voice activity for the loaded machine's SID chip(s).
+
+---
+
+### Audio Mixer
+
+Per-SID volume and mute controls. The number of SID chips shown adapts to the selected machine type (1 SID for C64/C128/X16; 4 SIDs for MEGA65).
+
+**Per-SID controls:**
+- **Vol slider**: Controls master volume at the SID's `$D418` register (0–15). Writes directly to the simulated register.
+- **Percentage label**: Shows the current volume as a percentage (0%–100%) next to the slider.
+- **Tick marks**: Small labels (0–15) below the slider for reference.
+- **Mute checkbox**: Silences the SID by writing volume 0; restores the previous volume when unchecked.
+
+**MEGA65-only (4 SIDs):**
+- **Pan slider**: Stereo panning control per SID chip, ranging from L100 (full left) through Centre (0) to R100 (full right). SIDs 1 and 2 default to right; SIDs 3 and 4 default to left to match the MEGA65 hardware layout.
 
 ---
 
@@ -159,54 +393,43 @@ The GUI and CLI both support complex conditional breakpoints using standard asse
 | Key | Action |
 |-----|--------|
 | **F5** | Run (continuous execution) |
-| **F6 / Esc** | Pause execution |
+| **F6** | Pause execution |
 | **F7** | Step Into (1 instruction) |
-| **F8** | Step Over (executes JSR body as one step) |
+| **F8** | Step Over (runs JSR body as one step) |
 | **F9** | Toggle breakpoint at current PC |
-| **Shift+F7** | **Step Back** (undo 1 instruction using history) |
-| **Shift+F8** | **Step Forward** (re-execute 1 instruction from history) |
-| **Ctrl+R** | Reset CPU (registers clear, PC to start) |
-| **Ctrl+L** | Focus the filename bar / Open load dialog |
-| **Ctrl+G** | Go to Address (scrolls disassembly and memory) |
-| **Ctrl+F** | Focus Search (in Source Viewer or Symbol Browser) |
-| **Ctrl+Shift+F** | Focus Disassembly Address Bar |
-| **`** (backtick) | Focus the CLI Console Input |
+| **Shift+F7** | Step Back (execution history undo) |
+| **Shift+F8** | Step Forward (execution history redo) |
+| **Ctrl+Shift+R** | Reverse Continue (run backwards to breakpoint) |
+| **Ctrl+R** | Reset CPU |
+| **Ctrl+N** | New Project Wizard |
+| **Ctrl+L** | Focus filename bar / open Load dialog |
+| **Ctrl+G** | Go to Address (opens hex-entry popup, scrolls disassembly) |
+| **Shift+F12** | Arrange Windows (re-sequences all panes to be visible) |
+| **`** (backtick) | Focus the Console input field |
 
 ---
 
-## Requirements & Building
+## Settings & Layout
 
-### System Requirements
-To build and run the GUI, you need a C++17 compiler and the following development libraries:
+Access via **View > Settings**.
 
-- **SDL2**: Cross-platform windowing and input handling.
-- **OpenGL**: Hardware-accelerated rendering.
-- **pkg-config**: For managing library paths.
+### Font Size
 
-On **Ubuntu/Debian**:
-```bash
-sudo apt-get install g++ libsdl2-dev libgl-dev pkg-config
-```
+Radio sub-menu with sizes 10 px through 24 px. Applies to all panes that use the monospaced list font.
 
-On **macOS**:
-```bash
-brew install sdl2
-```
+### Theme
 
-### Building the GUI
-Run the following command from the project root:
+| Option | Description |
+|--------|-------------|
+| Auto (OS) | Follow the operating system light/dark preference |
+| Dark | Force dark theme |
+| Light | Force light theme |
 
-```bash
-make gui
-```
+### Layout
 
-This will create the `sim6502-gui` binary. *Note: The build process will automatically fetch the required Dear ImGui source files from GitHub if they are not already present.*
+| Option | Description |
+|--------|-------------|
+| Save Layout... | Save the current pane arrangement to a named file |
+| Reset to Default | Restore the factory default pane layout |
 
-### Launching
-```bash
-./sim6502-gui
-```
-You can also pass a filename to open it directly:
-```bash
-./sim6502-gui examples/hello.asm
-```
+The wxAUI layout (pane positions, sizes, and visibility) is automatically persisted between sessions. Use **Window > Arrange** (Shift+F12) to bring any panes back into view if they have been moved off-screen.

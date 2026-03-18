@@ -17,16 +17,18 @@ private:
     void RebuildRows(cpu_type_t cpu_type);
     void OnEditRegister(wxListEvent& event);
     void OnLeftClick(wxMouseEvent& event);
+    void OnMouseMove(wxMouseEvent& event);
     void OnEditorEnter(wxCommandEvent& event);
     void OnEditorKillFocus(wxFocusEvent& event);
     void CommitEdit(int row, const wxString& newValue);
     void HideEditor();
-    void OpenEditorForRow(long row);
+    void OpenEditorForRow(long row, int col);
     long GetColumnAt(const wxPoint& pos);
 
     wxListCtrl* m_list;
     wxTextCtrl* m_textEditor;
     int         m_editRow;
+    int         m_editCol;
     CPUState    m_current_cpu;
     CPUState    m_prev_cpu;
     bool        m_prev_valid;
