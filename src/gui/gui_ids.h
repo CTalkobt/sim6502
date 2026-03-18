@@ -84,6 +84,8 @@ enum {
     ID_VIEW_LAYOUT_SAVE,
     ID_VIEW_LAYOUT_RESET,
 
+    ID_IREF_FIND_IN_DISASM,
+
     // Window
     ID_WINDOW_ARRANGE,
 

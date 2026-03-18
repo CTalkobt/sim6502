@@ -51,6 +51,7 @@ struct sim_session {
     void             *log_userdata;
     DebugContext     *debug_ctx;
     std::vector<IOHandler*> dynamic_handlers;
+    std::vector<sim_opcode_info_t> opcodes_cache;
 
     sim_session() {
         cpu = nullptr;
@@ -86,6 +87,43 @@ struct sim_session {
 };
 
 /* --- Internal Helpers --- */
+
+static void update_opcode_cache(sim_session_t *s) {
+    s->opcodes_cache.clear();
+    if (!s->cpu) return;
+    dispatch_table_t *dt = s->cpu->dispatch_table();
+    if (!dt) return;
+
+    auto add_from_table = [&](dispatch_entry_t *table, int prefix_len, uint8_t *prefix) {
+        for (int i = 0; i < 256; i++) {
+            if (table[i].fn) {
+                sim_opcode_info_t info;
+                memset(&info, 0, sizeof(info));
+                strncpy(info.mnemonic, table[i].mnemonic, sizeof(info.mnemonic) - 1);
+                info.mnemonic[sizeof(info.mnemonic) - 1] = '\0';
+                info.mode = table[i].mode;
+                info.opcode_len = (unsigned char)(prefix_len + 1);
+                for (int j = 0; j < prefix_len; j++) info.opcode_bytes[j] = prefix[j];
+                info.opcode_bytes[prefix_len] = (uint8_t)i;
+                info.cycles = table[i].cycles;
+                info.instr_bytes = get_instruction_length(info.mode);
+                s->opcodes_cache.push_back(info);
+            }
+        }
+    };
+
+    uint8_t p_none[1] = {0}; // dummy
+    add_from_table(dt->base, 0, p_none);
+
+    uint8_t p_eom[1] = {0xEA};
+    add_from_table(dt->eom, 1, p_eom);
+
+    uint8_t p_quad[2] = {0x42, 0x42};
+    add_from_table(dt->quad, 2, p_quad);
+
+    uint8_t p_quad_eom[3] = {0x42, 0x42, 0xEA};
+    add_from_table(dt->quad_eom, 3, p_quad_eom);
+}
 
 static int handle_trap(const symbol_table_t *st, CPU *cpu, memory_t *mem) {
 	for (int i = 0; i < st->count; i++) {
@@ -131,6 +169,7 @@ static void apply_cpu_type(sim_session_t *s, cpu_type_t new_type) {
     delete s->cpu;
     s->cpu = CPUFactory::create(new_type);
     s->cpu->mem = s->mem;
+    update_opcode_cache(s);
 }
 
 /* After loading, scan the symbol table for SYM_PROCESSOR symbols emitted by the
@@ -291,6 +330,7 @@ sim_session_t *sim_create(const char *processor) {
     s->cpu = CPUFactory::create(s->cpu_type);
     s->cpu->mem = s->mem;
     machine_init_hardware(s);
+    update_opcode_cache(s);
     symbol_table_init(s->symbols, "Session");
     breakpoint_init(s->breakpoints);
     s->state = SIM_IDLE;
@@ -744,13 +784,15 @@ void sim_set_machine_type(sim_session_t *s, machine_type_t machine) {
     for (auto h : s->dynamic_handlers) delete h;
     s->dynamic_handlers.clear();
 
+    cpu_type_t new_cpu = s->cpu_type;
     switch (machine) {
-        case MACHINE_C64:      s->cpu_type = CPU_6502; break;
-        case MACHINE_C128:     s->cpu_type = CPU_6502; break; // Actually 8502 but we use 6502
-        case MACHINE_MEGA65:   s->cpu_type = CPU_45GS02; break;
-        case MACHINE_X16:      s->cpu_type = CPU_65C02; break;
-        case MACHINE_RAW6502:  s->cpu_type = CPU_6502; break;
+        case MACHINE_C64:      new_cpu = CPU_6502; break;
+        case MACHINE_C128:     new_cpu = CPU_6502; break; // Actually 8502 but we use 6502
+        case MACHINE_MEGA65:   new_cpu = CPU_45GS02; break;
+        case MACHINE_X16:      new_cpu = CPU_65C02; break;
+        case MACHINE_RAW6502:  new_cpu = CPU_6502; break;
     }
+    apply_cpu_type(s, new_cpu);
     machine_init_hardware(s);
 }
 
@@ -865,8 +907,12 @@ int sim_break_get(sim_session_t *s, int idx, uint16_t *addr, char *cond, int con
     if (cond && s->breakpoints->breakpoints[idx].condition[0]) strncpy(cond, s->breakpoints->breakpoints[idx].condition, cond_sz);
     return 1;
 }
-int sim_opcode_count(sim_session_t *s) { return 0; }
+int sim_opcode_count(sim_session_t *s) {
+    return s ? (int)s->opcodes_cache.size() : 0;
+}
 int sim_opcode_get(sim_session_t *s, int idx, sim_opcode_info_t *info) {
+    if (!s || idx < 0 || idx >= (int)s->opcodes_cache.size() || !info) return -1;
+    *info = s->opcodes_cache[idx];
     return 0;
 }
 int sim_opcode_by_byte(sim_session_t *s, uint8_t byte_val, sim_opcode_info_t *info) {

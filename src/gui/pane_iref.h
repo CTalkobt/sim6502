@@ -16,12 +16,17 @@ public:
 private:
     void OnFilter(wxCommandEvent& event);
     void OnItemSelected(wxListEvent& event);
+    void OnContextMenu(wxListEvent& event);
+    void OnFindInDisasm(wxCommandEvent& event);
     void PopulateList();
+    wxString GetDescription(const wxString& mnemonic);
 
     wxTextCtrl*       m_filter;
+    wxChoice*         m_modeFilter;
     wxListCtrl*       m_list;
     wxTextCtrl*       m_detail;
     wxSplitterWindow* m_splitter;
+    int               m_last_cpu_type;
 };
 
 #endif
