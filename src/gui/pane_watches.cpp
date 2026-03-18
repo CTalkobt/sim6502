@@ -67,7 +67,7 @@ void PaneWatches::LoadState(wxConfigBase* cfg) {
     }
 }
 
-void PaneWatches::OnContextMenu(wxListEvent& event) {
+void PaneWatches::OnContextMenu(wxListEvent& WXUNUSED(event)) {
     wxMenu menu;
     menu.Append(301, "Add Watch...");
     menu.Append(302, "Delete Watch");
