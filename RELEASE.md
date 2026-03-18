@@ -411,6 +411,8 @@ Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx
 
 - [ ] **Time Machine:** Complete the timeline slider, history table, and implement "Rewind to Breakpoint" (reverse-continue).
 - [ ] **VIC Viewer Editors:** Complete the Sprite and Character Set editors and implement the Color RAM sub-pane.
+- [ ] **Character ROM Control:** In the VIC-II Character Editor, add an option to copy the ROM character set into RAM (at the currently configured VIC charset base address) and disable the ROM so edits are visible on the VIC screen. Requires toggling the CHAREN bit in CPU port $01 and writing `char_rom` contents to the RAM location the VIC is pointed at.
+- [ ] **C++ Header Modernisation:** Convert all `.h` files that currently use C idioms (e.g. `int` for booleans, `typedef struct`, `#define` constants) to proper C++ style — `bool`, `enum class`, `constexpr`, inline member functions — and remove any remaining `stdbool.h` / `stdint.h` guards that are redundant in C++.
 - [ ] **Asset Management:** Support PNG export for frames, sprites, and character sheets.
 - [ ] **UI Customization:** Support saving/loading custom layout presets and implement user-configurable theming.
 - [ ] **Toolchain Extensions:** Implement full ACME assembler support (parsing `label = $addr` and legacy annotations).

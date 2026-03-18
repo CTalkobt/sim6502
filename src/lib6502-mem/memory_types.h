@@ -12,6 +12,11 @@ class IORegistry;
 
 struct memory_t {
 	unsigned char mem[0x10000];
+	/* Character ROM: 4 KB (2×256-char sets, 8 bytes/char).
+	 * Separate from RAM so it never occupies CPU address space.
+	 * CPU sees it at $D000–$DFFF when CHAREN=0, HIRAM=1 (C64 PLA).
+	 * VIC-II sees it in bank 0 ($1000–$1FFF) and bank 2 ($9000–$9FFF). */
+	unsigned char char_rom[4096];
 	int mem_writes;
 	unsigned short mem_addr[256];
 	unsigned char mem_val[256];     /* value AFTER write  */

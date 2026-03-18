@@ -3,20 +3,40 @@
 #include "sim_api.h"
 
 PaneConsole::PaneConsole(wxWindow* parent, sim_session_t *sim)
-    : SimPane(parent, sim) 
+    : SimPane(parent, sim)
 {
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
-    
-    m_output = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE | wxTE_READONLY | wxTE_RICH2);
-    m_input = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
 
-    sizer->Add(m_output, 1, wxEXPAND);
-    sizer->Add(m_input, 0, wxEXPAND);
+    m_output = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
+                              wxTE_MULTILINE | wxTE_READONLY | wxTE_RICH2);
+
+    m_filter = new wxSearchCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
+    m_filter->SetDescriptiveText("Filter output...");
+    m_filter->ShowSearchButton(true);
+    m_filter->ShowCancelButton(true);
+
+    // Input row: history label on the left, input field fills the rest
+    wxBoxSizer* inputRow = new wxBoxSizer(wxHORIZONTAL);
+    m_hist_label = new wxStaticText(this, wxID_ANY, "");
+    m_input = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
+                             wxTE_PROCESS_ENTER);
+    m_input->SetHint("\x60 to focus  \u2502  \u2191\u2193 history  \u2502  Tab complete");
+    inputRow->Add(m_hist_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+    inputRow->Add(m_input,      1, wxEXPAND);
+
+    sizer->Add(m_output,   1, wxEXPAND);
+    sizer->Add(m_filter,   0, wxEXPAND);
+    sizer->Add(inputRow,   0, wxEXPAND);
     SetSizer(sizer);
 
     m_input->Bind(wxEVT_TEXT_ENTER, &PaneConsole::OnSubmit, this);
-    m_input->Bind(wxEVT_KEY_DOWN, &PaneConsole::OnKeyDown, this);
-    
+    m_input->Bind(wxEVT_KEY_DOWN,   &PaneConsole::OnKeyDown, this);
+    m_output->Bind(wxEVT_KEY_DOWN,  &PaneConsole::OnOutputKeyDown, this);
+
+    m_filter->Bind(wxEVT_TEXT,        &PaneConsole::OnFilterChanged, this);
+    m_filter->Bind(wxEVT_TEXT_ENTER,  &PaneConsole::OnFilterChanged, this);
+    m_filter->Bind(wxEVT_SEARCHCTRL_CANCEL_BTN, &PaneConsole::OnFilterChanged, this);
+
     m_history_pos = -1;
     m_tab_idx     = -1;
 
@@ -33,9 +53,42 @@ void PaneConsole::RefreshPane(const SimSnapshot &snap) {
 }
 
 void PaneConsole::Log(const wxString& text, const wxColour& col) {
-    m_output->SetDefaultStyle(wxTextAttr(col));
-    m_output->AppendText(text);
+    m_log_entries.push_back({text, col});
+
+    // Only append to the live output when the entry passes the current filter.
+    wxString filterText = m_filter->GetValue();
+    if (filterText.IsEmpty() || text.Lower().Contains(filterText.Lower())) {
+        m_output->SetDefaultStyle(wxTextAttr(col));
+        m_output->AppendText(text);
+        m_output->SetDefaultStyle(wxTextAttr(m_output->GetForegroundColour()));
+    }
+}
+
+void PaneConsole::RebuildOutput() {
+    m_output->Clear();
+    wxString filterText = m_filter->GetValue().Lower();
+    for (const auto& e : m_log_entries) {
+        if (filterText.IsEmpty() || e.text.Lower().Contains(filterText)) {
+            m_output->SetDefaultStyle(wxTextAttr(e.color));
+            m_output->AppendText(e.text);
+        }
+    }
     m_output->SetDefaultStyle(wxTextAttr(m_output->GetForegroundColour()));
+}
+
+void PaneConsole::OnFilterChanged(wxCommandEvent& WXUNUSED(event)) {
+    RebuildOutput();
+}
+
+void PaneConsole::UpdateHistoryLabel() {
+    if (m_history_pos == -1 || m_history.empty()) {
+        m_hist_label->SetLabel("");
+    } else {
+        int pos  = (int)m_history.size() - m_history_pos;   // 1-based from end
+        int total = (int)m_history.size();
+        m_hist_label->SetLabelText(wxString::Format("\u2191 %d/%d", pos, total));
+    }
+    Layout();
 }
 
 void PaneConsole::OnSubmit(wxCommandEvent& WXUNUSED(event)) {
@@ -45,15 +98,32 @@ void PaneConsole::OnSubmit(wxCommandEvent& WXUNUSED(event)) {
     Log("> " + cmd + "\n", wxColour(0, 128, 0));
     m_history.push_back(cmd);
     m_history_pos = -1;
+    UpdateHistoryLabel();
     m_input->Clear();
 
     if (cmd == "cls") {
         m_output->Clear();
+        m_log_entries.clear();
     } else if (cmd == "quit" || cmd == "exit") {
         Log("Use File > Quit to exit.\n", *wxRED);
     } else {
         sim_exec_command(m_sim, cmd.ToUTF8());
     }
+}
+
+void PaneConsole::OnOutputKeyDown(wxKeyEvent& event) {
+    const int key = event.GetKeyCode();
+    if (event.ControlDown()) {
+        if (key == 'A') {
+            m_output->SetSelection(-1, -1);
+            return;
+        }
+        if (key == 'C') {
+            m_output->Copy();
+            return;
+        }
+    }
+    event.Skip();
 }
 
 void PaneConsole::DoTabComplete() {
@@ -146,6 +216,7 @@ void PaneConsole::OnKeyDown(wxKeyEvent& event) {
             else if (m_history_pos > 0) m_history_pos--;
             m_input->SetValue(m_history[m_history_pos]);
             m_input->SetInsertionPointEnd();
+            UpdateHistoryLabel();
         }
     } else if (key == WXK_DOWN) {
         if (m_history_pos != -1) {
@@ -157,6 +228,7 @@ void PaneConsole::OnKeyDown(wxKeyEvent& event) {
                 m_input->Clear();
             }
             m_input->SetInsertionPointEnd();
+            UpdateHistoryLabel();
         }
     } else {
         event.Skip();

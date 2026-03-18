@@ -52,6 +52,13 @@ unsigned char mem_read(memory_t *mem, unsigned short addr) {
 		unsigned int phys = ((unsigned int)addr + mem->map_offset[block]) & 0xFFFFF;
 		return mem_read_phys(mem, phys);
 	}
+	/* C64 PLA: character ROM visible at $D000–$DFFF when CHAREN=0 and HIRAM=1.
+	 * Bypasses I/O handlers; writes always go to RAM (mem_write unchanged). */
+	if (addr >= 0xD000 && addr <= 0xDFFF) {
+		uint8_t port = mem->mem[0x01];
+		if (!(port & 0x04) && (port & 0x02))          /* CHAREN=0, HIRAM=1 */
+			return mem->char_rom[(unsigned)(addr - 0xD000)];
+	}
 	uint8_t val;
 	if (mem->io_handlers[addr] && mem->io_handlers[addr]->io_read(mem, addr, &val))
 		return val;

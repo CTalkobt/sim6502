@@ -20,6 +20,7 @@ public:
     void ApplyCycleLimit(unsigned long limit);
     void ApplySpeedScale(float scale);
     void ApplyDebug();
+    void NavigateDisassembly(uint16_t addr);
 
 private:
     void InitMenuBar();

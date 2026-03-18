@@ -16,6 +16,9 @@ private:
     void OnDelete(wxCommandEvent& event);
     void OnClearAll(wxCommandEvent& event);
     void OnItemActivated(wxListEvent& event);
+    void OnItemSelected(wxListEvent& event);
+    void OnItemChecked(wxListEvent& event);
+    void OnItemUnchecked(wxListEvent& event);
 
     wxListCtrl* m_list;
 };

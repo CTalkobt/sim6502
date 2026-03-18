@@ -302,16 +302,19 @@ void MainFrame::UpdateStatus() {
 
 void MainFrame::OnTimer(wxTimerEvent& WXUNUSED(event)) {
     if (m_sim && m_running) {
+        int ev;
         if (m_speed_scale > 0.0f) {
             // Run exactly the right number of cycles for the requested speed.
             // Timer fires at ~62.5 Hz (16 ms); C64 PAL clock = 985248 Hz.
             unsigned long cycles_per_tick = (unsigned long)(m_speed_scale * 985248.0f / 62.5f);
             if (cycles_per_tick < 1) cycles_per_tick = 1;
-            sim_step_cycles(m_sim, cycles_per_tick);
+            ev = sim_step_cycles(m_sim, cycles_per_tick);
         } else {
-            sim_step(m_sim, 5000);
+            ev = sim_step(m_sim, 5000);
         }
-        if (m_cycle_limit > 0) {
+        if (ev == SIM_EVENT_BREAK || ev == SIM_EVENT_BRK) {
+            m_running = false;
+        } else if (m_cycle_limit > 0) {
             const CPU *cpu = sim_get_cpu(m_sim);
             if (cpu && (unsigned long)cpu->cycles >= m_cycle_limit)
                 m_running = false;
@@ -697,20 +700,22 @@ void MainFrame::SaveSettings() {
     cfg->Flush();
 }
 
+void MainFrame::NavigateDisassembly(uint16_t addr) {
+    for (auto pane : m_pane_list) {
+        PaneDisassembly* pd = dynamic_cast<PaneDisassembly*>(pane);
+        if (pd) {
+            pd->ScrollTo(addr);
+            break;
+        }
+    }
+}
+
 void MainFrame::OnGoToAddress(wxCommandEvent& WXUNUSED(event)) {
     wxTextEntryDialog dlg(this, "Enter hex address:", "Go to Address", "");
     if (dlg.ShowModal() == wxID_OK) {
         unsigned long addr;
         if (dlg.GetValue().ToULong(&addr, 16)) {
-            // Find disassembly pane and scroll
-            for (auto pane : m_pane_list) {
-                if (pane->GetPaneName() == "Disassembly") {
-                    // We need a public method in PaneDisassembly to scroll.
-                    // For Phase H I will just update the status text as confirmation.
-                    SetStatusText(wxString::Format("Go to $%04X", (unsigned)addr), 0);
-                    // TODO: call pane->ScrollTo(addr)
-                }
-            }
+            NavigateDisassembly((uint16_t)addr);
         }
     }
 }

@@ -28,6 +28,19 @@ const char *vic2_color_names[16] = {
     "Orange", "Brown", "Lt Red", "Dk Grey", "Grey", "Lt Green", "Lt Blue", "Lt Grey"
 };
 
+/* Read one byte from VIC-II address space with hardwired charset ROM exceptions.
+ * On the C64, the character generator ROM is visible to the VIC in:
+ *   Bank 0 ($0000–$3FFF): addresses $1000–$1FFF → char_rom[addr - $1000]
+ *   Bank 2 ($8000–$BFFF): addresses $9000–$9FFF → char_rom[addr - $9000]
+ * All other addresses read from RAM/I/O via mem_peek. */
+static inline uint8_t vic_read(const memory_t *mem, uint32_t addr)
+{
+    if ((addr >= 0x1000u && addr < 0x2000u) ||
+        (addr >= 0x9000u && addr < 0xA000u))
+        return mem->char_rom[addr & 0x0FFFu];
+    return mem_peek(mem, (uint16_t)(addr & 0xFFFFu));
+}
+
 static inline void vic_put(uint8_t *px, int x, int y, int ci)
 {
     if (x < 0 || x >= VIC2_FRAME_W || y < 0 || y >= VIC2_FRAME_H) return;
@@ -123,7 +136,7 @@ void vic2_render_rgb(const memory_t *mem, uint8_t *buf)
                     uint8_t bgtab[4] = { bg0, bg1, bg2, bg3 };
                     uint32_t cptr = (char_base + (uint32_t)(sc & 0x3F) * 8u) & 0xFFFF;
                     for (int cy = 0; cy < 8; cy++) {
-                        uint8_t bits = mem_peek(mem, (cptr + (uint32_t)cy) & 0xFFFF);
+                        uint8_t bits = vic_read(mem, (cptr + (uint32_t)cy) & 0xFFFF);
                         for (int cx = 0; cx < 8; cx++)
                             vic_put_win(px0+cx, py0+cy,
                                         (bits & (0x80>>cx)) ? cr : bgtab[sc >> 6]);
@@ -133,7 +146,7 @@ void vic2_render_rgb(const memory_t *mem, uint8_t *buf)
                     uint8_t cols[4] = { bg0, bg1, bg2, (uint8_t)(cr & 0x7) };
                     uint32_t cptr = (char_base + (uint32_t)sc * 8u) & 0xFFFF;
                     for (int cy = 0; cy < 8; cy++) {
-                        uint8_t bits = mem_peek(mem, (cptr + (uint32_t)cy) & 0xFFFF);
+                        uint8_t bits = vic_read(mem, (cptr + (uint32_t)cy) & 0xFFFF);
                         for (int cx = 0; cx < 4; cx++) {
                             int sel = (bits >> (6 - cx*2)) & 0x3;
                             vic_put_win(px0+cx*2,   py0+cy, cols[sel]);
@@ -144,7 +157,7 @@ void vic2_render_rgb(const memory_t *mem, uint8_t *buf)
                     /* Standard char (hires cell when MCM but cr bit 3 = 0) */
                     uint32_t cptr = (char_base + (uint32_t)sc * 8u) & 0xFFFF;
                     for (int cy = 0; cy < 8; cy++) {
-                        uint8_t bits = mem_peek(mem, (cptr + (uint32_t)cy) & 0xFFFF);
+                        uint8_t bits = vic_read(mem, (cptr + (uint32_t)cy) & 0xFFFF);
                         for (int cx = 0; cx < 8; cx++)
                             vic_put_win(px0+cx, py0+cy,
                                         (bits & (0x80>>cx)) ? cr : bg0);
@@ -360,7 +373,7 @@ void vic2_render_rgb_active(const memory_t *mem, uint8_t *buf)
                     uint8_t bgtab[4] = { bg0, bg1, bg2, bg3 };
                     uint32_t cptr = (char_base + (uint32_t)(sc & 0x3F) * 8u) & 0xFFFF;
                     for (int cy = 0; cy < 8; cy++) {
-                        uint8_t bits = mem_peek(mem, (cptr + (uint32_t)cy) & 0xFFFF);
+                        uint8_t bits = vic_read(mem, (cptr + (uint32_t)cy) & 0xFFFF);
                         for (int cx = 0; cx < 8; cx++)
                             vic_put_a_win(px0+cx, py0+cy,
                                           (bits & (0x80>>cx)) ? cr : bgtab[sc >> 6]);
@@ -369,7 +382,7 @@ void vic2_render_rgb_active(const memory_t *mem, uint8_t *buf)
                     uint8_t cols[4] = { bg0, bg1, bg2, (uint8_t)(cr & 0x7) };
                     uint32_t cptr = (char_base + (uint32_t)sc * 8u) & 0xFFFF;
                     for (int cy = 0; cy < 8; cy++) {
-                        uint8_t bits = mem_peek(mem, (cptr + (uint32_t)cy) & 0xFFFF);
+                        uint8_t bits = vic_read(mem, (cptr + (uint32_t)cy) & 0xFFFF);
                         for (int cx = 0; cx < 4; cx++) {
                             int sel = (bits >> (6 - cx*2)) & 0x3;
                             vic_put_a_win(px0+cx*2,   py0+cy, cols[sel]);
@@ -379,7 +392,7 @@ void vic2_render_rgb_active(const memory_t *mem, uint8_t *buf)
                 } else {
                     uint32_t cptr = (char_base + (uint32_t)sc * 8u) & 0xFFFF;
                     for (int cy = 0; cy < 8; cy++) {
-                        uint8_t bits = mem_peek(mem, (cptr + (uint32_t)cy) & 0xFFFF);
+                        uint8_t bits = vic_read(mem, (cptr + (uint32_t)cy) & 0xFFFF);
                         for (int cx = 0; cx < 8; cx++)
                             vic_put_a_win(px0+cx, py0+cy,
                                           (bits & (0x80>>cx)) ? cr : bg0);
@@ -891,7 +904,7 @@ void vic2_render_sprite(const memory_t *mem, int sn, uint8_t *buf) {
 void vic2_render_char(const memory_t *mem, uint16_t char_base, int char_index, int mcm, uint8_t c0, uint8_t c1, uint8_t c2, uint8_t c3, uint8_t *buf) {
     uint32_t data_base = (char_base + (uint32_t)char_index * 8u) & 0xFFFF;
     for (int row = 0; row < 8; row++) {
-        uint8_t bits = mem_peek(mem, (uint16_t)((data_base + (uint32_t)row) & 0xFFFF));
+        uint8_t bits = vic_read(mem, (data_base + (uint32_t)row) & 0xFFFF);
         if (!mcm) {
             for (int px = 0; px < 8; px++) {
                 int bit = (bits >> (7 - px)) & 1;

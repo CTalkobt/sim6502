@@ -186,7 +186,7 @@ UNIT_TEST_OBJS = $(UNIT_TEST_SRCS:.cpp=.o)
 UNIT_TEST_TARGET = unit-tests
 
 $(UNIT_TEST_TARGET): $(UNIT_TEST_OBJS) $(LIB_TARGET)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(SDL2_LIBS) $(GL_LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(SDL2_LIBS) $(GL_LIBS) $(READLINE_LIBS)
 
 tests/unit/%.o: tests/unit/%.cpp tests/unit/catch.hpp
 	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) -I tests/unit -c -o $@ $<

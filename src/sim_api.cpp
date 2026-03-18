@@ -199,19 +199,17 @@ static void sim_init_vic2_defaults(sim_session_t *s) {
     sim_mem_write_byte(s, 0xD023, 0x02); /* BG2/MC2: red (2)                      */
 
     if (s->machine_type == MACHINE_MEGA65) {
-        /* TEMPORARY: Mega65 VIC-IV charset addressing uses CHARPTR ($D068–$D06A),
-         * a 20-bit pointer that bypasses the VIC-II D018/CIA2 bank scheme.
-         * Until VIC-IV CHARPTR emulation is implemented (see vic2.h TODO) we
-         * fake it via VIC bank 1 so the charset sits at $4000 and does not
-         * collide with Mega65 program code typically loaded below $4000.
+        /* TEMPORARY: Mega65 VIC-IV charset addressing uses CHARPTR ($D068–$D06A).
+         * Bank 1 ($4000–$7FFF) has no hardwired char-ROM exception, so the VIC
+         * pane still reads charset from RAM at $4000 until VIC-IV CHARPTR
+         * emulation is implemented (see vic2.h TODO).
          *   DD00 bits[1:0]=10  → VIC bank 1 ($4000–$7FFF)
-         *   D018 VMA=2, CB=0   → screen $4800, charset $4000
-         * TODO (step 2): replace with CHARPTR = <chargen physical address>
-         *   and remove this block once VIC-IV registers are emulated.        */
+         *   D018 VMA=2, CB=0   → screen $4800, charset $4000               */
         sim_mem_write_byte(s, 0xDD00, 0x36); /* CIA2 PA: bits[1:0]=10 → bank 1   */
         sim_mem_write_byte(s, 0xD018, 0x21); /* screen=$4800  charset=$4000       */
     } else {
-        /* C64 / C128 / X16 / RAW: standard bank 0 layout */
+        /* C64 / C128 / X16 / RAW: VIC bank 0; charset at VIC offset $1000 is
+         * served from char_rom[] by vic_read() — no RAM collision.            */
         sim_mem_write_byte(s, 0xDD00, 0x37); /* CIA2 PA: bits[1:0]=11 → bank 0   */
         sim_mem_write_byte(s, 0xD018, 0x15); /* screen=$0400  charset=$1000       */
     }
@@ -219,18 +217,25 @@ static void sim_init_vic2_defaults(sim_session_t *s) {
 
 static void sim_load_default_charset(sim_session_t *s) {
     if (!s) return;
-    /* Charset destination mirrors the CB/bank field set by sim_init_vic2_defaults.
-     * TEMPORARY for Mega65: real VIC-IV CHARPTR ($D068–$D06A) should govern the
-     * destination once extended register emulation is implemented (see vic2.h TODO,
-     * step 2).  Remove the MACHINE_MEGA65 branch at that point.                */
-    uint16_t dest = (s->machine_type == MACHINE_MEGA65) ? 0x4000 : 0x1000;
     FILE *f = fopen("presets/default-pet-upper.bin", "rb");
     if (!f) return;
     uint8_t buf[2048];
-    size_t n = fread(buf, 1, 2048, f);
+    size_t n = fread(buf, 1, sizeof(buf), f);
     fclose(f);
-    for (size_t i = 0; i < n && i < 2048; i++)
-        sim_mem_write_byte(s, (uint16_t)(dest + i), buf[i]);
+    /* Always populate char_rom — used by vic_read() for bank-0/bank-2 VIC
+     * exceptions and by mem_read() for CPU reads with CHAREN=0, HIRAM=1. */
+    memcpy(s->mem->char_rom, buf, n);
+    if (s->machine_type == MACHINE_MEGA65) {
+        /* Mega65 character ROM lives at physical $2D000 in the 28-bit address
+         * space — accessible to Mega65 programs via far/DMA reads.            */
+        for (size_t i = 0; i < n; i++)
+            far_mem_write(s->mem, 0x2D000 + i, buf[i]);
+        /* VIC bank 1 has no hardwired ROM exception; also mirror to RAM $4000
+         * so the VIC screen pane can render until VIC-IV CHARPTR is
+         * implemented (see vic2.h TODO).                                       */
+        for (size_t i = 0; i < n; i++)
+            s->mem->mem[0x4000 + i] = buf[i];
+    }
 }
 
 static void machine_init_hardware(sim_session_t *s) {
@@ -506,12 +511,14 @@ void sim_get_load_info(sim_session_t *s, uint16_t *addr_out, uint16_t *size_out)
 
 int sim_step(sim_session_t *s, int count) {
     if (!s || s->state == SIM_IDLE || s->state == SIM_FINISHED) return -1;
+    int skip_bp = (s->state == SIM_PAUSED || s->state == SIM_READY) ? 1 : 0;
     for (int i = 0; i < count; i++) {
         s->mem->mem_writes = 0;
         int tr = handle_trap(s->symbols, s->cpu, s->mem);
         if (tr < 0) { s->state = SIM_FINISHED; if (s->event_cb) s->event_cb(s, SIM_EVENT_BRK, s->event_userdata); return SIM_EVENT_BRK; }
         if (tr > 0) continue;
-        if (breakpoint_hit(s->breakpoints, s->cpu)) { s->state = SIM_PAUSED; if (s->event_cb) s->event_cb(s, SIM_EVENT_BREAK, s->event_userdata); return SIM_EVENT_BREAK; }
+        if (!skip_bp && breakpoint_hit(s->breakpoints, s->cpu)) { s->state = SIM_PAUSED; if (s->event_cb) s->event_cb(s, SIM_EVENT_BREAK, s->event_userdata); return SIM_EVENT_BREAK; }
+        skip_bp = 0;
         unsigned char opc = mem_read(s->mem, s->cpu->pc);
         if (opc == 0x60 && (uint8_t)s->cpu->s == 0xFF) {
             s->state = SIM_FINISHED;
@@ -587,12 +594,14 @@ int sim_step_out(sim_session_t *s) {
 int sim_step_cycles(sim_session_t *s, unsigned long max_cycles) {
     if (!s || s->state == SIM_IDLE || s->state == SIM_FINISHED) return -1;
     unsigned long start = s->cpu->cycles;
+    int skip_bp = (s->state == SIM_PAUSED || s->state == SIM_READY) ? 1 : 0;
     while (s->cpu->cycles - start < max_cycles) {
         s->mem->mem_writes = 0;
         int tr = handle_trap(s->symbols, s->cpu, s->mem);
         if (tr < 0) { s->state = SIM_FINISHED; if (s->event_cb) s->event_cb(s, SIM_EVENT_BRK, s->event_userdata); return SIM_EVENT_BRK; }
         if (tr > 0) continue;
-        if (breakpoint_hit(s->breakpoints, s->cpu)) { s->state = SIM_PAUSED; if (s->event_cb) s->event_cb(s, SIM_EVENT_BREAK, s->event_userdata); return SIM_EVENT_BREAK; }
+        if (!skip_bp && breakpoint_hit(s->breakpoints, s->cpu)) { s->state = SIM_PAUSED; if (s->event_cb) s->event_cb(s, SIM_EVENT_BREAK, s->event_userdata); return SIM_EVENT_BREAK; }
+        skip_bp = 0;
         unsigned char opc = mem_read(s->mem, s->cpu->pc);
         if (opc == 0x60 && (uint8_t)s->cpu->s == 0xFF) {
             s->state = SIM_FINISHED;
