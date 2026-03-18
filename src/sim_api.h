@@ -189,8 +189,11 @@ int sim_history_get(sim_session_t *s, int slot, sim_history_entry_t *entry);
 /* Snapshots — types defined in debug_types.h */
 
 void sim_snapshot_take(sim_session_t *s);
+void sim_snapshot_clear(sim_session_t *s);
 int  sim_snapshot_valid(sim_session_t *s);
 int  sim_snapshot_diff(sim_session_t *s, sim_diff_entry_t *entries, int entries_cap);
+uint64_t sim_snapshot_cycles(sim_session_t *s);
+uint32_t sim_snapshot_timestamp(sim_session_t *s);
 
 /* Validation */
 #define SIM_VALIDATE_MEM_OPS 8

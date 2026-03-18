@@ -22,7 +22,7 @@ DebugContext::DebugContext()
     : hist_buf_(nullptr),
       hist_cap_(SIM_HIST_DEFAULT_DEPTH), hist_mask_(SIM_HIST_DEFAULT_DEPTH - 1),
       hist_write_(0), hist_count_(0), hist_enabled_(0), hist_pos_(0),
-      snap_active_(0),
+      snap_active_(0), snap_cycles_(0), snap_timestamp_(0),
       prof_exec_(nullptr), prof_cycles_(nullptr), prof_enabled_(0),
       trace_enabled_(0)
 {
@@ -108,26 +108,41 @@ void DebugContext::snap_record_write(uint16_t addr, uint8_t before, uint8_t afte
     snap_buckets_[bucket] = n;
 }
 
-void DebugContext::take_snapshot() {
+void DebugContext::take_snapshot(uint64_t cycles, uint32_t timestamp) {
     snap_free_nodes();
-    snap_active_ = 1;
+    snap_active_    = 1;
+    snap_cycles_    = cycles;
+    snap_timestamp_ = timestamp;
+}
+
+void DebugContext::clear_snapshot() {
+    snap_free_nodes();
+    snap_active_ = 0;
 }
 
 int DebugContext::snapshot_diff(sim_diff_entry_t *entries, int cap) {
     if (!snap_active_ || !entries || cap <= 0) return -1;
     int count = 0;
+    int filled = 0;
     for (int i = 0; i < 256; i++) {
-        for (SnapNode *n = snap_buckets_[i]; n; n = n->next) {
-            if (n->before != n->after && count < cap) {
-                entries[count].addr      = n->addr;
-                entries[count].before    = n->before;
-                entries[count].after     = n->after;
-                entries[count].writer_pc = n->writer_pc;
+        SnapNode *n = snap_buckets_[i];
+        while (n) {
+            if (n->before != n->after) {
+                if (filled < cap) {
+                    entries[filled].addr      = n->addr;
+                    entries[filled].before    = n->before;
+                    entries[filled].after     = n->after;
+                    entries[filled].writer_pc = n->writer_pc;
+                    filled++;
+                }
                 count++;
             }
+            n = n->next;
         }
     }
-    qsort(entries, (size_t)count, sizeof(sim_diff_entry_t), diff_entry_cmp);
+    if (filled > 0) {
+        qsort(entries, (size_t)filled, sizeof(sim_diff_entry_t), diff_entry_cmp);
+    }
     return count;
 }
 

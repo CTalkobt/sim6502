@@ -26,6 +26,7 @@
 #include <ctype.h>
 #include <vector>
 #include <algorithm>
+#include <chrono>
 
 extern int g_verbose;
 #define LOG_V2(...) if (g_verbose >= 2) fprintf(stderr, __VA_ARGS__)
@@ -967,11 +968,22 @@ const char *sim_mode_name(unsigned char mode) { return mode_name(mode); }
 
 /* --- Memory Snapshot & Diff --- */
 
-void sim_snapshot_take(sim_session_t *s) { if (s) s->debug_ctx->take_snapshot(); }
-int  sim_snapshot_valid(sim_session_t *s) { return s ? s->debug_ctx->snapshot_is_valid() : 0; }
-int  sim_snapshot_diff(sim_session_t *s, sim_diff_entry_t *entries, int entries_cap) {
-    return s ? s->debug_ctx->snapshot_diff(entries, entries_cap) : -1;
+void sim_snapshot_take(sim_session_t *s) {
+    if (s && s->cpu && s->debug_ctx) {
+        auto now = std::chrono::steady_clock::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+        s->debug_ctx->take_snapshot(s->cpu->cycles, (uint32_t)(ms & 0xFFFFFFFF));
+    }
 }
+void sim_snapshot_clear(sim_session_t *s) {
+    if (s && s->debug_ctx) s->debug_ctx->clear_snapshot();
+}
+int  sim_snapshot_valid(sim_session_t *s) { return (s && s->debug_ctx) ? s->debug_ctx->snapshot_is_valid() : 0; }
+int  sim_snapshot_diff(sim_session_t *s, sim_diff_entry_t *entries, int entries_cap) {
+    return (s && s->debug_ctx) ? s->debug_ctx->snapshot_diff(entries, entries_cap) : -1;
+}
+uint64_t sim_snapshot_cycles(sim_session_t *s) { return (s && s->debug_ctx) ? s->debug_ctx->snapshot_cycles() : 0; }
+uint32_t sim_snapshot_timestamp(sim_session_t *s) { return (s && s->debug_ctx) ? s->debug_ctx->snapshot_timestamp() : 0; }
 
 /* --- Trace Run --- */
 

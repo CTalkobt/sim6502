@@ -38,9 +38,12 @@ public:
     int  get_history(int slot, sim_history_entry_t *entry);
 
     /* ---- Snapshot ---- */
-    void take_snapshot();
+    void take_snapshot(uint64_t cycles, uint32_t timestamp);
+    void clear_snapshot();
     int  snapshot_is_valid()   const   { return snap_active_; }
     int  snapshot_diff(sim_diff_entry_t *entries, int cap);
+    uint64_t snapshot_cycles()    const { return snap_cycles_; }
+    uint32_t snapshot_timestamp() const { return snap_timestamp_; }
 
     /* ---- Profiler ---- */
     void     enable_profiler(int on)      { prof_enabled_ = on; }
@@ -65,6 +68,8 @@ private:
     /* Snapshot: 256-bucket linked-list hash table */
     SnapNode *snap_buckets_[256];
     int snap_active_;
+    uint64_t snap_cycles_;
+    uint32_t snap_timestamp_;
     void snap_record_write(uint16_t addr, uint8_t before, uint8_t after, uint16_t writer_pc);
     void snap_free_nodes();
 
