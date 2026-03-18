@@ -154,6 +154,7 @@ GUI_SRCS = \
 	src/gui/pane_patterns.cpp \
 	src/gui/dialogs.cpp \
 	src/gui/pane_vic_screen.cpp \
+	src/gui/pane_vic_char_editor.cpp \
 	src/gui/pane_vic_sprites.cpp \
 	src/gui/pane_vic_regs.cpp \
 	src/gui/pane_sid_debugger.cpp \

@@ -140,6 +140,7 @@ int sim_source_lookup_line(sim_session_t *s, const char *path, int line, uint16_
 void sim_vic_render_framebuffer(sim_session_t *s, uint8_t *buf);
 void sim_vic_render_active_framebuffer(sim_session_t *s, uint8_t *buf);
 void sim_vic_render_sprite(sim_session_t *s, int index, uint8_t *buf);
+void sim_vic_render_char(sim_session_t *s, uint16_t char_base, int char_index, int mcm, uint8_t c0, uint8_t c1, uint8_t c2, uint8_t c3, uint8_t *buf);
 
 /* Trace — types defined in debug_types.h */
 

@@ -18,6 +18,7 @@
 #include "pane_devices.h"
 #include "pane_patterns.h"
 #include "pane_vic_screen.h"
+#include "pane_vic_char_editor.h"
 #include "pane_vic_sprites.h"
 #include "pane_vic_regs.h"
 #include "pane_sid_debugger.h"
@@ -138,10 +139,11 @@ void MainFrame::InitPanes() {
     RegisterPane(new PanePatterns(this, m_sim), ID_VIEW_PANE_PATTERNS, wxAuiPaneInfo().Name("Patterns").Caption("Idiom Library").Right().Position(8).Hide());
 
     RegisterPane(new PaneVICScreen(this, m_sim), ID_VIEW_PANE_VIC_SCREEN, wxAuiPaneInfo().Name("VICScreen").Caption("VIC-II Screen").Right().Position(9).Hide());
-    RegisterPane(new PaneVICSprites(this, m_sim), ID_VIEW_PANE_VIC_SPRITES, wxAuiPaneInfo().Name("VICSprites").Caption("VIC-II Sprites").Right().Position(10).Hide());
-    RegisterPane(new PaneVICRegs(this, m_sim), ID_VIEW_PANE_VIC_REGS, wxAuiPaneInfo().Name("VICRegs").Caption("VIC-II Registers").Right().Position(11).Hide());
-    RegisterPane(new PaneSIDDebugger(this, m_sim), ID_VIEW_PANE_SID_DEBUGGER, wxAuiPaneInfo().Name("SIDDebugger").Caption("SID Debugger").Right().Position(12).Hide());
-    RegisterPane(new PaneAudioMixer(this, m_sim), ID_VIEW_PANE_AUDIO_MIXER, wxAuiPaneInfo().Name("AudioMixer").Caption("Audio Mixer").Right().Position(13).Hide());
+    RegisterPane(new PaneVICChars(this, m_sim), ID_VIEW_PANE_VIC_CHARS, wxAuiPaneInfo().Name("VICChars").Caption("VIC-II Character Editor").Right().Position(10).Hide());
+    RegisterPane(new PaneVICSprites(this, m_sim), ID_VIEW_PANE_VIC_SPRITES, wxAuiPaneInfo().Name("VICSprites").Caption("VIC-II Sprites").Right().Position(11).Hide());
+    RegisterPane(new PaneVICRegs(this, m_sim), ID_VIEW_PANE_VIC_REGS, wxAuiPaneInfo().Name("VICRegs").Caption("VIC-II Registers").Right().Position(12).Hide());
+    RegisterPane(new PaneSIDDebugger(this, m_sim), ID_VIEW_PANE_SID_DEBUGGER, wxAuiPaneInfo().Name("SIDDebugger").Caption("SID Debugger").Right().Position(13).Hide());
+    RegisterPane(new PaneAudioMixer(this, m_sim), ID_VIEW_PANE_AUDIO_MIXER, wxAuiPaneInfo().Name("AudioMixer").Caption("Audio Mixer").Right().Position(14).Hide());
 }
 
 void MainFrame::RegisterPane(SimPane* pane, int menu_id, const wxAuiPaneInfo& info) {

@@ -887,3 +887,33 @@ void vic2_render_sprite(const memory_t *mem, int sn, uint8_t *buf) {
         }
     }
 }
+
+void vic2_render_char(const memory_t *mem, uint16_t char_base, int char_index, int mcm, uint8_t c0, uint8_t c1, uint8_t c2, uint8_t c3, uint8_t *buf) {
+    uint32_t data_base = (char_base + (uint32_t)char_index * 8u) & 0xFFFF;
+    for (int row = 0; row < 8; row++) {
+        uint8_t bits = mem_peek(mem, (uint16_t)((data_base + (uint32_t)row) & 0xFFFF));
+        if (!mcm) {
+            for (int px = 0; px < 8; px++) {
+                int bit = (bits >> (7 - px)) & 1;
+                uint8_t c = bit ? c3 : c0;  /* c3 = char fg color (equiv. color RAM); c1/c2 are MC-only */
+                int off = (row * 8 + px) * 4;
+                buf[off+0] = vic2_palette[c][0];
+                buf[off+1] = vic2_palette[c][1];
+                buf[off+2] = vic2_palette[c][2];
+                buf[off+3] = 255;
+            }
+        } else {
+            for (int px = 0; px < 4; px++) {
+                int sel = (bits >> (6 - (px << 1))) & 0x3;
+                uint8_t c = (sel == 0) ? c0 : (sel == 1) ? c1 : (sel == 2) ? c2 : c3;
+                for (int xr = 0; xr < 2; xr++) {
+                    int off = (row * 8 + px * 2 + xr) * 4;
+                    buf[off+0] = vic2_palette[c][0];
+                    buf[off+1] = vic2_palette[c][1];
+                    buf[off+2] = vic2_palette[c][2];
+                    buf[off+3] = 255;
+                }
+            }
+        }
+    }
+}

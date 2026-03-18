@@ -52,11 +52,35 @@ void vic2_print_sprites(const memory_t *mem);
    buf must be at least 24 * 21 * 4 bytes. 
    Includes transparency (alpha=0 for bg). */
 void vic2_render_sprite(const memory_t *mem, int index, uint8_t *buf);
+void vic2_render_char(const memory_t *mem, uint16_t char_base, int char_index, int mcm, uint8_t c0, uint8_t c1, uint8_t c2, uint8_t c3, uint8_t *buf);
 
 /* JSON output variants — print a single-line JSON object to stdout.
    Intended for use with the -J (JSON mode) interactive CLI flag. */
 void vic2_json_info(const memory_t *mem);
 void vic2_json_regs(const memory_t *mem);
 void vic2_json_sprites(const memory_t *mem);
+
+/* ---------------------------------------------------------------------------
+ * TODO: VIC-IV CHARPTR support (Mega65)
+ *
+ * The Mega65 VIC-IV exposes a 20-bit charset base pointer via three registers
+ * that bypass the VIC-II D018/CIA2 bank scheme entirely:
+ *
+ *   $D068  CHARPTR lo  — bits  [7:0]  of the 20-bit charset base address
+ *   $D069  CHARPTR mid — bits [15:8]
+ *   $D06A  CHARPTR hi  — bits [19:16] (low nibble only)
+ *
+ * When these are implemented:
+ *  1. Register map: add $D068–$D06A to the VIC-IV I/O handler so reads/writes
+ *     are stored and surfaced through the memory_t I/O layer.
+ *  2. sim_init_vic2_defaults (sim_api.cpp): for MACHINE_MEGA65, write CHARPTR
+ *     to point at the default chargen location (e.g. $20000) and remove the
+ *     temporary D018/DD00 bank-1 fallback and its TEMPORARY comments.
+ *  3. GetCharSetAddr (pane_vic_char_editor.cpp): for Mega65, read CHARPTR
+ *     ($D068–$D06A) to compute the charset address instead of the D018/DD00
+ *     path.  The returned value will need to be widened to uint32_t to handle
+ *     addresses above $FFFF.
+ *  4. Remove all "TEMPORARY" annotations added during the interim workaround.
+ * --------------------------------------------------------------------------- */
 
 #endif /* VIC2_H */

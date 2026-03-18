@@ -442,9 +442,11 @@ Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx
 ---
 
 ## Future Roadmap (v1.x+)
-- [ ] Support for additional CPU architectures (Z80, 68000).
-- [ ] Integration with TurboRascal toolchain.
-- [ ] Web-based UI leveraging existing MCP/API infrastructure.
+- [ ] Vic3 Support
+- [ ] Vic4 Support
+- [ ] FAR: Support for additional CPU architectures (Z80, 68000).
+- [ ] ? Integration with TurboRascal toolchain.
+- [ ] ? Web-based UI leveraging existing MCP/API infrastructure.
 
 ---
 

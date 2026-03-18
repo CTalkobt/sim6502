@@ -187,6 +187,51 @@ static const char *machine_name_local(machine_type_t type) {
     }
 }
 
+static void sim_init_vic2_defaults(sim_session_t *s) {
+    if (!s) return;
+    /* Common VIC-II colour / mode defaults */
+    sim_mem_write_byte(s, 0xD011, 0x1B); /* ECM=0 BMM=0 DEN=1 RSEL=1 yscroll=3  */
+    sim_mem_write_byte(s, 0xD016, 0x08); /* MCM=0 CSEL=1 xscroll=0               */
+    sim_mem_write_byte(s, 0xD020, 0x0E); /* border: light blue (14)               */
+    sim_mem_write_byte(s, 0xD021, 0x06); /* BG0:   blue (6)                       */
+    sim_mem_write_byte(s, 0xD022, 0x01); /* BG1/MC1: white (1)                    */
+    sim_mem_write_byte(s, 0xD023, 0x02); /* BG2/MC2: red (2)                      */
+
+    if (s->machine_type == MACHINE_MEGA65) {
+        /* TEMPORARY: Mega65 VIC-IV charset addressing uses CHARPTR ($D068–$D06A),
+         * a 20-bit pointer that bypasses the VIC-II D018/CIA2 bank scheme.
+         * Until VIC-IV CHARPTR emulation is implemented (see vic2.h TODO) we
+         * fake it via VIC bank 1 so the charset sits at $4000 and does not
+         * collide with Mega65 program code typically loaded below $4000.
+         *   DD00 bits[1:0]=10  → VIC bank 1 ($4000–$7FFF)
+         *   D018 VMA=2, CB=0   → screen $4800, charset $4000
+         * TODO (step 2): replace with CHARPTR = <chargen physical address>
+         *   and remove this block once VIC-IV registers are emulated.        */
+        sim_mem_write_byte(s, 0xDD00, 0x36); /* CIA2 PA: bits[1:0]=10 → bank 1   */
+        sim_mem_write_byte(s, 0xD018, 0x21); /* screen=$4800  charset=$4000       */
+    } else {
+        /* C64 / C128 / X16 / RAW: standard bank 0 layout */
+        sim_mem_write_byte(s, 0xDD00, 0x37); /* CIA2 PA: bits[1:0]=11 → bank 0   */
+        sim_mem_write_byte(s, 0xD018, 0x15); /* screen=$0400  charset=$1000       */
+    }
+}
+
+static void sim_load_default_charset(sim_session_t *s) {
+    if (!s) return;
+    /* Charset destination mirrors the CB/bank field set by sim_init_vic2_defaults.
+     * TEMPORARY for Mega65: real VIC-IV CHARPTR ($D068–$D06A) should govern the
+     * destination once extended register emulation is implemented (see vic2.h TODO,
+     * step 2).  Remove the MACHINE_MEGA65 branch at that point.                */
+    uint16_t dest = (s->machine_type == MACHINE_MEGA65) ? 0x4000 : 0x1000;
+    FILE *f = fopen("presets/default-pet-upper.bin", "rb");
+    if (!f) return;
+    uint8_t buf[2048];
+    size_t n = fread(buf, 1, 2048, f);
+    fclose(f);
+    for (size_t i = 0; i < n && i < 2048; i++)
+        sim_mem_write_byte(s, (uint16_t)(dest + i), buf[i]);
+}
+
 static void machine_init_hardware(sim_session_t *s) {
     if (s->mem->io_registry) {
         delete s->mem->io_registry;
@@ -201,15 +246,25 @@ static void machine_init_hardware(sim_session_t *s) {
             mega65_io_register(s->mem);
             sid_io_register(s->mem, s->machine_type, s->dynamic_handlers);
             cia_io_register(s->mem, s->dynamic_handlers);
+            sim_init_vic2_defaults(s);
+            sim_load_default_charset(s);
             break;
         case MACHINE_C64:
         case MACHINE_C128:
+            vic2_io_register(s->mem);
+            sid_io_register(s->mem, s->machine_type, s->dynamic_handlers);
+            cia_io_register(s->mem, s->dynamic_handlers);
+            s->mem->io_registry->rebuild_map(s->mem);
+            sim_init_vic2_defaults(s);
+            sim_load_default_charset(s);
+            break;
         case MACHINE_X16:
         default:
             vic2_io_register(s->mem);
             sid_io_register(s->mem, s->machine_type, s->dynamic_handlers);
             cia_io_register(s->mem, s->dynamic_handlers);
             s->mem->io_registry->rebuild_map(s->mem);
+            sim_init_vic2_defaults(s);
             break;
     }
 }
@@ -837,6 +892,10 @@ void sim_vic_render_active_framebuffer(sim_session_t *s, uint8_t *buf) {
 
 void sim_vic_render_sprite(sim_session_t *s, int index, uint8_t *buf) {
     if (s && buf) vic2_render_sprite(s->mem, index, buf);
+}
+
+void sim_vic_render_char(sim_session_t *s, uint16_t char_base, int char_index, int mcm, uint8_t c0, uint8_t c1, uint8_t c2, uint8_t c3, uint8_t *buf) {
+    if (s && buf) vic2_render_char(s->mem, char_base, char_index, mcm, c0, c1, c2, c3, buf);
 }
 /* --- Execution History --- */
 

@@ -89,6 +89,7 @@ void MainFrame::InitMenuBar() {
 
     wxMenu *videoMenu = new wxMenu;
     videoMenu->AppendCheckItem(ID_VIEW_PANE_VIC_SCREEN, "VIC-II Screen");
+    videoMenu->AppendCheckItem(ID_VIEW_PANE_VIC_CHARS, "VIC-II Character Editor");
     videoMenu->AppendCheckItem(ID_VIEW_PANE_VIC_SPRITES, "VIC-II Sprites");
     videoMenu->AppendCheckItem(ID_VIEW_PANE_VIC_REGS, "VIC-II Registers");
     hwMenu->AppendSubMenu(videoMenu, "Video");
