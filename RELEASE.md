@@ -346,7 +346,7 @@ Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx
 **Theme:** Advanced UI & Refinement. 
 
 - [X] **Memory Integrity:** Fix `far_pages` memory leaks during reloads and ensure correct `load_size` calculation for assembly programs.
-- [ ] **Interactive Graphics Editors:** Implement the interactive bitmap editor for the VIC-II Sprite pane (1bpp/2bpp modes) and create the new VIC-II Character Set Editor pane.
+- [X] **Interactive Graphics Editors:** Implement the interactive bitmap editor for the VIC-II Sprite pane (1bpp/2bpp modes) and create the new VIC-II Character Set Editor pane.
 - [ ] **Time Machine UI:** Add the timeline slider and history table to the Execution History pane, including the "Rewind to Breakpoint" (reverse-continue) feature.
 - [X] **Register Editing:** Replace modal dialogs with inline hex editing for registers.
 - [ ] **Memory View Refinement:** Add "Follow PC/SP" toggles, write-access highlighting, and inline cell editing.
@@ -355,7 +355,31 @@ Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx
 
 ---
 
-## Milestone 1.7: Ensure GUI, MCP and CLI are equally functional. 
+## Milestone 1.7: Emulator Integration & Configuration
+**Goal:** Streamline the simulator setup by importing system ROMs from established emulators and centralizing user preferences.
+**Theme:** System Integration & Configuration management.
+
+- [ ] **Unified Settings Dialog:**
+  - [ ] Implement a multi-pane `SettingsDialog` (using `wxTreebook` or similar) to replace scattered configuration menus.
+  - [ ]**Panes:** 
+    - [ ] *General:* Interface scaling, theme selection, and font preferences.
+    - [ ] *Emulators:* Paths to VICE and Xemu binaries/data directories.
+    - [ ] *ROM Mapping:* Assignment of Kernal, BASIC, and Character ROMs to system targets.
+    - [ ] *Speed and Memory:* Allow setting of default speed, machine target and processor and adjustment of built-in caches that are used for things like history etc. 
+- [ ] **Emulator Resource Discovery:**
+  - [ ] Implement auto-discovery logic to locate VICE and Xemu installations on Linux, macOS, and Windows.
+  - [ ] Add a "Scan for ROMs" feature that automatically populates system profiles from discovered emulator data folders.
+- [ ] **Binary & Metadata Parsing:**
+  - [ ] **VICE Support:** Load and parse `.bin` ROM images and `.sym` symbol files for system-level debugging.
+  - [ ] **MEGA65 Support:** Implement a parser for `.M65` bundle files to extract Character and System ROMs.
+  - [ ] **PRG/BIN Loading:** Improve the "Load Binary" interface to optionally auto-configure the starting PC based on metadata (e.g., standard C64 `.prg` load addresses).
+- [ ] **Project-Specific Configuration:**
+  - [ ] Allow `project.toml` to specify a custom ROM set, overriding global settings for specific development tasks.
+  - [ ] Extend the `sim_api.h` to support dynamic ROM switching without restarting the simulator session.
+
+---
+
+## Milestone 1.8: Ensure GUI, MCP and CLI are equally functional. 
 **Goal:** Get the application into a fully functioning usable state for all 3 states of GUI, MCP and CLI. 
 **Theme:** Corrections & Refinement. 
 
@@ -368,7 +392,7 @@ Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx
 
 ---
 
-## Milestone 1.8: Architectural Integrity & MCP Robustness
+## Milestone 1.9: Architectural Integrity & MCP Robustness
 **Goal:** Finalize the library extraction and ensure the MCP server meets modern production standards.
 **Theme:** Infrastructure & Decoupling.
 
@@ -402,6 +426,18 @@ Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx
 - [ ] **6510/C64 System:** Implement the Processor Port ($00/$01), C64-style banking logic, and remaining undocumented opcodes (XAA, AXS, etc.).
 - [ ] **Peripheral Support:** Implement basic 1541/CBM DOS emulation and IEC serial bus signals for disk drive communication.
 - [ ] **Connectivity:** Implement remote hardware debugging (VICE Monitor interface, M65dbg Serial/Ethernet support).
+
+---
+
+## Milestone 2.2: Editable Idiom Library & Templating
+**Goal:** Transform the static pattern library into a user-extensible system with configurable parameters.
+**Theme:** Extensibility & Workflow
+
+- [ ] **Dynamic Snippet Loading:** Transition from the hardcoded `g_snippets` array to a dynamic loader that scans a `patterns/` directory for individual `.asm` files.
+- [ ] **Metadata Specification:** Implement a header-comment parser for snippet properties, supporting tags such as `; @name`, `; @category`, `; @processor`, `; @summary`, and `; @clobbers`.
+- [ ] **Parameter Templating:** Introduce a templating syntax for Zero Page registers and constants (e.g., `!SRC_LO`, `!TEMP_VAR`). This allows snippets to define variable placeholders that the user can map to specific addresses or labels before insertion, overriding the snippet's internal defaults.
+- [ ] **GUI Integrated Editor:** Enhance the Idiom Library pane with a built-in assembly editor and a "Snippet Settings" dialog for managing metadata and template overrides.
+- [ ] **CRUD API:** Extend `sim_api.h` with functions for adding, updating, and deleting snippets, including disk persistence.
 
 ---
 
