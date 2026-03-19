@@ -773,7 +773,9 @@ int sim_snippet_get(int idx, sim_snippet_t *out) {
     out->category = g_snippets[idx].category;
     out->summary = g_snippets[idx].summary;
     out->processor = g_snippets[idx].processor;
+    out->requires_device = g_snippets[idx].requires_device;
     out->body = g_snippets[idx].body;
+    // fprintf(stderr, "sim_snippet_get: idx=%d name=%s body_len=%zu\n", idx, out->name, out->body ? strlen(out->body) : 0);
     return 0;
 }
 
@@ -784,6 +786,7 @@ int sim_snippet_find(const char *name, sim_snippet_t *out) {
     out->category = s->category;
     out->summary = s->summary;
     out->processor = s->processor;
+    out->requires_device = s->requires_device;
     out->body = s->body;
     return 0;
 }

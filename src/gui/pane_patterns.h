@@ -16,10 +16,17 @@ public:
 private:
     void OnItemSelected(wxCommandEvent& event);
     void OnInsert(wxCommandEvent& event);
+    void OnSearch(wxCommandEvent& event);
+    void OnReset(wxCommandEvent& event);
 
+    void UpdateList();
+
+    wxTextCtrl*       m_search;
     wxListBox*        m_list;
     wxStyledTextCtrl* m_preview;
     wxSplitterWindow* m_splitter;
+
+    std::vector<int>  m_filteredIndices;
 };
 
 #endif

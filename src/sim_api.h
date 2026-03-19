@@ -107,6 +107,7 @@ typedef struct {
     const char *category;
     const char *summary;
     const char *processor;
+    const char *requires_device;
     const char *body;
 } sim_snippet_t;
 
