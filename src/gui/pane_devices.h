@@ -13,8 +13,13 @@ public:
 
 private:
     void UpdateProperties();
+    void OnPropertyChange(wxPropertyGridEvent& event);
+    void OnExpandAll(wxCommandEvent& event);
+    void OnCollapseAll(wxCommandEvent& event);
 
     wxPropertyGrid* m_pg;
+    wxStaticText*   m_msg;
+    int             m_lastDevCount;
 };
 
 #endif
