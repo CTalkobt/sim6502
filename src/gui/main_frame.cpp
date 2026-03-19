@@ -68,6 +68,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU(ID_VIEW_LAYOUT_SAVE, MainFrame::OnTogglePane)
     EVT_MENU(ID_VIEW_LAYOUT_RESET, MainFrame::OnTogglePane)
     EVT_MENU(ID_WINDOW_ARRANGE, MainFrame::OnWindowArrange)
+    EVT_AUI_PANE_CLOSE(MainFrame::OnPaneClose)
 wxEND_EVENT_TABLE()
 
 MainFrame::MainFrame(const wxString& title)
@@ -564,6 +565,19 @@ void MainFrame::OnTogglePane(wxCommandEvent& event) {
     }
 }
 
+void MainFrame::OnPaneClose(wxAuiManagerEvent& event) {
+    wxAuiPaneInfo* pane = event.GetPane();
+    if (pane) {
+        // Find the menu ID for this pane window
+        for (auto const& [menu_id, p] : m_panes) {
+            if (p == pane->window) {
+                CheckMenuItem(menu_id, false);
+                break;
+            }
+        }
+    }
+}
+
 void MainFrame::ApplyTheme() {
     bool is_dark = false;
     if (m_theme == 2) {
@@ -707,6 +721,7 @@ void MainFrame::NavigateDisassembly(uint16_t addr) {
             pd->ScrollTo(addr);
             // Ensure shown
             m_aui.GetPane(pd).Show(true);
+            CheckMenuItem(ID_VIEW_PANE_DISASSEMBLY, true);
             m_aui.Update();
             break;
         }
@@ -720,6 +735,13 @@ void MainFrame::NavigateMemory(uint16_t addr) {
             pm->ScrollTo(addr);
             // Ensure shown
             m_aui.GetPane(pm).Show(true);
+            // Find the correct memory menu ID
+            for (auto const& [menu_id, p] : m_panes) {
+                if (p == pm) {
+                    CheckMenuItem(menu_id, true);
+                    break;
+                }
+            }
             m_aui.Update();
             break;
         }
@@ -733,6 +755,7 @@ void MainFrame::AddWatch(uint16_t addr, const wxString& label) {
             pw->AddWatch(addr, label);
             // Ensure shown
             m_aui.GetPane(pw).Show(true);
+            CheckMenuItem(ID_VIEW_PANE_WATCHES, true);
             m_aui.Update();
             break;
         }

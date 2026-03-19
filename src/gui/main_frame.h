@@ -62,6 +62,7 @@ private:
     void OnGoToAddress(wxCommandEvent& event);
     void OnTogglePane(wxCommandEvent& event);
     void OnWindowArrange(wxCommandEvent& event);
+    void OnPaneClose(wxAuiManagerEvent& event);
 
     void OnTimer(wxTimerEvent& event);
     void OnQuit(wxCommandEvent& event);
