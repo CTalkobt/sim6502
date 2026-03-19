@@ -7,7 +7,9 @@
 struct Watch {
     wxString label;
     uint16_t address;
-    uint8_t  last_val;
+    uint32_t last_val;
+    int      width;     // 1, 2, or 4 bytes
+    bool     changed;
 };
 
 class PaneWatches : public SimPane {
@@ -19,12 +21,15 @@ public:
     void SaveState(wxConfigBase* cfg) override;
     void LoadState(wxConfigBase* cfg) override;
 
-    void AddWatch(uint16_t addr, const wxString& label = "");
+    void AddWatch(uint16_t addr, const wxString& label = "", int width = 1);
 
 private:
-    void OnAdd(wxCommandEvent& event);
-    void OnDelete(wxCommandEvent& event);
+    void OnAddTool(wxCommandEvent& event);
+    void OnDeleteTool(wxCommandEvent& event);
+    void OnClearAllTool(wxCommandEvent& event);
     void OnContextMenu(wxListEvent& event);
+    void OnEndLabelEdit(wxListEvent& event);
+    void OnKeyDown(wxListEvent& event);
 
     wxListCtrl* m_list;
     std::vector<Watch> m_watches;
