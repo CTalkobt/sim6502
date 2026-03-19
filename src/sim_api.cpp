@@ -943,11 +943,29 @@ int sim_sym_get_idx(sim_session_t *s, int idx, uint16_t *addr, char *name_buf, i
 const char *sim_sym_type_name(int type) {
     switch (type) {
     case SYM_LABEL: return "LABEL";
+    case SYM_VARIABLE: return "VAR";
+    case SYM_CONSTANT: return "CONST";
+    case SYM_FUNCTION: return "FUNC";
+    case SYM_IO_PORT: return "IO";
+    case SYM_MEMORY_REGION: return "REGION";
     case SYM_TRAP: return "TRAP";
+    case SYM_INSPECT: return "INSPECT";
+    case SYM_PROCESSOR: return "PROC";
     default: return "UNKNOWN";
     }
 }
-int sim_sym_remove_idx(sim_session_t *s, int idx) { (void)s; (void)idx; return 0; }
+int sim_sym_remove_idx(sim_session_t *s, int idx) {
+    if (!s) return 0;
+    return symbol_remove_idx(s->symbols, idx);
+}
+int sim_sym_rename(sim_session_t *s, int idx, const char *new_name) {
+    if (!s) return 0;
+    return symbol_rename(s->symbols, idx, new_name);
+}
+int sim_sym_set_addr(sim_session_t *s, int idx, uint16_t addr) {
+    if (!s) return 0;
+    return symbol_set_addr(s->symbols, idx, addr);
+}
 int sim_sym_add(sim_session_t *s, uint16_t addr, const char *name, const char *type_str) {
     if (!s || !name || !type_str) return 0;
     symbol_type_t type = SYM_LABEL;

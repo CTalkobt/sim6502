@@ -17,7 +17,6 @@ void PaneSIDDebugger::InitProperties() {
     
     for (int v = 0; v < 3; v++) {
         m_pg->Append(new wxPropertyCategory(wxString::Format("Voice %d", v+1)));
-        uint16_t base = 0xD400 + v * 7;
         m_pg->Append(new wxStringProperty("Freq Lo", wxString::Format("D4%02X", 0 + v*7), "00"));
         m_pg->Append(new wxStringProperty("Freq Hi", wxString::Format("D4%02X", 1 + v*7), "00"));
         m_pg->Append(new wxStringProperty("PW Lo",   wxString::Format("D4%02X", 2 + v*7), "00"));

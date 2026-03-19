@@ -59,6 +59,15 @@ const char *symbol_lookup_addr_name(const symbol_table_t *st, unsigned short add
 /* Get symbol info */
 symbol_t *symbol_get(const symbol_table_t *st, const char *name);
 
+/* Remove symbol by index */
+int symbol_remove_idx(symbol_table_t *st, int idx);
+
+/* Rename symbol at index */
+int symbol_rename(symbol_table_t *st, int idx, const char *new_name);
+
+/* Set address for symbol at index */
+int symbol_set_addr(symbol_table_t *st, int idx, unsigned short addr);
+
 /* Display symbol table */
 void symbol_display(const symbol_table_t *st);
 

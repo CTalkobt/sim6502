@@ -132,6 +132,8 @@ int sim_sym_count(sim_session_t *s);
 int sim_sym_get_idx(sim_session_t *s, int idx, uint16_t *addr, char *name_buf, int name_sz, int *type_out, char *comment_buf, int comment_sz);
 const char *sim_sym_type_name(int type);
 int sim_sym_remove_idx(sim_session_t *s, int idx);
+int sim_sym_rename(sim_session_t *s, int idx, const char *new_name);
+int sim_sym_set_addr(sim_session_t *s, int idx, uint16_t addr);
 int sim_sym_add(sim_session_t *s, uint16_t addr, const char *name, const char *type_str);
 int sim_sym_load_file(sim_session_t *s, const char *path);
 int sim_sym_save_file(sim_session_t *s, const char *path);
