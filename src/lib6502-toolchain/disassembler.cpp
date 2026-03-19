@@ -3,9 +3,13 @@
 #include <stdio.h>
 #include <string.h>
 
+extern int g_verbose;
+
 void dispatch_build(dispatch_table_t *dt,
 		const opcode_handler_t *handlers, int n, cpu_type_t cpu_type) {
-	fprintf(stderr, "[DEBUG] Building dispatch table for CPU type %d with %d handlers\n", (int)cpu_type, n);
+	if (g_verbose >= 3) {
+		fprintf(stderr, "[DEBUG] Building dispatch table for CPU type %d with %d handlers\n", (int)cpu_type, n);
+	}
 	for (int i = 0; i < n; i++) {
 		unsigned char olen = handlers[i].opcode_len;
 		if (olen == 0) continue;

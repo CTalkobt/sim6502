@@ -739,6 +739,24 @@ void MainFrame::AddWatch(uint16_t addr, const wxString& label) {
     }
 }
 
+void MainFrame::UpdatePaneCaption(SimPane* pane, const wxString& caption) {
+    if (pane) {
+        m_aui.GetPane(pane).Caption(caption);
+        m_aui.Update();
+
+        // Also update the menu item text if this pane has an associated menu ID
+        for (auto const& [menu_id, p] : m_panes) {
+            if (p == pane) {
+                wxMenuItem* item = GetMenuBar()->FindItem(menu_id);
+                if (item) {
+                    item->SetItemLabel(caption);
+                }
+                break;
+            }
+        }
+    }
+}
+
 void MainFrame::OnGoToAddress(wxCommandEvent& WXUNUSED(event)) {
     wxTextEntryDialog dlg(this, "Enter hex address:", "Go to Address", "");
     if (dlg.ShowModal() == wxID_OK) {

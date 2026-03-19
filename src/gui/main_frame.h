@@ -23,6 +23,7 @@ public:
     void NavigateDisassembly(uint16_t addr);
     void NavigateMemory(uint16_t addr);
     void AddWatch(uint16_t addr, const wxString& label = "");
+    void UpdatePaneCaption(SimPane* pane, const wxString& caption);
 
 private:
     void InitMenuBar();
