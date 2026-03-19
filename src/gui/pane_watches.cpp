@@ -67,6 +67,15 @@ void PaneWatches::LoadState(wxConfigBase* cfg) {
     }
 }
 
+void PaneWatches::AddWatch(uint16_t addr, const wxString& label) {
+    Watch w;
+    w.address = addr;
+    w.label = label.IsEmpty() ? wxString::Format("Watch at %04X", addr) : label;
+    w.last_val = sim_mem_read_byte(m_sim, addr);
+    m_watches.push_back(w);
+    RefreshPane(SimSnapshot{});
+}
+
 void PaneWatches::OnContextMenu(wxListEvent& WXUNUSED(event)) {
     wxMenu menu;
     menu.Append(301, "Add Watch...");

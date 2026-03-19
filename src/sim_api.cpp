@@ -675,15 +675,27 @@ void sim_clear_cycles(sim_session_t *s) {
     }
 }
 
-int sim_disassemble_one(sim_session_t *s, uint16_t addr, char *buf, size_t len) {
-    if (!s || !buf || len == 0) return 1;
-    return disasm_one(s->mem, s->cpu->dispatch_table(), s->cpu_type, addr, buf, (int)len);
+int sim_disassemble_entry(sim_session_t *s, uint16_t addr, sim_disasm_entry_t *out) {
+    if (!s || !out) return -1;
+
+    disasm_entry_t internal_entry;
+    int res = disasm_one_entry(s->mem, s->cpu->dispatch_table(), s->cpu_type, addr, &internal_entry);
+
+    out->address = internal_entry.address;
+    out->size = internal_entry.size;
+    strncpy(out->bytes, internal_entry.bytes, sizeof(out->bytes));
+    strncpy(out->mnemonic, internal_entry.mnemonic, sizeof(out->mnemonic));
+    strncpy(out->operand, internal_entry.operand, sizeof(out->operand));
+    out->cycles = internal_entry.cycles;
+    out->target_addr = internal_entry.target_addr;
+    out->has_target = internal_entry.has_target;
+
+    return (res > 0) ? 0 : -1;
 }
 
-int sim_disassemble_entry(sim_session_t *s, uint16_t addr, sim_disasm_entry_t *out) {
-    if (!s || !out) return 1;
-    // We can cast because they are binary compatible (or should be)
-    return disasm_one_entry(s->mem, s->cpu->dispatch_table(), s->cpu_type, addr, (disasm_entry_t*)out);
+int sim_disassemble_one(sim_session_t *s, uint16_t addr, char *buf, size_t len) {
+    if (!s) return 0;
+    return disasm_one(s->mem, s->cpu->dispatch_table(), s->cpu_type, addr, buf, (int)len);
 }
 
 cpu_t          *sim_get_cpu(sim_session_t *s)    { return s ? s->cpu : NULL; }

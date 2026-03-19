@@ -19,6 +19,8 @@ public:
     void SaveState(wxConfigBase* cfg) override;
     void LoadState(wxConfigBase* cfg) override;
 
+    void AddWatch(uint16_t addr, const wxString& label = "");
+
 private:
     void OnAdd(wxCommandEvent& event);
     void OnDelete(wxCommandEvent& event);

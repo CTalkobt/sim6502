@@ -177,6 +177,8 @@ int disasm_one_entry(const memory_t *mem, const dispatch_table_t *dt,
 
     out->address = addr;
     out->cycles  = e ? e->cycles : 0;
+    out->target_addr = 0;
+    out->has_target  = false;
 
     if (!e) {
         snprintf(out->bytes,    sizeof(out->bytes),    "%02X", b0);
@@ -216,60 +218,78 @@ int disasm_one_entry(const memory_t *mem, const dispatch_table_t *dt,
         break;
     case MODE_ZP:
         snprintf(out->operand, sizeof(out->operand), "$%02X", op1);
+        out->target_addr = op1; out->has_target = true;
         break;
     case MODE_ZP_X:
         snprintf(out->operand, sizeof(out->operand), "$%02X,X", op1);
+        out->target_addr = op1; out->has_target = true;
         break;
     case MODE_ZP_Y:
         snprintf(out->operand, sizeof(out->operand), "$%02X,Y", op1);
+        out->target_addr = op1; out->has_target = true;
         break;
     case MODE_ABSOLUTE:
         snprintf(out->operand, sizeof(out->operand), "$%04X", operand);
+        out->target_addr = operand; out->has_target = true;
         break;
     case MODE_ABSOLUTE_X:
         snprintf(out->operand, sizeof(out->operand), "$%04X,X", operand);
+        out->target_addr = operand; out->has_target = true;
         break;
     case MODE_ABSOLUTE_Y:
         snprintf(out->operand, sizeof(out->operand), "$%04X,Y", operand);
+        out->target_addr = operand; out->has_target = true;
         break;
     case MODE_INDIRECT:
         snprintf(out->operand, sizeof(out->operand), "($%04X)", operand);
+        out->target_addr = operand; out->has_target = true;
         break;
     case MODE_INDIRECT_X:
         snprintf(out->operand, sizeof(out->operand), "($%02X,X)", op1);
+        out->target_addr = op1; out->has_target = true;
         break;
     case MODE_INDIRECT_Y:
         snprintf(out->operand, sizeof(out->operand), "($%02X),Y", op1);
+        out->target_addr = op1; out->has_target = true;
         break;
     case MODE_ZP_INDIRECT:
         snprintf(out->operand, sizeof(out->operand), "($%02X)", op1);
+        out->target_addr = op1; out->has_target = true;
         break;
     case MODE_ABS_INDIRECT_Y:
         snprintf(out->operand, sizeof(out->operand), "($%04X),Y", operand);
+        out->target_addr = operand; out->has_target = true;
         break;
     case MODE_ZP_INDIRECT_Z:
         snprintf(out->operand, sizeof(out->operand), "($%02X),Z", op1);
+        out->target_addr = op1; out->has_target = true;
         break;
     case MODE_SP_INDIRECT_Y:
         snprintf(out->operand, sizeof(out->operand), "($%02X,SP),Y", op1);
+        out->target_addr = op1; out->has_target = true;
         break;
     case MODE_ABS_INDIRECT_X:
         snprintf(out->operand, sizeof(out->operand), "($%04X,X)", operand);
+        out->target_addr = operand; out->has_target = true;
         break;
     case MODE_ZP_INDIRECT_FLAT:
         snprintf(out->operand, sizeof(out->operand), "[$%02X]", op1);
+        out->target_addr = op1; out->has_target = true;
         break;
     case MODE_ZP_INDIRECT_Z_FLAT:
         snprintf(out->operand, sizeof(out->operand), "[$%02X],Z", op1);
+        out->target_addr = op1; out->has_target = true;
         break;
     case MODE_RELATIVE: {
         int target = (int)(addr + prefix_len) + instr_len + (signed char)op1;
         snprintf(out->operand, sizeof(out->operand), "$%04X", (unsigned short)target);
+        out->target_addr = (uint16_t)target; out->has_target = true;
         break;
     }
     case MODE_RELATIVE_LONG: {
         int target = (int)(addr + prefix_len) + instr_len + (short)operand;
         snprintf(out->operand, sizeof(out->operand), "$%04X", (unsigned short)target);
+        out->target_addr = (uint16_t)target; out->has_target = true;
         break;
     }
     default:

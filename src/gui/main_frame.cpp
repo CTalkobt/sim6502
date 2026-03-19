@@ -705,6 +705,35 @@ void MainFrame::NavigateDisassembly(uint16_t addr) {
         PaneDisassembly* pd = dynamic_cast<PaneDisassembly*>(pane);
         if (pd) {
             pd->ScrollTo(addr);
+            // Ensure shown
+            m_aui.GetPane(pd).Show(true);
+            m_aui.Update();
+            break;
+        }
+    }
+}
+
+void MainFrame::NavigateMemory(uint16_t addr) {
+    for (auto pane : m_pane_list) {
+        PaneMemory* pm = dynamic_cast<PaneMemory*>(pane);
+        if (pm) {
+            pm->ScrollTo(addr);
+            // Ensure shown
+            m_aui.GetPane(pm).Show(true);
+            m_aui.Update();
+            break;
+        }
+    }
+}
+
+void MainFrame::AddWatch(uint16_t addr, const wxString& label) {
+    for (auto pane : m_pane_list) {
+        PaneWatches* pw = dynamic_cast<PaneWatches*>(pane);
+        if (pw) {
+            pw->AddWatch(addr, label);
+            // Ensure shown
+            m_aui.GetPane(pw).Show(true);
+            m_aui.Update();
             break;
         }
     }

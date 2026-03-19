@@ -68,6 +68,8 @@ typedef struct {
     char           mnemonic[8];
     char           operand[32]; /* e.g. "#$42", "$0300,X", "" for implied */
     int            cycles;
+    uint32_t       target_addr; /* resolved memory address if applicable */
+    bool           has_target;  /* true if target_addr is a valid memory address */
 } sim_disasm_entry_t;
 
 int sim_disassemble_one(sim_session_t *s, uint16_t addr, char *buf, size_t len);

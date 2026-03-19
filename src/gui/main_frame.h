@@ -21,6 +21,8 @@ public:
     void ApplySpeedScale(float scale);
     void ApplyDebug();
     void NavigateDisassembly(uint16_t addr);
+    void NavigateMemory(uint16_t addr);
+    void AddWatch(uint16_t addr, const wxString& label = "");
 
 private:
     void InitMenuBar();

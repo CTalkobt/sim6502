@@ -31,6 +31,8 @@ typedef struct {
     char           mnemonic[8];
     char           operand[32]; /* e.g. "#$42", "$0300,X", "" for implied */
     int            cycles;
+    uint32_t       target_addr;
+    bool           has_target;
 } disasm_entry_t;
 
 /*
