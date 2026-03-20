@@ -341,17 +341,15 @@ Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx
   The Makefile now builds the wxWidgets frontend as the primary `sim6502-gui` target.
 
 ---
-## Milestone 1.6: GUI Ease of Use, Minor Bug Fixes
+## [X] Milestone 1.6: GUI Ease of Use, Minor Bug Fixes
 **Goal:** Changes for the GUI interactions focused on ease of use. Minor bug fixes. 
 **Theme:** Advanced UI & Refinement. 
 
 - [X] **Memory Integrity:** Fix `far_pages` memory leaks during reloads and ensure correct `load_size` calculation for assembly programs.
 - [X] **Interactive Graphics Editors:** Implement the interactive bitmap editor for the VIC-II Sprite pane (1bpp/2bpp modes) and create the new VIC-II Character Set Editor pane.
-- [ ] **Time Machine UI:** Add the timeline slider and history table to the Execution History pane, including the "Rewind to Breakpoint" (reverse-continue) feature.
 - [X] **Register Editing:** Replace modal dialogs with inline hex editing for registers.
-- [ ] **Memory View Refinement:** Add "Follow PC/SP" toggles, write-access highlighting, and inline cell editing.
-- [ ] **VIC Screen Polish:** Implement scale controls (1x/2x/3x), freeze-frame toggle, and mode/address status indicators.
-- [ ] **UX & Navigation:** Complete the "Go To Address" disassembly scrolling and ensure robust layout persistence for multi-instance panes.
+- [X] **Memory View Refinement:** Add "Follow PC/SP" toggles, write-access highlighting, and inline cell editing.
+- [X] **UX & Navigation:** Complete the "Go To Address" disassembly scrolling and ensure robust layout persistence for multi-instance panes.
 
 ---
 
@@ -359,6 +357,8 @@ Replace all ImGui `BeginPopupModal()` and `imgui_filedlg.h` usage with native wx
 **Goal:** Streamline the simulator setup by importing system ROMs from established emulators and centralizing user preferences.
 **Theme:** System Integration & Configuration management.
 
+- [ ] **Time Machine UI:** Add the timeline slider and history table to the Execution History pane, including the "Rewind to Breakpoint" (reverse-continue) feature.
+- [ ] **VIC Screen Polish:** Implement scale controls (1x/2x/3x), freeze-frame toggle, and mode/address status indicators.
 - [ ] **Unified Settings Dialog:**
   - [ ] Implement a multi-pane `SettingsDialog` (using `wxTreebook` or similar) to replace scattered configuration menus.
   - [ ]**Panes:** 
