@@ -72,6 +72,87 @@ bool source_map_load_acme_list(source_map_t *sm, symbol_table_t *st, const char 
     return true;
 }
 
+/*
+ * Parse a KickAssembler C64debugger XML dump (generated with -debugdump).
+ * Format excerpt:
+ *   <Sources values="INDEX,FILE">
+ *       0,KickAss.jar:/include/autoinclude.asm
+ *       1,/path/to/source.asm
+ *   </Sources>
+ *   <Segment ...>
+ *     <Block ...>
+ *       $START,$END,FILE_IDX,LINE1,COL1,LINE2,COL2
+ *     </Block>
+ *   </Segment>
+ *
+ * We record one entry per block line using (START, FILE_IDX→path, LINE1).
+ * Paths ending in ".asm.tmp" are rewritten to ".asm" so preprocessed sources
+ * resolve back to the user-visible file.
+ */
+bool source_map_load_kickass_dbg(source_map_t *sm, const char *filename) {
+    FILE *f = fopen(filename, "r");
+    if (!f) return false;
+
+#define KA_MAX_SOURCES 64
+    char sources[KA_MAX_SOURCES][MAX_SOURCE_PATH];
+    int  num_sources = 0;
+    memset(sources, 0, sizeof(sources));
+
+    char line[1024];
+    bool in_sources = false;
+    bool in_block   = false;
+
+    while (fgets(line, sizeof(line), f)) {
+        /* Trim leading whitespace for simpler comparisons */
+        char *p = line;
+        while (isspace((unsigned char)*p)) p++;
+
+        if (strstr(p, "<Sources")) { in_sources = true;  continue; }
+        if (strstr(p, "</Sources")){ in_sources = false; continue; }
+
+        if (in_sources) {
+            int idx;
+            char path[MAX_SOURCE_PATH];
+            if (sscanf(p, "%d,%255s", &idx, path) == 2) {
+                if (idx >= 0 && idx < KA_MAX_SOURCES) {
+                    /* Rewrite .asm.tmp → .asm (pseudoop preprocessing artifact) */
+                    int plen = (int)strlen(path);
+                    if (plen > 8 && strcmp(path + plen - 8, ".asm.tmp") == 0)
+                        path[plen - 4] = '\0'; /* strip ".tmp" */
+                    strncpy(sources[idx], path, MAX_SOURCE_PATH - 1);
+                    if (idx + 1 > num_sources) num_sources = idx + 1;
+                }
+            }
+            continue;
+        }
+
+        if (strstr(p, "<Block"))  { in_block = true;  continue; }
+        if (strstr(p, "</Block")) { in_block = false; continue; }
+
+        if (in_block) {
+            unsigned int start_addr, end_addr;
+            int file_idx, line1, col1, line2, col2;
+            if (sscanf(p, "$%x,$%x,%d,%d,%d,%d,%d",
+                       &start_addr, &end_addr,
+                       &file_idx, &line1, &col1, &line2, &col2) == 7) {
+                if (sm->count < MAX_SOURCE_LINES &&
+                    file_idx >= 0 && file_idx < num_sources &&
+                    sources[file_idx][0] != '\0') {
+                    sm->lines[sm->count].address     = start_addr;
+                    sm->lines[sm->count].line_number = line1;
+                    strncpy(sm->lines[sm->count].source_path,
+                            sources[file_idx], MAX_SOURCE_PATH - 1);
+                    sm->count++;
+                }
+            }
+        }
+    }
+
+    fclose(f);
+    return sm->count > 0;
+#undef KA_MAX_SOURCES
+}
+
 bool source_map_lookup_addr(const source_map_t *sm, uint32_t addr, char *path, int *line) {
     /* Simple linear search for now, could be optimized with binary search if sm->lines is sorted by address */
     for (int i = 0; i < sm->count; i++) {

@@ -378,6 +378,15 @@ void MainFrame::OnClearCycles(wxCommandEvent& WXUNUSED(event)) {
 }
 
 void MainFrame::OnToggleBreakpoint(wxCommandEvent& WXUNUSED(event)) {
+    if (!m_sim) return;
+    const CPU *cpu = sim_get_cpu(m_sim);
+    if (!cpu) return;
+    uint16_t addr = cpu->pc;
+    if (sim_has_breakpoint(m_sim, addr))
+        sim_break_clear(m_sim, addr);
+    else
+        sim_break_set(m_sim, addr, nullptr);
+    UpdateStatus();
 }
 
 void MainFrame::OnStepBack(wxCommandEvent& WXUNUSED(event)) {
@@ -395,6 +404,17 @@ void MainFrame::OnStepForward(wxCommandEvent& WXUNUSED(event)) {
 }
 
 void MainFrame::OnReverseContinue(wxCommandEvent& WXUNUSED(event)) {
+    if (!m_sim) return;
+    if (!sim_history_is_enabled(m_sim) || sim_history_count(m_sim) == 0) return;
+    m_running = false;
+    // Step back at least once before checking breakpoints so we don't
+    // stop immediately on a breakpoint at the current PC.
+    while (sim_history_step_back(m_sim)) {
+        const CPU *cpu = sim_get_cpu(m_sim);
+        if (cpu && sim_has_breakpoint(m_sim, cpu->pc))
+            break;
+    }
+    UpdateStatus();
 }
 
 void MainFrame::OnLoad(wxCommandEvent& WXUNUSED(event)) {
@@ -697,7 +717,8 @@ void MainFrame::SaveSettings() {
         for (int i = 0; i < bpCount; i++) {
             uint16_t addr;
             char cond[128];
-            if (sim_break_get(m_sim, i, &addr, cond, sizeof(cond)) == 0) {
+            cond[0] = '\0';
+            if (sim_break_get(m_sim, i, &addr, cond, sizeof(cond)) != 0) {
                 cfg->Write(wxString::Format("Breakpoints/Addr_%d", i), (int)addr);
                 cfg->Write(wxString::Format("Breakpoints/Cond_%d", i), wxString(cond));
                 cfg->Write(wxString::Format("Breakpoints/Enabled_%d", i),
@@ -732,10 +753,9 @@ void MainFrame::NavigateMemory(uint16_t addr) {
     for (auto pane : m_pane_list) {
         PaneMemory* pm = dynamic_cast<PaneMemory*>(pane);
         if (pm) {
-            pm->ScrollTo(addr);
-            // Ensure shown
+            // Show and lay out the pane first so EnsureVisible works on a
+            // visible list; calling ScrollTo on a hidden pane is a no-op.
             m_aui.GetPane(pm).Show(true);
-            // Find the correct memory menu ID
             for (auto const& [menu_id, p] : m_panes) {
                 if (p == pm) {
                     CheckMenuItem(menu_id, true);
@@ -743,6 +763,9 @@ void MainFrame::NavigateMemory(uint16_t addr) {
                 }
             }
             m_aui.Update();
+            // Defer scroll until after AUI has finished laying out the pane;
+            // EnsureVisible on a freshly-shown list gives the wrong offset otherwise.
+            pm->CallAfter([pm, addr]() { pm->ScrollTo(addr); });
             break;
         }
     }

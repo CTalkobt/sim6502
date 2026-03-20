@@ -3,6 +3,10 @@
 
 #include "pane_base.h"
 #include <wx/stc/stc.h>
+#include <wx/toolbar.h>
+#include <wx/textctrl.h>
+#include <wx/panel.h>
+#include <wx/stattext.h>
 
 class PaneSource : public SimPane {
 public:
@@ -15,11 +19,27 @@ public:
 
 private:
     void SetupStyles();
+    void ShowFindBar(bool show);
+    void DoFind(bool forward);
+
     void OnMarginClick(wxStyledTextEvent& event);
+    void OnReload(wxCommandEvent& event);
+    void OnKeyDown(wxKeyEvent& event);
+    void OnFindKeyDown(wxKeyEvent& event);
+    void OnFindNext(wxCommandEvent& event);
+    void OnFindPrev(wxCommandEvent& event);
+    void OnFindClose(wxCommandEvent& event);
+    void OnContextMenu(wxContextMenuEvent& event);
+    void OnNavDisasm(wxCommandEvent& event);
+    void OnNavMemory(wxCommandEvent& event);
 
     wxStyledTextCtrl* m_stc;
+    wxStaticText*     m_titleLabel;
+    wxPanel*          m_findPanel;
+    wxTextCtrl*       m_findCtrl;
     wxString          m_loadedPath;
     int               m_currentLine;
+    int               m_contextMenuLine;
 };
 
 #endif

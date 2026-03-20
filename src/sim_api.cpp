@@ -292,6 +292,7 @@ static void machine_init_hardware(sim_session_t *s) {
             mega65_io_register(s->mem);
             sid_io_register(s->mem, s->machine_type, s->dynamic_handlers);
             cia_io_register(s->mem, s->dynamic_handlers);
+            s->mem->io_registry->rebuild_map(s->mem);
             sim_init_vic2_defaults(s);
             sim_load_default_charset(s);
             break;
@@ -597,16 +598,17 @@ int sim_step_over(sim_session_t *s) {
         char dummy[128];
         int instr_bytes = disasm_one(s->mem, s->cpu->dispatch_table(), s->cpu_type, s->cpu->pc, dummy, sizeof(dummy));
         uint16_t next_pc = (uint16_t)(s->cpu->pc + instr_bytes);
-        sim_break_set(s, next_pc, NULL);
-        
+        bool added_bp = !sim_has_breakpoint(s, next_pc);
+        if (added_bp) sim_break_set(s, next_pc, NULL);
+
         while (1) {
             int ev = sim_step(s, 1);
             if (ev != 0) {
-                sim_break_clear(s, next_pc);
+                if (added_bp) sim_break_clear(s, next_pc);
                 return ev;
             }
             if (s->cpu->pc == next_pc) {
-                sim_break_clear(s, next_pc);
+                if (added_bp) sim_break_clear(s, next_pc);
                 return 0;
             }
         }

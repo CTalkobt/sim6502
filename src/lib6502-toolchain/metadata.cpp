@@ -252,9 +252,7 @@ static int preprocess_asm_pseudoops(const char *asm_path, const char *tmp_path) 
         char *p = line;
         while (*p == ' ' || *p == '\t') p++;
         const char *kw; int kw_len;
-        char cpu_name[32];
         if (detect_pseudoop(p, &kw, &kw_len)) count++;
-        else if (detect_native_cpu_directive(p, cpu_name, sizeof(cpu_name))) count++;
     }
     if (count == 0) { fclose(in); return 0; }
 
@@ -267,7 +265,6 @@ static int preprocess_asm_pseudoops(const char *asm_path, const char *tmp_path) 
         char *p = line;
         while (*p == ' ' || *p == '\t') p++;
         const char *kw; int kw_len;
-        char cpu_name[32];
 
         if (detect_pseudoop(p, &kw, &kw_len)) {
             char *arg = (char *)kw + kw_len;
@@ -289,11 +286,6 @@ static int preprocess_asm_pseudoops(const char *asm_path, const char *tmp_path) 
             } else if (strncmp(kw, ".machine", 8) == 0) {
                 fprintf(out, "    .print \"SIM_MACHINE:%s\"\n", clean);
             }
-        } else if (detect_native_cpu_directive(p, cpu_name, sizeof(cpu_name))) {
-            /* Keep the original .cpu / .processor line for KickAssembler, then
-             * inject a SIM_CPU print so the metadata pipeline captures the type. */
-            fputs(line, out);
-            fprintf(out, "    .print \"SIM_CPU:%s\"\n", cpu_name);
         } else {
             fputs(line, out);
         }
@@ -350,11 +342,15 @@ bool load_toolchain_bundle(memory_t *mem, symbol_table_t *st, source_map_t *sm, 
     int load_addr = 0x0801;
     int n = -1;
 
+    char asm_path[512], prg_path[512], dbg_path[512];
+    snprintf(asm_path, sizeof(asm_path), "%s.asm", base_path);
+    snprintf(prg_path, sizeof(prg_path), "%s.prg", base_path);
+    snprintf(dbg_path, sizeof(dbg_path), "%s.dbg", base_path);
+
     /* Try .prg first (silently — not finding it is expected when only .asm exists) */
-    snprintf(path, sizeof(path), "%s.prg", base_path);
-    LOG_V2("DEBUG: Attempting to load PRG: %s\n", path);
-    if (file_exists(path)) {
-        n = load_prg(mem, path, &load_addr);
+    LOG_V2("DEBUG: Attempting to load PRG: %s\n", prg_path);
+    if (file_exists(prg_path)) {
+        n = load_prg(mem, prg_path, &load_addr);
         LOG_V2("DEBUG: load_prg returned %d\n", n);
     }
     if (out_load_addr) *out_load_addr = load_addr;
@@ -366,70 +362,90 @@ bool load_toolchain_bundle(memory_t *mem, symbol_table_t *st, source_map_t *sm, 
             n = load_binary(mem, 0x0801, path);
     }
 
-    if (n < 0) {
-        /* Try assembling .asm with KickAssembler when no pre-built binary exists.
-         * The jar is resolved relative to CWD (project root when running sim6502/sim6502-gui).
-         *
-         * Simulator pseudo-ops (.inspect, .trap) are preprocessed: each is replaced with a
-         * KickAssembler .print statement that emits the current PC to stdout.  After assembly
-         * we parse that output to register the pseudo-op addresses as SYM_INSPECT/SYM_TRAP
-         * symbols, without KickAssembler ever needing to understand them. */
-        char asm_path[512], prg_path[512];
-        snprintf(asm_path, sizeof(asm_path), "%s.asm", base_path);
-        snprintf(prg_path, sizeof(prg_path), "%s.prg", base_path);
+    /* Assemble when: (a) no binary was found yet, OR (b) .asm exists but .dbg is
+     * missing (debug info needed for source-level navigation even if .prg is cached).
+     * The jar is resolved relative to CWD (project root when running sim6502/sim6502-gui).
+     *
+     * Simulator pseudo-ops (.inspect, .trap) are preprocessed: each is replaced with a
+     * KickAssembler .print statement that emits the current PC to stdout.  After assembly
+     * we parse that output to register the pseudo-op addresses as SYM_INSPECT/SYM_TRAP
+     * symbols, without KickAssembler ever needing to understand them. */
+    bool need_assemble = (n < 0) || (file_exists(asm_path) && !file_exists(dbg_path));
 
-        if (file_exists(asm_path)) {
-            /* Preprocess for simulator pseudo-ops */
-            char tmp_asm[512], tmp_out[512], tmp_sym[512];
-            snprintf(tmp_asm, sizeof(tmp_asm), "%s.asm.tmp",     base_path);
-            snprintf(tmp_out, sizeof(tmp_out), "%s.asm.tmp.out", base_path);
-            /* KickAssembler derives the .sym name by stripping the last extension
-             * from its input path, so "base.asm.tmp" → sym at "base.asm.sym". */
-            snprintf(tmp_sym, sizeof(tmp_sym), "%s.asm.sym", base_path);
+    if (need_assemble && file_exists(asm_path)) {
+        /* Preprocess for simulator pseudo-ops */
+        char tmp_asm[512], tmp_out[512], tmp_sym[512];
+        snprintf(tmp_asm, sizeof(tmp_asm), "%s.asm.tmp",     base_path);
+        snprintf(tmp_out, sizeof(tmp_out), "%s.asm.tmp.out", base_path);
+        /* KickAssembler derives the .sym name by stripping the last extension
+         * from its input path, so "base.asm.tmp" → sym at "base.asm.sym". */
+        snprintf(tmp_sym, sizeof(tmp_sym), "%s.asm.sym", base_path);
 
-            int has_pseudoops = preprocess_asm_pseudoops(asm_path, tmp_asm);
-            const char *src = has_pseudoops ? tmp_asm : asm_path;
+        int has_pseudoops = preprocess_asm_pseudoops(asm_path, tmp_asm);
+        const char *src = has_pseudoops ? tmp_asm : asm_path;
 
-            char cmd[2048];
-            snprintf(cmd, sizeof(cmd),
-                     "java -jar tools/KickAss65CE02.jar \"%s\" -symbolfile -o \"%s\" > \"%s\" 2>&1",
-                     src, prg_path, tmp_out);
-            LOG_V2("DEBUG: Invoking assembler: %s\n", cmd);
-            int rc = system(cmd);
+        char cmd[2048];
+        snprintf(cmd, sizeof(cmd),
+                 "java -jar tools/KickAss65CE02.jar \"%s\" -symbolfile -debugdump -o \"%s\" > \"%s\" 2>&1",
+                 src, prg_path, tmp_out);
+        LOG_V2("DEBUG: Invoking assembler: %s\n", cmd);
+        int rc = system(cmd);
 
-            if (rc == 0 && file_exists(prg_path)) {
+        if (rc == 0 && file_exists(prg_path)) {
+            if (n < 0) {
                 n = load_prg(mem, prg_path, &load_addr);
                 if (out_load_addr) *out_load_addr = load_addr;
-                if (has_pseudoops && st) apply_pseudoop_output(st, tmp_out);
-                /* KickAssembler writes .sym next to its input file.  When using a temp
-                 * file rename the result so normal .sym loading below finds it. */
-                if (has_pseudoops && file_exists(tmp_sym)) {
-                    char sym_dest[512];
-                    snprintf(sym_dest, sizeof(sym_dest), "%s.sym", base_path);
-                    rename(tmp_sym, sym_dest);
-                }
-            } else {
-                fprintf(stderr, "Error: assembly of '%s' failed (rc=%d)\n", asm_path, rc);
-                FILE *ef = fopen(tmp_out, "r");
-                if (ef) {
-                    char ebuf[512];
-                    while (fgets(ebuf, sizeof(ebuf), ef)) {
-                        fprintf(stderr, "  %s", ebuf);
-                        if (err_msg && err_sz > 0) {
-                            int len = (int)strlen(err_msg);
-                            if (len + (int)strlen(ebuf) < err_sz - 1)
-                                strcat(err_msg, ebuf);
-                        }
-                    }
-                    fclose(ef);
-                }
             }
-            if (has_pseudoops) remove(tmp_asm);
-            remove(tmp_out);
+            if (has_pseudoops && st) apply_pseudoop_output(st, tmp_out);
+            /* KickAssembler writes .sym next to its input file.  When using a temp
+             * file rename the result so normal .sym loading below finds it. */
+            if (has_pseudoops && file_exists(tmp_sym)) {
+                char sym_dest[512];
+                snprintf(sym_dest, sizeof(sym_dest), "%s.sym", base_path);
+                rename(tmp_sym, sym_dest);
+            }
+        } else if (n < 0) {
+            /* Assembly failed and we have no pre-loaded binary to fall back on. */
+            fprintf(stderr, "Error: assembly of '%s' failed (rc=%d)\n", asm_path, rc);
+            FILE *ef = fopen(tmp_out, "r");
+            if (ef) {
+                char ebuf[512];
+                while (fgets(ebuf, sizeof(ebuf), ef)) {
+                    fprintf(stderr, "  %s", ebuf);
+                    if (err_msg && err_sz > 0) {
+                        int len = (int)strlen(err_msg);
+                        if (len + (int)strlen(ebuf) < err_sz - 1)
+                            strcat(err_msg, ebuf);
+                    }
+                }
+                fclose(ef);
+            }
         }
+        if (has_pseudoops) remove(tmp_asm);
+        remove(tmp_out);
     }
 
     if (n < 0) return false;
+
+    /* Detect CPU / machine type directly from the .asm source (avoids the need to
+     * inject extra .print lines into the preprocessed temp file, which would shift
+     * .dbg line numbers).  We only need the FIRST .cpu/.processor directive. */
+    if (st && file_exists(asm_path)) {
+        FILE *af = fopen(asm_path, "r");
+        if (af) {
+            char aline[512];
+            char cpu_name[32];
+            while (fgets(aline, sizeof(aline), af)) {
+                char *p = aline;
+                while (*p == ' ' || *p == '\t') p++;
+                if (detect_native_cpu_directive(p, cpu_name, sizeof(cpu_name))) {
+                    symbol_add(st, "sim_cpu", 0, SYM_PROCESSOR, cpu_name);
+                    break;
+                }
+            }
+            fclose(af);
+        }
+    }
 
     load_companion_files(st, sm, base_path);
     return true;
@@ -437,6 +453,10 @@ bool load_toolchain_bundle(memory_t *mem, symbol_table_t *st, source_map_t *sm, 
 
 void load_companion_files(symbol_table_t *st, source_map_t *sm, const char *base_path) {
     char path[512];
+
+    /* Try .dbg (KickAssembler C64debugger debug dump - address/line/file map) */
+    snprintf(path, sizeof(path), "%s.dbg", base_path);
+    if (sm) source_map_load_kickass_dbg(sm, path);
 
     /* Try .list (ACME-format source map) */
     snprintf(path, sizeof(path), "%s.list", base_path);

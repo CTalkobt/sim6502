@@ -25,6 +25,7 @@ extern "C" {
 
 void source_map_init(source_map_t *sm);
 bool source_map_load_acme_list(source_map_t *sm, symbol_table_t *st, const char *filename);
+bool source_map_load_kickass_dbg(source_map_t *sm, const char *filename);
 bool source_map_lookup_addr(const source_map_t *sm, uint32_t addr, char *path, int *line);
 bool source_map_lookup_line(const source_map_t *sm, const char *path, int line, uint32_t *addr);
 
