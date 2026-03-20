@@ -4,6 +4,7 @@
 #include "vic2.h"
 #include "memory.h"
 #include "io_registry.h"
+#include "sim_api.h"
 #include <cstring>
 #include <vector>
 #include <stdlib.h>
@@ -80,6 +81,33 @@ TEST_CASE("Devices - SID", "[devices][sid]") {
         mem_write(&mem, 0xD404, 0x11); // Triangle + Gate
         CHECK(mem_read(&mem, 0xD404) == 0x11);
     }
+}
+
+TEST_CASE("Devices - MEGA65 io_handler flat map", "[devices][mega65]") {
+    // Bug fix: SID and CIA were registered after mega65_io_register() called
+    // rebuild_map() internally, so they were absent from the flat io_handlers[]
+    // lookup table. Writes to $D400 (SID) and $DC00 (CIA) would bypass handlers.
+    sim_session_t *s = sim_create("45gs02"); // implies MACHINE_MEGA65
+    REQUIRE(s != nullptr);
+
+    const memory_t *mem = sim_get_memory(s);
+    REQUIRE(mem != nullptr);
+
+    SECTION("SID handler present in flat map ($D400-$D41F)") {
+        CHECK(mem->io_handlers[0xD400] != nullptr);
+        CHECK(mem->io_handlers[0xD41F] != nullptr);
+    }
+
+    SECTION("CIA handler present in flat map ($DC00)") {
+        CHECK(mem->io_handlers[0xDC00] != nullptr);
+    }
+
+    SECTION("Math coprocessor still present after rebuild ($D770)") {
+        // Verify mega65_io_register entries were not clobbered by the second rebuild
+        CHECK(mem->io_handlers[0xD770] != nullptr);
+    }
+
+    sim_destroy(s);
 }
 
 TEST_CASE("Devices - SID TODO", "[devices][sid][todo][.]") {
