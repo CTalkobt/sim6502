@@ -129,17 +129,25 @@ Displays a scrolling stream of disassembled instructions centred on the current 
 - **Symbol labels**: Labels from the loaded symbol table appear next to their addresses.
 - **Cycle counts**: The base cycle count for each instruction is shown according to the active processor variant.
 - **Address bar**: Type a hex address in the toolbar search field and press Enter to jump the disassembly view to that address (disables PC-follow mode).
+- **Right-click context menu**: Right-click any instruction row for: **Set PC to `$XXXX`** (redirect execution to that address), **Go to address in Memory View**, **Add Watch at `$XXXX`**, and (when the instruction targets a memory operand) **Add Watch at Operand**.
 
 ---
 
 ### Memory Views (1–4)
 
-Up to four independent hex + ASCII dump windows, each showing a configurable memory region.
+Up to four independent hex + ASCII/PETSCII dump windows, each showing a configurable memory region.
+
+**Toolbar:**
+- **Page Up / Page Down**: Scroll by one page of visible rows.
+- **Follow** dropdown: Continuously center the view on **None**, **PC**, **SP**, or **Word Ptr** (follows the 16-bit value stored at a user-specified pointer address).
+- **Charset** dropdown: Display the text column as **ASCII** or **PETSCII**.
+- **Rename**: Set a custom title for this memory view (e.g., "Zero Page", "Stack").
 
 **Features:**
 - Open each view independently from **View > Core > Memory Views**.
-- Scroll with the mouse wheel or scrollbar; Page Up/Down moves by 256 bytes.
-- Each view maintains its own scroll position independently.
+- Scroll with the mouse wheel or scrollbar.
+- **Inline editing**: Double-click a row to open a hex-byte editor for that address range.
+- Each view's scroll position, follow mode, charset, and title persist between sessions.
 
 ---
 
@@ -163,6 +171,7 @@ Displays the original `.asm` source file alongside the disassembly.
 - **Current-line marker**: An arrow highlights the source line corresponding to the current PC; the view auto-scrolls to keep it visible during stepping.
 - **Syntax highlighting**: Assembly mnemonics, labels, and comments are colour-coded using wxStyledTextCtrl.
 - **Breakpoint margin**: Click in the left margin to set or clear a breakpoint on any source line.
+- **Find bar**: Press Ctrl+F to reveal an inline search bar. Type to search; press Enter or **Next** to advance, Shift+Enter or **Prev** to go back, Escape or **X** to dismiss.
 
 ---
 
@@ -170,10 +179,20 @@ Displays the original `.asm` source file alongside the disassembly.
 
 A 256×256 pixel visual map of the 64 KB address space showing execution frequency and cycle consumption.
 
-**Features:**
-- **Heatmap**: Pixel intensity indicates how frequently each address has been executed. Colours range from black (never executed) through red to yellow (hotspots).
-- **Hover tooltip**: Hovering the mouse over the heatmap shows the address and hit count for that location.
-- **Real-time update**: The heatmap updates on every display refresh (approximately 60 Hz).
+Two-tab view showing execution data for the full 64 KB address space.
+
+**Toolbar:**
+- **Save**: Export the current heatmap as a PNG image.
+- **Clear**: Reset all execution hit counts and cycle totals to zero.
+
+**Heatmap tab:**
+- **Heatmap**: 256×256 pixel map — one pixel per address. Intensity indicates execution frequency; colours range from black (never executed) through red to yellow (hotspots).
+- **Hover tooltip**: Shows address, hit count, and total cycle count for the location under the cursor.
+- **Real-time update**: Refreshes at approximately 60 Hz.
+
+**List tab:**
+- Sortable table of every address that has been executed, with **Address**, **Hit Count**, and **Cycle Count** (total cycles consumed at that address) columns.
+- Click a column header to sort ascending/descending.
 
 ---
 
@@ -219,12 +238,19 @@ Two-tab view of the hardware stack (page 1, $0100–$01FF):
 
 Pin memory addresses to monitor their values in real time.
 
-**Adding watches:**
-- Right-click anywhere in the watch list to open the context menu and select **Add Watch**.
+**Toolbar buttons:**
+- **Add Watch** (+): Open a dialog to enter an address (hex), an optional label, and a width (1, 2, or 4 bytes).
+- **Delete Watch** (−): Remove the selected entry.
+- **Clear All**: Remove all watch entries.
+
+**Adding watches (alternative):** Right-click anywhere in the list to open a context menu with the same Add/Delete/Clear All options.
+
+**Columns:** Label, Address, Width, Hex value, Decimal value (and ASCII character for 1-byte watches).
 
 **Features:**
-- **Change highlighting**: Watch entries that changed on the most recent execution step are highlighted in red.
+- **Change highlighting**: Entries that changed on the most recent execution step are highlighted in red.
 - **Live update**: Values refresh on every display tick while the simulator is running or paused.
+- Watch entries (address, label, width) persist between sessions.
 
 ---
 
@@ -256,9 +282,16 @@ Searchable database of every instruction supported by the active processor varia
 
 Search, inspect, and navigate all labels, constants, and annotations loaded from `.sym`, `.list`, or `.sym_add` files.
 
+**Toolbar:**
+- **Load**: Load symbols from a `.sym` file.
+- **Save**: Save the current symbol table to a `.sym` file.
+- **Add**: Add a new symbol (name and address dialog).
+- **Delete**: Remove the selected symbol.
+- **Filter**: Type to narrow the list by name or address.
+
 **Features:**
-- **Filter field**: Type to narrow the symbol list by name or address.
-- **Load button**: Manually reload the symbol table if it has changed on disk.
+- **Navigate on activation**: Double-click a symbol row to scroll the Disassembly pane to that address.
+- **Column sorting**: Click any column header to sort by name, type, or address.
 - **Columns**: Name, Type (label / constant / inspect / trap), Address.
 
 ---
@@ -369,7 +402,13 @@ Shows decoded values for: sprite X/Y positions, display mode bits (D011, D016), 
 
 ### SID Debugger
 
-Visualises SID register state and voice activity for the loaded machine's SID chip(s).
+Live property-grid view of SID register state, grouped by voice and section.
+
+**Sections:**
+- **Voice 1–3**: Frequency Lo/Hi, Pulse Width Lo/Hi, Control (waveform/gate/sync/ring), Attack/Decay, Sustain/Release.
+- **Filter & Volume**: Filter Cutoff Lo/Hi, Resonance/Filter routing, Mode/Volume.
+
+Values update in real time as the simulator executes. The view is read-only; to poke a register use the Console (`write` command) or the Memory View.
 
 ---
 
@@ -406,6 +445,7 @@ Per-SID volume and mute controls. The number of SID chips shown adapts to the se
 | **Ctrl+G** | Go to Address (opens hex-entry popup, scrolls disassembly) |
 | **Shift+F12** | Arrange Windows (re-sequences all panes to be visible) |
 | **`** (backtick) | Focus the Console input field |
+| **Ctrl+F** | Open/close the Find bar in the Source View |
 
 ---
 

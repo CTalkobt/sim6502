@@ -7,7 +7,7 @@ Supported processor families range from the original NMOS 6502 up to the MEGA65 
 For a full walkthrough of all features, see **[doc/tutorial.md](doc/tutorial.md)**.
 For detailed information on the graphical debugger, see **[README-gui.md](README-gui.md)**.
 
-Help with this development by contributing and buy me coffee at: https://kodecoffee.com/i/ctalkobt
+Help with this development by contributing and buy me a coffee at: https://kodecoffee.com/i/ctalkobt
 
 ---
 
@@ -508,7 +508,7 @@ For full details on every pane, keyboard shortcut, and menu option, see **[READM
 
 - **Register View**: Live display of all CPU registers with diff highlighting, inline hex/decimal editing, clickable P-flag bit toggles, and automatic show/hide of Z and B registers based on the active CPU type.
 - **Disassembly**: Real-time disassembly with breakpoint gutter, symbol labels, and cycle counts.
-- **Memory Views**: Up to 4 independent hex+ASCII dump windows.
+- **Memory Views**: Up to 4 independent hex+ASCII/PETSCII dump windows with configurable follow mode (PC/SP/word pointer), inline byte editing, and individually titled views.
 - **Console**: Full REPL mirroring the CLI monitor mode with command history.
 - **Source View**: Original `.asm` source with current-line highlighting.
 - **Profiler/Heatmap**: 256×256 pixel execution-frequency and cycle-consumption map of the 64 KB address space.
@@ -580,4 +580,4 @@ sim6502/
 
 Proprietary — see `LICENSE`. Will move to open source at a future date.
 
-**Last Updated**: 2026-03-18
+**Last Updated**: 2026-03-19

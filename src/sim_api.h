@@ -176,7 +176,6 @@ int  cliIsInteractiveMode(void);
 void sim_set_pc(sim_session_t *s, uint16_t pc);
 void sim_set_reg_byte(sim_session_t *s, const char *name, uint8_t val);
 void sim_set_reg_value(sim_session_t *s, const char *name, uint16_t val);
-int sim_get_opcode_cycles(sim_session_t *s, uint16_t addr);
 int sim_get_last_writes(sim_session_t *s, uint16_t *addrs, int max_count);
 
 /* History — types defined in debug_types.h */
@@ -231,7 +230,6 @@ int sim_profiler_is_enabled(sim_session_t *s);
 void sim_profiler_clear(sim_session_t *s);
 uint32_t sim_profiler_get_exec(sim_session_t *s, uint16_t addr);
 uint32_t sim_profiler_get_cycles(sim_session_t *s, uint16_t addr);
-int sim_profiler_top_exec(sim_session_t *s, uint16_t *out_addrs, uint32_t *out_counts, int max_n);
 
 /* Opcodes */
 typedef struct {
@@ -246,6 +244,5 @@ typedef struct {
 const char *sim_mode_name(unsigned char mode);
 int sim_opcode_count(sim_session_t *s);
 int sim_opcode_get(sim_session_t *s, int idx, sim_opcode_info_t *info);
-int sim_opcode_by_byte(sim_session_t *s, uint8_t byte_val, sim_opcode_info_t *info);
 
 #endif /* SIM_API_H */

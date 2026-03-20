@@ -849,10 +849,6 @@ int sim_trace_get(sim_session_t *s, int slot, sim_trace_entry_t *entry) {
     return s ? s->debug_ctx->get_trace(slot, entry) : 0;
 }
 int sim_has_breakpoint(sim_session_t *s, uint16_t addr) { if (!s) return 0; for (int i = 0; i < s->breakpoints->count; i++) if (s->breakpoints->breakpoints[i].address == addr) return 1; return 0; }
-int sim_get_opcode_cycles(sim_session_t *s, uint16_t addr) {
-    if (!s) return 0;
-    return 0;
-}
 int sim_get_last_writes(sim_session_t *s, uint16_t *addrs, int max_count) {
     if (!s || !addrs || max_count <= 0) return 0;
     int n = s->mem->mem_writes < 256 ? s->mem->mem_writes : 256;
@@ -930,10 +926,6 @@ int sim_opcode_count(sim_session_t *s) {
 int sim_opcode_get(sim_session_t *s, int idx, sim_opcode_info_t *info) {
     if (!s || idx < 0 || idx >= (int)s->opcodes_cache.size() || !info) return -1;
     *info = s->opcodes_cache[idx];
-    return 0;
-}
-int sim_opcode_by_byte(sim_session_t *s, uint8_t byte_val, sim_opcode_info_t *info) {
-    if (!s || !info) return 0;
     return 0;
 }
 int sim_sym_count(sim_session_t *s) { return s ? s->symbols->count : 0; }
@@ -1044,7 +1036,6 @@ int sim_profiler_is_enabled(sim_session_t *s) { return s ? s->debug_ctx->profile
 void sim_profiler_clear(sim_session_t *s) { if (s) s->debug_ctx->clear_profiler(); }
 uint32_t sim_profiler_get_exec(sim_session_t *s, uint16_t addr) { return s ? s->debug_ctx->profiler_exec(addr) : 0; }
 uint32_t sim_profiler_get_cycles(sim_session_t *s, uint16_t addr) { return s ? s->debug_ctx->profiler_cycles(addr) : 0; }
-int sim_profiler_top_exec(sim_session_t *s, uint16_t *out_addrs, uint32_t *out_counts, int max_n) { (void)s; (void)out_addrs; (void)out_counts; (void)max_n; return 0; }
 const char *sim_mode_name(unsigned char mode) { return mode_name(mode); }
 
 /* --- Memory Snapshot & Diff --- */
