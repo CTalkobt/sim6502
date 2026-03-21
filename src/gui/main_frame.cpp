@@ -69,6 +69,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU(ID_VIEW_LAYOUT_RESET, MainFrame::OnTogglePane)
     EVT_MENU(ID_WINDOW_ARRANGE, MainFrame::OnWindowArrange)
     EVT_AUI_PANE_CLOSE(MainFrame::OnPaneClose)
+    EVT_AUI_PANE_BUTTON(MainFrame::OnPaneButton)
 wxEND_EVENT_TABLE()
 
 MainFrame::MainFrame(const wxString& title)
@@ -150,7 +151,9 @@ void MainFrame::InitPanes() {
 void MainFrame::RegisterPane(SimPane* pane, int menu_id, const wxAuiPaneInfo& info) {
     m_panes[menu_id] = pane;
     m_pane_list.push_back(pane);
-    m_aui.AddPane(pane, info);
+    wxAuiPaneInfo infoCopy = info;
+    infoCopy.PinButton(true);
+    m_aui.AddPane(pane, infoCopy);
     
     // Initial menu state
     CheckMenuItem(menu_id, info.IsShown());
@@ -595,6 +598,18 @@ void MainFrame::OnPaneClose(wxAuiManagerEvent& event) {
                 break;
             }
         }
+    }
+}
+
+void MainFrame::OnPaneButton(wxAuiManagerEvent& event) {
+    if (event.GetButton() == wxAUI_BUTTON_PIN) {
+        wxAuiPaneInfo* pane = event.GetPane();
+        if (pane && pane->IsFloating()) {
+            pane->Dock();
+            m_aui.Update();
+        }
+    } else {
+        event.Skip();
     }
 }
 
