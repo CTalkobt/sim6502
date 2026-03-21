@@ -228,11 +228,12 @@ bool CIAHandler::io_write(memory_t *mem, uint16_t addr, uint8_t val) {
     return true;
 }
 
-void cia_io_register(memory_t *mem, std::vector<IOHandler*>& dynamic_handlers) {
+CIAHandler* cia_io_register(memory_t *mem, std::vector<IOHandler*>& dynamic_handlers) {
     CIAHandler *cia1 = new CIAHandler("CIA1", false);
     CIAHandler *cia2 = new CIAHandler("CIA2", true);
     dynamic_handlers.push_back(cia1);
     dynamic_handlers.push_back(cia2);
     mem->io_registry->register_handler(0xDC00, 0xDC0F, cia1);
     mem->io_registry->register_handler(0xDD00, 0xDD0F, cia2);
+    return cia1;
 }

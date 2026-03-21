@@ -4,6 +4,7 @@
 #include "pane_base.h"
 #include <wx/glcanvas.h>
 #include <wx/toolbar.h>
+#include <wx/event.h>
 
 enum VICScreenZoom {
     VIC_ZOOM_1X  = 1,
@@ -21,12 +22,21 @@ public:
     wxString GetPaneTitle() const override { return "VIC-II Screen"; }
     wxString GetPaneName() const override { return "VICScreen"; }
 
+    /* Enable / disable keyboard capture mode. */
+    void SetCaptureMode(bool capture);
+    bool IsCapturing() const { return m_capturing; }
+
 private:
     void OnPaint(wxPaintEvent& event);
     void OnSize(wxSizeEvent& event);
     void OnZoom(wxCommandEvent& event);
     void OnFullScreen(wxCommandEvent& event);
     void OnShow(wxShowEvent& event);
+    void OnKeyDown(wxKeyEvent& event);
+    void OnKeyUp(wxKeyEvent& event);
+    void OnCanvasMouseDown(wxMouseEvent& event);
+    void OnCapture(wxCommandEvent& event);
+    void OnRelease(wxCommandEvent& event);
     void InitGL();
     void ExitFullScreen();
     void ApplyFullScreen();
@@ -40,6 +50,7 @@ private:
     bool         m_glInitialized;
     int          m_zoom;
     wxFrame*     m_fullscreenFrame;   // non-null while the pane's floating frame is fullscreen
+    bool         m_capturing;         // keyboard capture mode active
 };
 
 #endif

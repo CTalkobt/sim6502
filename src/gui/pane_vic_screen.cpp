@@ -1,4 +1,5 @@
 #include "pane_vic_screen.h"
+#include "sim_api.h"
 #include <wx/sizer.h>
 #include <wx/app.h>
 #include <wx/frame.h>
@@ -13,6 +14,8 @@ enum {
     ID_VIC_ZOOM_FIT        = 4104,
     ID_VIC_ZOOM_FULLSCREEN = 4105,
     ID_VIC_DOCK            = 4106,
+    ID_VIC_CAPTURE         = 4107,
+    ID_VIC_RELEASE         = 4108,
 };
 
 PaneVICScreen::PaneVICScreen(wxWindow* parent, sim_session_t *sim)
@@ -24,7 +27,8 @@ PaneVICScreen::PaneVICScreen(wxWindow* parent, sim_session_t *sim)
       m_texture(0),
       m_glInitialized(false),
       m_zoom(VIC_ZOOM_FIT),
-      m_fullscreenFrame(nullptr)
+      m_fullscreenFrame(nullptr),
+      m_capturing(false)
 {
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
 
@@ -42,6 +46,12 @@ PaneVICScreen::PaneVICScreen(wxWindow* parent, sim_session_t *sim)
     m_toolbar->AddSeparator();
     m_toolbar->AddTool(ID_VIC_DOCK, "Dock", wxNullBitmap, "Dock pane back into the main window");
     m_toolbar->EnableTool(ID_VIC_DOCK, false);   // hidden until floating
+    m_toolbar->AddSeparator();
+    m_toolbar->AddCheckTool(ID_VIC_CAPTURE, "Capture Input", wxNullBitmap, wxNullBitmap,
+                            "Capture keyboard input for the emulated machine (Scroll Lock to release)");
+    m_toolbar->AddTool(ID_VIC_RELEASE, "Release", wxNullBitmap,
+                       "Release keyboard capture (Scroll Lock)");
+    m_toolbar->EnableTool(ID_VIC_RELEASE, false);
     m_toolbar->Realize();
     sizer->Add(m_toolbar, 0, wxEXPAND);
 
@@ -52,21 +62,86 @@ PaneVICScreen::PaneVICScreen(wxWindow* parent, sim_session_t *sim)
     sizer->Add(m_canvas, 1, wxEXPAND);
     SetSizer(sizer);
 
-    m_canvas->Bind(wxEVT_PAINT, &PaneVICScreen::OnPaint,      this);
-    m_canvas->Bind(wxEVT_SIZE,  &PaneVICScreen::OnSize,       this);
+    m_canvas->Bind(wxEVT_PAINT,      &PaneVICScreen::OnPaint,          this);
+    m_canvas->Bind(wxEVT_SIZE,       &PaneVICScreen::OnSize,            this);
+    m_canvas->Bind(wxEVT_KEY_DOWN,   &PaneVICScreen::OnKeyDown,         this);
+    m_canvas->Bind(wxEVT_KEY_UP,     &PaneVICScreen::OnKeyUp,           this);
+    m_canvas->Bind(wxEVT_LEFT_DOWN,  &PaneVICScreen::OnCanvasMouseDown, this);
     m_toolbar->Bind(wxEVT_TOOL, &PaneVICScreen::OnZoom,       this, ID_VIC_ZOOM_1X, ID_VIC_ZOOM_FIT);
     m_toolbar->Bind(wxEVT_TOOL, &PaneVICScreen::OnFullScreen, this, ID_VIC_ZOOM_FULLSCREEN);
     m_toolbar->Bind(wxEVT_TOOL, [this](wxCommandEvent&) { ExitFullScreen(); DockPane(); }, ID_VIC_DOCK);
+    m_toolbar->Bind(wxEVT_TOOL, &PaneVICScreen::OnCapture, this, ID_VIC_CAPTURE);
+    m_toolbar->Bind(wxEVT_TOOL, &PaneVICScreen::OnRelease, this, ID_VIC_RELEASE);
     Bind(wxEVT_SHOW, &PaneVICScreen::OnShow, this);
 }
 
 PaneVICScreen::~PaneVICScreen() {
+    if (m_capturing) SetCaptureMode(false);
     if (m_fullscreenFrame) {
         m_fullscreenFrame->ShowFullScreen(false);
         m_fullscreenFrame = nullptr;
     }
     delete[] m_pixels;
     delete m_context;
+}
+
+void PaneVICScreen::SetCaptureMode(bool capture) {
+    m_capturing = capture;
+    m_toolbar->ToggleTool(ID_VIC_CAPTURE, capture);
+    m_toolbar->EnableTool(ID_VIC_RELEASE, capture);
+    if (capture) {
+        m_canvas->SetFocus();
+    }
+    m_canvas->Refresh();   /* update border visual */
+}
+
+void PaneVICScreen::OnCapture(wxCommandEvent& WXUNUSED(event)) {
+    SetCaptureMode(!m_capturing);
+}
+
+void PaneVICScreen::OnRelease(wxCommandEvent& WXUNUSED(event)) {
+    SetCaptureMode(false);
+}
+
+void PaneVICScreen::OnCanvasMouseDown(wxMouseEvent& event) {
+    if (!m_capturing) {
+        SetCaptureMode(true);
+    } else {
+        m_canvas->SetFocus();
+    }
+    event.Skip();
+}
+
+void PaneVICScreen::OnKeyDown(wxKeyEvent& event) {
+    if (!m_capturing) {
+        event.Skip();
+        return;
+    }
+    int kc = event.GetKeyCode();
+
+    /* Scroll Lock releases capture — do not forward to emulated machine. */
+    if (kc == WXK_SCROLL) {
+        SetCaptureMode(false);
+        return;
+    }
+
+    if (m_sim) {
+        sim_key_down(m_sim, kc, event.ShiftDown() ? 1 : 0);
+    }
+    /* Do NOT call event.Skip() — this suppresses OS/app accelerators. */
+}
+
+void PaneVICScreen::OnKeyUp(wxKeyEvent& event) {
+    if (!m_capturing) {
+        event.Skip();
+        return;
+    }
+    int kc = event.GetKeyCode();
+    if (kc == WXK_SCROLL) return;  /* already handled in key-down */
+
+    if (m_sim) {
+        sim_key_up(m_sim, kc, event.ShiftDown() ? 1 : 0);
+    }
 }
 
 void PaneVICScreen::InitGL() {
@@ -207,6 +282,22 @@ void PaneVICScreen::OnPaint(wxPaintEvent& WXUNUSED(event)) {
     glTexCoord2f(1, 1); glVertex2f(right, bottom);
     glTexCoord2f(0, 1); glVertex2f(left,  bottom);
     glEnd();
+
+    /* Draw a coloured border when keyboard capture is active. */
+    if (m_capturing) {
+        glDisable(GL_TEXTURE_2D);
+        glColor3f(0.2f, 0.8f, 0.2f);   /* green border */
+        glLineWidth(3.0f);
+        glBegin(GL_LINE_LOOP);
+        glVertex2f(-0.99f,  0.99f);
+        glVertex2f( 0.99f,  0.99f);
+        glVertex2f( 0.99f, -0.99f);
+        glVertex2f(-0.99f, -0.99f);
+        glEnd();
+        glColor3f(1.0f, 1.0f, 1.0f);
+        glLineWidth(1.0f);
+        glEnable(GL_TEXTURE_2D);
+    }
 
     m_canvas->SwapBuffers();
 }

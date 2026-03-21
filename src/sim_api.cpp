@@ -20,6 +20,7 @@
 #include "device/vic2.h"
 #include "device/sid_io.h"
 #include "device/cia_io.h"
+#include "device/keyboard_io.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -93,9 +94,13 @@ struct sim_session {
     DebugContext     *debug_ctx;
     std::vector<IOHandler*> dynamic_handlers;
     std::vector<sim_opcode_info_t> opcodes_cache;
+    CIAHandler*     cia1;       /* pointer into dynamic_handlers; updated by machine_init_hardware */
+    KeyboardMatrix* keyboard;   /* owned by session; survives machine resets */
 
     sim_session() {
         cpu = nullptr;
+        cia1 = nullptr;
+        keyboard = nullptr;
         mem = new memory_t();
         memset(mem, 0, sizeof(memory_t));
         symbols = new symbol_table_t();
@@ -120,6 +125,7 @@ struct sim_session {
     }
 
     ~sim_session() {
+        if (keyboard) delete keyboard;
         if (source_map) delete source_map;
         if (mem) delete mem;
         if (symbols) delete symbols;
@@ -352,7 +358,7 @@ static void machine_init_hardware(sim_session_t *s) {
         case MACHINE_MEGA65:
             mega65_io_register(s->mem);
             sid_io_register(s->mem, s->machine_type, s->dynamic_handlers);
-            cia_io_register(s->mem, s->dynamic_handlers);
+            s->cia1 = cia_io_register(s->mem, s->dynamic_handlers);
             s->mem->io_registry->rebuild_map(s->mem);
             sim_init_vic2_defaults(s);
             sim_load_default_charset(s);
@@ -361,7 +367,7 @@ static void machine_init_hardware(sim_session_t *s) {
         case MACHINE_C128:
             vic2_io_register(s->mem);
             sid_io_register(s->mem, s->machine_type, s->dynamic_handlers);
-            cia_io_register(s->mem, s->dynamic_handlers);
+            s->cia1 = cia_io_register(s->mem, s->dynamic_handlers);
             s->mem->io_registry->rebuild_map(s->mem);
             sim_init_vic2_defaults(s);
             sim_load_default_charset(s);
@@ -370,11 +376,15 @@ static void machine_init_hardware(sim_session_t *s) {
         default:
             vic2_io_register(s->mem);
             sid_io_register(s->mem, s->machine_type, s->dynamic_handlers);
-            cia_io_register(s->mem, s->dynamic_handlers);
+            s->cia1 = cia_io_register(s->mem, s->dynamic_handlers);
             s->mem->io_registry->rebuild_map(s->mem);
             sim_init_vic2_defaults(s);
             break;
     }
+
+    /* Re-push keyboard state into the new CIA1 after hardware reset. */
+    if (s->keyboard && s->cia1)
+        s->keyboard->push_to_cia(s->cia1);
 }
 
 /* --- API Implementation --- */
@@ -391,6 +401,7 @@ sim_session_t *sim_create(const char *processor) {
     }
     s->cpu = CPUFactory::create(s->cpu_type);
     s->cpu->mem = s->mem;
+    s->keyboard = new KeyboardMatrix();
     machine_init_hardware(s);
     update_opcode_cache(s);
     symbol_table_init(s->symbols, "Session");
@@ -1343,4 +1354,53 @@ int sim_validate_routine(sim_session_t          *s,
     *static_cast<CPUState*>(s->cpu) = saved_cpu_state;
     s->state = saved_state;
     return total_pass;
+}
+
+/* --------------------------------------------------------------------------
+ * Character ROM API
+ * -------------------------------------------------------------------------- */
+
+int sim_load_charset_file(sim_session_t *s, const char *path) {
+    if (!s || !path) return -1;
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    uint8_t buf[4096];
+    size_t n = fread(buf, 1, sizeof(buf), f);
+    fclose(f);
+    if (n < 256) return -1;  /* sanity check: reject obviously wrong files */
+
+    /* Replace the char_rom backing store used by all C64/C128 VIC overlays.
+     * The overlays already hold a pointer to char_rom[], so the new data is
+     * reflected immediately without touching the overlay structure. */
+    memset(s->mem->char_rom, 0, sizeof(s->mem->char_rom));
+    memcpy(s->mem->char_rom, buf, n);
+
+    /* Mega65 also mirrors the charset into far memory and 16-bit RAM. */
+    if (s->machine_type == MACHINE_MEGA65) {
+        for (size_t i = 0; i < n; i++)
+            far_mem_write(s->mem, 0x2D000 + i, buf[i]);
+        for (size_t i = 0; i < n; i++)
+            s->mem->mem[0x4000 + i] = buf[i];
+    }
+    return (int)n;
+}
+
+/* --------------------------------------------------------------------------
+ * Keyboard input API
+ * -------------------------------------------------------------------------- */
+
+void sim_key_down(sim_session_t *s, int keycode, int shifted) {
+    if (!s || !s->keyboard) return;
+    s->keyboard->key_down(keycode, shifted != 0);
+    s->keyboard->push_to_cia(s->cia1);
+}
+
+void sim_key_up(sim_session_t *s, int keycode, int shifted) {
+    if (!s || !s->keyboard) return;
+    s->keyboard->key_up(keycode, shifted != 0);
+    s->keyboard->push_to_cia(s->cia1);
+}
+
+KeyboardMatrix *sim_get_keyboard(sim_session_t *s) {
+    return s ? s->keyboard : nullptr;
 }

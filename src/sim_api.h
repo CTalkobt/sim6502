@@ -272,4 +272,29 @@ const char *sim_mode_name(unsigned char mode);
 int sim_opcode_count(sim_session_t *s);
 int sim_opcode_get(sim_session_t *s, int idx, sim_opcode_info_t *info);
 
+/* --------------------------------------------------------------------------
+ * Character ROM
+ * -------------------------------------------------------------------------- */
+
+/* Load a character ROM from the given file path and inject it into the
+ * session's char_rom[] backing store (and Mega65 far-memory mirrors).
+ * The overlay structure created during machine init is preserved; only the
+ * data content is replaced.  Call after machine_init / sim_set_machine_type.
+ * Returns the number of bytes loaded, or -1 on failure. */
+int sim_load_charset_file(sim_session_t *s, const char *path);
+
+/* --------------------------------------------------------------------------
+ * Keyboard input
+ * -------------------------------------------------------------------------- */
+class KeyboardMatrix;  /* defined in device/keyboard_io.h */
+
+/* Inject a key-down/key-up event into the emulated keyboard matrix.
+ * keycode: KBKEY_* constant or ASCII value (see keymap.h).
+ * shifted: non-zero if the host shift key is currently held. */
+void sim_key_down(sim_session_t *s, int keycode, int shifted);
+void sim_key_up  (sim_session_t *s, int keycode, int shifted);
+
+/* Return the session's KeyboardMatrix (always non-null after sim_create). */
+KeyboardMatrix *sim_get_keyboard(sim_session_t *s);
+
 #endif /* SIM_API_H */

@@ -67,6 +67,7 @@ public:
     uint8_t get_port_b_output() const { return prb; }
 };
 
-void cia_io_register(memory_t *mem, std::vector<IOHandler*>& dynamic_handlers);
+/* Returns a pointer to CIA1 so callers can attach a KeyboardMatrix. */
+CIAHandler* cia_io_register(memory_t *mem, std::vector<IOHandler*>& dynamic_handlers);
 
 #endif

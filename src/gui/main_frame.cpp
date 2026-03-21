@@ -119,6 +119,9 @@ MainFrame::MainFrame(const wxString& title)
 
     LoadSettings();
 
+    /* Try to load the VICE character ROM now that the VICE data path is known. */
+    LoadViceChargen();
+
     // Apply initial theme
     ApplyTheme();
 
@@ -434,25 +437,48 @@ void MainFrame::LoadConfiguredROMs() {
         unsigned long physAddr = 0;
         if (!hex.ToULong(&physAddr, 16)) continue;
 
-        /* Skip if an overlay is already registered at this address
-         * (prevents stacking duplicates on repeated calls). */
-        if (sim_overlay_find(m_sim, (uint32_t)physAddr) >= 0) continue;
-
         int romType = ROM_TYPE_OTHER;
         if      (typeStr == "Kernal")    romType = ROM_TYPE_KERNAL;
         else if (typeStr == "Basic")     romType = ROM_TYPE_BASIC;
         else if (typeStr == "Character") romType = ROM_TYPE_CHARACTER;
         else if (typeStr == "Expansion") romType = ROM_TYPE_EXPANSION;
 
-        /* KERNAL, BASIC, and CHARACTER are PLA-controlled — start inactive.
+        /* CHARACTER ROM: the overlay structure at $D000/$1000/$9000 is created
+         * by machine_init_hardware and backed by char_rom[].  Update the data
+         * in-place via sim_load_charset_file rather than adding a new overlay. */
+        if (romType == ROM_TYPE_CHARACTER) {
+            sim_load_charset_file(m_sim, fileStr.mb_str());
+            continue;
+        }
+
+        /* Skip if an overlay is already registered at this address
+         * (prevents stacking duplicates on repeated calls). */
+        if (sim_overlay_find(m_sim, (uint32_t)physAddr) >= 0) continue;
+
+        /* KERNAL, BASIC are PLA-controlled — start inactive.
          * sim_boot() will trigger C64PlaHandler to activate them correctly.
          * EXPANSION and OTHER are always visible. */
-        int active = (romType == ROM_TYPE_KERNAL || romType == ROM_TYPE_BASIC ||
-                      romType == ROM_TYPE_CHARACTER) ? 0 : 1;
+        int active = (romType == ROM_TYPE_KERNAL || romType == ROM_TYPE_BASIC) ? 0 : 1;
 
         sim_overlay_load(m_sim, (uint32_t)physAddr, fileStr.mb_str(),
                          romType, /*cpu_visible*/1, /*vic_visible*/0, active);
     }
+}
+
+void MainFrame::LoadViceChargen() {
+    if (!m_sim) return;
+    wxConfigBase *cfg = wxConfigBase::Get();
+    if (!cfg) return;
+    wxString viceData;
+    cfg->Read("Emulators/VICEData", &viceData, "");
+    if (viceData.IsEmpty()) return;
+
+    machine_type_t mach = sim_get_machine_type(m_sim);
+    const char *subdir = (mach == MACHINE_C128) ? "C128" : "C64";
+    wxString chargen = viceData + wxFILE_SEP_PATH + subdir + wxFILE_SEP_PATH + "chargen";
+    if (!wxFileExists(chargen)) return;
+
+    sim_load_charset_file(m_sim, chargen.mb_str());
 }
 
 void MainFrame::BootMachine() {
@@ -461,6 +487,7 @@ void MainFrame::BootMachine() {
     /* Reinitialise hardware: clears all overlays and re-registers built-in
      * char ROM overlays and CIA/VIC/SID handlers cleanly. */
     sim_set_machine_type(m_sim, sim_get_machine_type(m_sim));
+    LoadViceChargen();
     LoadConfiguredROMs();
     if (sim_boot(m_sim) != 0) {
         wxMessageBox(
@@ -746,6 +773,8 @@ void MainFrame::OnSettings(wxCommandEvent& WXUNUSED(event)) {
             cfg->Write("Limits/CycleLimit",     (long)dlg.GetCycleLimit());
         }
         ApplyCycleLimit(dlg.GetCycleLimit());
+        /* VICE data path may have changed — reload chargen immediately. */
+        LoadViceChargen();
         SaveSettings();
         if (fontChanged) {
             wxMessageBox("Font size and scaling changes will take effect after restarting the application.",

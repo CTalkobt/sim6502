@@ -42,7 +42,8 @@ DEV_SRCS = \
 	src/lib6502-devices/device/vic2_io.cpp \
 	src/lib6502-devices/device/sid_io.cpp \
 	src/lib6502-devices/device/mega65_io.cpp \
-	src/lib6502-devices/device/cia_io.cpp
+	src/lib6502-devices/device/cia_io.cpp \
+	src/lib6502-devices/device/keyboard_io.cpp
 
 # --- lib6502-toolchain ---
 TOOL_SRCS = \
@@ -51,7 +52,8 @@ TOOL_SRCS = \
 	src/lib6502-toolchain/disassembler.cpp \
 	src/lib6502-toolchain/metadata.cpp \
 	src/lib6502-toolchain/patterns.cpp \
-	src/lib6502-toolchain/project_manager.cpp
+	src/lib6502-toolchain/project_manager.cpp \
+	src/lib6502-toolchain/keymap.cpp
 
 # --- lib6502-debug ---
 DBG_SRCS = \

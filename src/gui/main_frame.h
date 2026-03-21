@@ -21,6 +21,7 @@ public:
     void ApplySpeedScale(float scale);
     void ApplyDebug();
     void LoadConfiguredROMs();
+    void LoadViceChargen();
     void BootMachine();
     void NavigateDisassembly(uint16_t addr);
     void NavigateMemory(uint16_t addr);
