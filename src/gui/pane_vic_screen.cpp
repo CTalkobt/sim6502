@@ -24,8 +24,7 @@ PaneVICScreen::PaneVICScreen(wxWindow* parent, sim_session_t *sim)
       m_texture(0),
       m_glInitialized(false),
       m_zoom(VIC_ZOOM_FIT),
-      m_fullscreenFrame(nullptr),
-      m_pendingFullscreen(false)
+      m_fullscreenFrame(nullptr)
 {
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
 
@@ -116,7 +115,6 @@ void PaneVICScreen::OnZoom(wxCommandEvent& event) {
         case ID_VIC_ZOOM_4X:  m_zoom = VIC_ZOOM_4X;  break;
         case ID_VIC_ZOOM_FIT: m_zoom = VIC_ZOOM_FIT; break;
     }
-    m_pendingFullscreen = false;
     ExitFullScreen();
     m_canvas->Refresh();
 }
@@ -127,16 +125,19 @@ void PaneVICScreen::OnFullScreen(wxCommandEvent& WXUNUSED(event)) {
         return;
     }
 
-    wxFrame* mainFrame = wxDynamicCast(wxTheApp->GetTopWindow(), wxFrame);
-    wxAuiManager* mgr = mainFrame ? wxAuiManager::GetManager(mainFrame) : nullptr;
-
-    if (mgr) {
-        wxAuiPaneInfo& info = mgr->GetPane(this);
-        if (info.IsOk() && info.IsDocked()) {
-            m_pendingFullscreen = true;
-            info.Float().FloatingSize(384 * 2, 272 * 2 + 40);
-            mgr->Update();
-            return;
+    // If in the main window, float the pane first, then go fullscreen once
+    // AUI has finished reparenting (CallAfter defers past the float operation).
+    if (wxGetTopLevelParent(this) == wxTheApp->GetTopWindow()) {
+        wxFrame* mainFrame = wxDynamicCast(wxTheApp->GetTopWindow(), wxFrame);
+        wxAuiManager* mgr = mainFrame ? wxAuiManager::GetManager(mainFrame) : nullptr;
+        if (mgr) {
+            wxAuiPaneInfo& info = mgr->GetPane(this);
+            if (info.IsOk()) {
+                info.Float().FloatingSize(384 * 2, 272 * 2 + 40);
+                mgr->Update();
+                wxTheApp->CallAfter([this]() { ApplyFullScreen(); });
+                return;
+            }
         }
     }
 
@@ -145,17 +146,9 @@ void PaneVICScreen::OnFullScreen(wxCommandEvent& WXUNUSED(event)) {
 
 void PaneVICScreen::OnShow(wxShowEvent& event) {
     if (!event.IsShown()) {
-        m_pendingFullscreen = false;
         ExitFullScreen();
-        UpdateDockButton();
-    } else if (m_pendingFullscreen) {
-        m_pendingFullscreen = false;
-        ApplyFullScreen();
-    } else {
-        bool isFloating = (wxGetTopLevelParent(this) != wxTheApp->GetTopWindow());
-        m_toolbar->EnableTool(ID_VIC_DOCK, isFloating);
-        UpdateDockButton();
     }
+    UpdateDockButton();
     event.Skip();
 }
 
@@ -200,7 +193,6 @@ void PaneVICScreen::OnPaint(wxPaintEvent& WXUNUSED(event)) {
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-    glViewport(0, 0, m_canvas->GetSize().x, m_canvas->GetSize().y);
 
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, m_texture);

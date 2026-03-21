@@ -40,7 +40,6 @@ private:
     bool         m_glInitialized;
     int          m_zoom;
     wxFrame*     m_fullscreenFrame;   // non-null while the pane's floating frame is fullscreen
-    bool         m_pendingFullscreen; // set when we've floated the pane and are waiting for OnShow
 };
 
 #endif

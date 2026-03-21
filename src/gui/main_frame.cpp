@@ -155,7 +155,7 @@ void MainFrame::InitPanes() {
 
     RegisterPane(new PaneIRef(this, m_sim), ID_VIEW_PANE_IREF, wxAuiPaneInfo().Name("IRef").Caption("Instruction Ref").Bottom().Position(4).Hide());
     RegisterPane(new PaneSymbols(this, m_sim), ID_VIEW_PANE_SYMBOLS, wxAuiPaneInfo().Name("Symbols").Caption("Symbols").Right().Position(6).Hide());
-    RegisterPane(new PaneSource(this, m_sim), ID_VIEW_PANE_SOURCE, wxAuiPaneInfo().Name("Source").Caption("Source View").CenterPane().Hide());
+    RegisterPane(new PaneSource(this, m_sim), ID_VIEW_PANE_SOURCE, wxAuiPaneInfo().Name("Source").Caption("Source View").Bottom().Position(7).Hide());
     RegisterPane(new PaneProfiler(this, m_sim), ID_VIEW_PANE_PROFILER, wxAuiPaneInfo().Name("Profiler").Caption("Profiler").Bottom().Position(5).Hide());
     RegisterPane(new PaneTestRunner(this, m_sim), ID_VIEW_PANE_TEST_RUNNER, wxAuiPaneInfo().Name("TestRunner").Caption("Test Runner").Bottom().Position(6).Hide());
     RegisterPane(new PaneDevices(this, m_sim), ID_VIEW_PANE_DEVICES, wxAuiPaneInfo().Name("Devices").Caption("I/O Devices").Right().Position(7).Hide());
