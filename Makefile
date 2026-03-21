@@ -134,8 +134,20 @@ src/cli/commands/%.o: src/cli/commands/%.cpp
 	$(CXX) $(CXXFLAGS) $(FRONT_IFLAGS) -c -o $@ $<
 
 # --- GUI Frontend (wxWidgets) ---
+SDL2_CFLAGS := $(shell pkg-config --cflags sdl2 2>/dev/null)
 SDL2_LIBS   := $(shell pkg-config --libs   sdl2 2>/dev/null)
-GL_LIBS      = -lGL -lpthread
+
+ifeq ($(SDL2_CFLAGS),)
+  SDL2_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null)
+  SDL2_LIBS   := $(shell sdl2-config --libs   2>/dev/null)
+endif
+
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+  GL_LIBS = -framework OpenGL
+else
+  GL_LIBS = -lGL -pthread
+endif
 
 WX_CFLAGS   := $(shell wx-config --cflags)
 WX_LIBS     := $(shell wx-config --libs std,aui,gl,stc,propgrid)
