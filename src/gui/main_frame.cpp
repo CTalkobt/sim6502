@@ -576,22 +576,36 @@ void MainFrame::OnBrowseLoad(wxCommandEvent& WXUNUSED(event)) {
 }
 
 void MainFrame::LoadFile(const wxString& path) {
+    bool loaded = false;
     if (path.Lower().EndsWith(".bin") || path.Lower().EndsWith(".prg")) {
         LoadBinaryDialog binDlg(this, path);
         if (binDlg.ShowModal() == wxID_OK) {
             m_running = false;
-            if (path.Lower().EndsWith(".prg")) {
-                sim_load_prg(m_sim, path.mb_str(), binDlg.ShouldOverride() ? binDlg.GetAddress() : 0);
-            } else {
-                sim_load_bin(m_sim, path.mb_str(), binDlg.GetAddress());
-            }
+            int rc;
+            if (path.Lower().EndsWith(".prg"))
+                rc = sim_load_prg(m_sim, path.mb_str(), binDlg.ShouldOverride() ? binDlg.GetAddress() : 0);
+            else
+                rc = sim_load_bin(m_sim, path.mb_str(), binDlg.GetAddress());
+            loaded = (rc == 0);
         }
     } else {
         m_running = false;
         if (sim_load_asm(m_sim, path.mb_str()) != 0) {
             wxMessageBox(wxString::Format("Failed to load '%s':\n%s", path, sim_get_last_error(m_sim)),
                          "Assembly Error", wxOK | wxICON_ERROR);
+        } else {
+            loaded = true;
         }
+    }
+    if (loaded) {
+        /* Re-apply ROMs after load: sim_load_* may trigger machine_init_hardware
+         * (via apply_session_processor_symbols) which clears overlays.
+         * sim_boot() reads $FFFC/$FFFD and sets PC to the reset vector.
+         * If no KERNAL is configured, PC stays at the load/entry-symbol address. */
+        LoadViceChargen();
+        LoadConfiguredROMs();
+        sim_boot(m_sim);
+        UpdateStatus();
     }
 }
 

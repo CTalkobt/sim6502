@@ -581,8 +581,10 @@ int sim_load_prg(sim_session_t *s, const char *path, uint16_t override_addr)
     char *dot = strrchr(base, '.');
     if (dot) *dot = 0;
     load_companion_files(s->symbols, s->source_map, base);
-    /* Apply cpu/machine type from SIM_CPU/SIM_MACHINE markers in companion files */
+    /* Apply cpu/machine type from SIM_CPU/SIM_MACHINE markers in companion files.
+     * This may create a new CPU object (pc = 0); restore start_addr afterwards. */
     apply_session_processor_symbols(s);
+    s->cpu->pc = s->start_addr;
 
     return 0;
 }
